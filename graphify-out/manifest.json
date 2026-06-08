@@ -1,0 +1,242 @@
+{
+  "/Users/thihanaing/Haus/next-env.d.ts": {
+    "mtime": 1780903308.6555214,
+    "ast_hash": "ba64ff7d54714a8f64db89b1003207d8",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/package.json": {
+    "mtime": 1780915816.9658039,
+    "ast_hash": "7440c875f538ba906982c34b45391c2e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/tsconfig.json": {
+    "mtime": 1780902961.8822787,
+    "ast_hash": "93db602de359111ffe5b00fb4a32953c",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/.eslintrc.json": {
+    "mtime": 1780902961.8830545,
+    "ast_hash": "6c636976577d27c2ebdc12da2f6f2b56",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/next.config.ts": {
+    "mtime": 1780915825.6106675,
+    "ast_hash": "045f2a925b48a588fedda5ff24c56b18",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/layout.tsx": {
+    "mtime": 1780915847.7566411,
+    "ast_hash": "6935912d6d45819571fe903b5f11c1af",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/page.tsx": {
+    "mtime": 1780902961.917334,
+    "ast_hash": "ba5ab9ed305c12430821cccf47592af8",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/(app)/layout.tsx": {
+    "mtime": 1780902961.9179468,
+    "ast_hash": "ab7fbe815a900eaec365181a46a934e2",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/(app)/clients/page.tsx": {
+    "mtime": 1780925917.7659507,
+    "ast_hash": "5e014a39fea84beffe0a4ad54c552b7e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/(app)/tasks/page.tsx": {
+    "mtime": 1780914884.081156,
+    "ast_hash": "6d971b27b23ca69a0705c310ce805c21",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/(app)/projects/page.tsx": {
+    "mtime": 1780902961.919398,
+    "ast_hash": "9380ca1dc8576e757be6a579c588a6dd",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/(app)/projects/[id]/page.tsx": {
+    "mtime": 1780902961.9201455,
+    "ast_hash": "c8280afb07fca1ebe6b181e9888ff286",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/(app)/dashboard/page.tsx": {
+    "mtime": 1780902961.918509,
+    "ast_hash": "3ea5db23f58f7a64be291e699cd8cf36",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/(app)/profile/page.tsx": {
+    "mtime": 1780902961.9212172,
+    "ast_hash": "1510b9c7d4709b8e8e172e65ab0177b0",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/(app)/team/page.tsx": {
+    "mtime": 1780902961.920797,
+    "ast_hash": "004508cfa1c5e4a271feefa9b53c2b85",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/api/invitations/accept/route.ts": {
+    "mtime": 1780904076.0582778,
+    "ast_hash": "16414c641562dd7a212b89aad535e7bd",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/api/invitations/lookup/route.ts": {
+    "mtime": 1780904127.3623896,
+    "ast_hash": "df0c12b29937bee86b65889f358f44fc",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/api/invitations/create/route.ts": {
+    "mtime": 1780932730.1303816,
+    "ast_hash": "50f1e2fb59982bb7db68680748f813fc",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/accept-invite/page.tsx": {
+    "mtime": 1780903971.8308523,
+    "ast_hash": "367edb47a41dc445fe297650dbf7c7ab",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/supabase/migrations/20260608_invitation_system.sql": {
+    "mtime": 1780913467.4222057,
+    "ast_hash": "772976472586281fbedcc71c99bac8dc",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/tasks-screen.tsx": {
+    "mtime": 1780932840.4967098,
+    "ast_hash": "b6a033a8c2e3632c8e4ee48eebd8d47e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/accept-invite-screen.tsx": {
+    "mtime": 1780906662.5522275,
+    "ast_hash": "c13d08d912bcfe7f1ceeba62dccb92b9",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/require-auth.tsx": {
+    "mtime": 1780902993.047365,
+    "ast_hash": "62b6394acfdd5aba30d77eb079fb2cce",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/projects-screen.tsx": {
+    "mtime": 1780932840.4955654,
+    "ast_hash": "6294bd92725f7296ccc518086f0368c4",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/app-state.tsx": {
+    "mtime": 1780932679.9422972,
+    "ast_hash": "728f0b2d8532a45db2615745b7baa5fa",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/project-detail-screen.tsx": {
+    "mtime": 1780932840.55737,
+    "ast_hash": "716bb87c98fe30b4ea7595b12f13748b",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/team-screen.tsx": {
+    "mtime": 1780932918.3249617,
+    "ast_hash": "a2f8c42fcbce9917778448cf765c030e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/profile-screen.tsx": {
+    "mtime": 1780906918.500122,
+    "ast_hash": "15d0c3879b647809fd865be7881cf829",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/app-sidebar.tsx": {
+    "mtime": 1780928032.8059978,
+    "ast_hash": "7e40640e341e430ffb7db613bf9a048f",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/login-screen.tsx": {
+    "mtime": 1780913284.155551,
+    "ast_hash": "0626e021395f53c5de0df4dbd2dbabe5",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/dashboard-screen.tsx": {
+    "mtime": 1780932840.545081,
+    "ast_hash": "18f6b6052a3754e1f8909b39e1b657ca",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/clients-screen.tsx": {
+    "mtime": 1780932840.4984143,
+    "ast_hash": "13bd6546d2c9b2f213d68d844e857d28",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/ui.tsx": {
+    "mtime": 1780922162.1891928,
+    "ast_hash": "24a99ba6a989977097ecb84162d0eba5",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/.codex/hooks.json": {
+    "mtime": 1780933084.9392896,
+    "ast_hash": "6f56aa40c973867e5e57cc8470764082",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/styled-components-registry.tsx": {
+    "mtime": 1780915838.0554864,
+    "ast_hash": "5312bab45a1555a15ba8cc6177f4cc49",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/invitations.ts": {
+    "mtime": 1780904043.5955167,
+    "ast_hash": "70961375062267460c3c9f4698c61bcc",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/permissions.ts": {
+    "mtime": 1780932512.7890646,
+    "ast_hash": "f940a394b6a18b43bb31c82483a1f3b4",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/display.ts": {
+    "mtime": 1780906545.8518083,
+    "ast_hash": "e715279c1451d95191e8a6e3450afb9d",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/types.ts": {
+    "mtime": 1780903846.8016005,
+    "ast_hash": "d5b6fe669ead0887ff56b8bddb8452e4",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/config.ts": {
+    "mtime": 1780913284.15484,
+    "ast_hash": "8269d6deb1d7a1ccf34b184fc4e1e95f",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/mock-data.ts": {
+    "mtime": 1780906820.147877,
+    "ast_hash": "73dcb9f06d133d8345b4a5f32359b578",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/supabase/admin.ts": {
+    "mtime": 1780904043.5963306,
+    "ast_hash": "5679ae172b41d9394866889e04300cbe",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/supabase/client.ts": {
+    "mtime": 1780902961.8879263,
+    "ast_hash": "64b3382941ccfe23457a6d7dccdf00c3",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/supabase/server.ts": {
+    "mtime": 1780902961.8972812,
+    "ast_hash": "d4e719fe92fba2beaa564b6fd33ea5c6",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/TODO.md": {
+    "mtime": 1780932918.3256562,
+    "ast_hash": "2fdfcdfa7bc693664a7a3d7add843ee4",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/README.md": {
+    "mtime": 1780906940.6438491,
+    "ast_hash": "f5d277560e5aeab20bc0fada9ea6a26c",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/design.md": {
+    "mtime": 1780906349.2150245,
+    "ast_hash": "295f2413af43487282f4835b76d08e31",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/AGENTS.md": {
+    "mtime": 1780933084.9381108,
+    "ast_hash": "a993bd9a8466b705f520b2a269a544bc",
+    "semantic_hash": ""
+  }
+}

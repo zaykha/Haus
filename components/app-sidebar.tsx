@@ -1,0 +1,246 @@
+"use client";
+
+import type { ReactNode } from "react";
+import Link from "next/link";
+import styled, { css } from "styled-components";
+import { formatRole } from "@/lib/display";
+import { User } from "@/lib/types";
+
+const desktop = "@media (min-width: 768px)";
+
+type SidebarLabel =
+  | "Home"
+  | "Projects"
+  | "Tasks"
+  | "Clients"
+  | "Team"
+  | "Calendar"
+  | "Reports"
+  | "Files";
+
+const navItems: Array<{
+  label: SidebarLabel;
+  href?: string;
+  icon: ReactNode;
+}> = [
+  { label: "Home", href: "/dashboard", icon: <IconHome /> },
+  { label: "Projects", href: "/projects", icon: <IconFolder /> },
+  { label: "Tasks", href: "/tasks", icon: <IconCheckCircle /> },
+  { label: "Clients", href: "/clients", icon: <IconUser /> },
+  { label: "Team", href: "/team", icon: <IconUsers /> },
+];
+
+export function AppSidebar({
+  user,
+  activeLabel,
+}: {
+  user: User;
+  activeLabel: SidebarLabel;
+}) {
+  return (
+    <Sidebar>
+      <div>
+        <Brand>haus</Brand>
+        <SidebarNav aria-label="Primary sections">
+          {navItems.map((item) =>
+            item.href ? (
+              <SidebarLink key={item.label} href={item.href} $active={item.label === activeLabel}>
+                <SidebarIcon>{item.icon}</SidebarIcon>
+                <span>{item.label}</span>
+              </SidebarLink>
+            ) : (
+              <SidebarButton key={item.label} type="button">
+                <SidebarIcon>{item.icon}</SidebarIcon>
+                <span>{item.label}</span>
+              </SidebarButton>
+            ),
+          )}
+        </SidebarNav>
+      </div>
+
+      <SidebarProfile>
+        <SidebarAvatar>{user.name.slice(0, 1)}</SidebarAvatar>
+        <div>
+          <SidebarName>{user.name}</SidebarName>
+          <SidebarRole>{formatRole(user.role)}</SidebarRole>
+        </div>
+      </SidebarProfile>
+    </Sidebar>
+  );
+}
+
+const Sidebar = styled.aside`
+  display: none;
+
+  ${desktop} {
+    width: 260px;
+    flex: 0 0 260px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 22px 16px;
+    border-right: 1px solid rgba(230, 224, 215, 0.95);
+    border-radius: 26px 0 0 26px;
+    background: rgba(255, 255, 255, 0.62);
+  }
+`;
+
+const Brand = styled.div`
+  padding: 10px 8px 24px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2.6rem;
+  line-height: 1;
+  font-weight: 600;
+  text-transform: lowercase;
+`;
+
+const SidebarNav = styled.nav`
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 28px;
+`;
+
+const sidebarItemCss = css<{ $active?: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 56px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 18px;
+  color: ${({ $active }) => ($active ? "var(--color-text)" : "var(--color-text-muted)")};
+  background: ${({ $active }) => ($active ? "#f5efe5" : "transparent")};
+  box-shadow: ${({ $active }) =>
+    $active ? "inset 0 0 0 1px rgba(230, 224, 215, 0.9)" : "none"};
+  text-align: left;
+  text-decoration: none;
+  font-size: 0.96rem;
+`;
+
+const SidebarLink = styled(Link)<{ $active?: boolean }>`
+  ${sidebarItemCss}
+`;
+
+const SidebarButton = styled.button`
+  ${sidebarItemCss}
+`;
+
+const SidebarIcon = styled.span`
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  opacity: 0.72;
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+`;
+
+const SidebarProfile = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px 8px;
+`;
+
+const SidebarAvatar = styled.div`
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #ded6c8;
+  color: #fff;
+  font-weight: 600;
+`;
+
+const SidebarName = styled.strong`
+  display: block;
+`;
+
+const SidebarRole = styled.p`
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  text-transform: capitalize;
+`;
+
+function IconHome() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 10.5 12 4l8 6.5" />
+      <path d="M6.5 9.5V20h11V9.5" />
+    </svg>
+  );
+}
+
+function IconFolder() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.5 8.5h6l2-2H20a1 1 0 0 1 1 1v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </svg>
+  );
+}
+
+function IconCheckCircle() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m8.8 12 2.1 2.2 4.6-4.8" />
+    </svg>
+  );
+}
+
+function IconUser() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5.5 19a6.5 6.5 0 0 1 13 0" />
+    </svg>
+  );
+}
+
+function IconUsers() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="9" r="3" />
+      <circle cx="17" cy="10" r="2.5" />
+      <path d="M4.5 18a5.5 5.5 0 0 1 9 0" />
+      <path d="M14.5 18a4.5 4.5 0 0 1 5-3.7" />
+    </svg>
+  );
+}
+
+function IconCalendar() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="6" width="16" height="14" rx="2.5" />
+      <path d="M8 4v4M16 4v4M4 10h16" />
+    </svg>
+  );
+}
+
+function IconChart() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 19V9" />
+      <path d="M12 19V5" />
+      <path d="M19 19v-7" />
+      <path d="M4 19h16" />
+    </svg>
+  );
+}
+
+function IconFile() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3.5h6l4 4V20a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 7 20V5a1.5 1.5 0 0 1 1-1.5Z" />
+      <path d="M14 3.5V8h4" />
+    </svg>
+  );
+}

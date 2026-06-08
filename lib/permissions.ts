@@ -1,0 +1,113 @@
+import { Project, Role, Task, User } from "@/lib/types";
+
+export function isManagerRole(role: Role) {
+  return role === "communication_manager" || role === "creative_manager";
+}
+
+export function canManageWorkspace(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canManageProjects(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canCreateProject(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canEditProject(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canDeleteProject(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canUpdateProjectWorkflow(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canCreateTask(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canEditTask(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canDeleteTask(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canAssignTask(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canCreateClient(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canEditClient(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canDeleteClient(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canCreateTeamMember(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canEditTeamMember(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canDeleteTeamMember(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canUpdateTeamRole(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canInviteUsers(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canViewProject(user: User, project: Project) {
+  if (canManageProjects(user.role)) {
+    return true;
+  }
+
+  if (user.role === "designer") {
+    return project.staffIds.includes(user.id) || project.tasks.some((task) => task.assigneeId === user.id);
+  }
+
+  return user.role === "client" && project.clientId === user.id;
+}
+
+export function canChangeWorkflow(role: Role) {
+  return canUpdateProjectWorkflow(role);
+}
+
+export function canUpdateTaskStatus(user: User, project: Project, task: Task) {
+  if (canManageTaskCrud(user.role)) {
+    return true;
+  }
+
+  return user.role === "designer" && canViewProject(user, project) && task.assigneeId === user.id;
+}
+
+export function canManageTaskCrud(role: Role) {
+  return isManagerRole(role);
+}
+
+export function canUploadFiles(role: Role) {
+  return role !== "client";
+}
+
+export function canLeaveInternalComment(role: Role) {
+  return role !== "client";
+}
