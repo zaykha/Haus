@@ -16,6 +16,7 @@ export type ProjectStage =
 export type FileVisibility = "internal" | "client";
 export type FeedbackAction = "approve" | "request_revision" | "comment";
 export type TaskStatus = "todo" | "in_progress" | "done";
+export type TaskPriority = "high" | "medium" | "low";
 export type InvitationStatus = "pending" | "accepted" | "expired" | "revoked";
 
 export interface User {
@@ -31,6 +32,8 @@ export interface Task {
   title: string;
   assigneeId: string;
   status: TaskStatus;
+  dueDate: string;
+  priority: TaskPriority;
 }
 
 export interface Comment {
@@ -56,6 +59,7 @@ export interface Feedback {
   authorId: string;
   action: FeedbackAction;
   body: string;
+  rating?: number | null;
   createdAt: string;
 }
 

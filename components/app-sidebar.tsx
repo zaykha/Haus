@@ -4,31 +4,12 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import styled, { css } from "styled-components";
 import { formatRole } from "@/lib/display";
+import { AppNavLabel, getPrimaryNavItems } from "@/lib/navigation";
 import { User } from "@/lib/types";
 
 const desktop = "@media (min-width: 768px)";
 
-type SidebarLabel =
-  | "Home"
-  | "Projects"
-  | "Tasks"
-  | "Clients"
-  | "Team"
-  | "Calendar"
-  | "Reports"
-  | "Files";
-
-const navItems: Array<{
-  label: SidebarLabel;
-  href?: string;
-  icon: ReactNode;
-}> = [
-  { label: "Home", href: "/dashboard", icon: <IconHome /> },
-  { label: "Projects", href: "/projects", icon: <IconFolder /> },
-  { label: "Tasks", href: "/tasks", icon: <IconCheckCircle /> },
-  { label: "Clients", href: "/clients", icon: <IconUser /> },
-  { label: "Team", href: "/team", icon: <IconUsers /> },
-];
+type SidebarLabel = AppNavLabel;
 
 export function AppSidebar({
   user,
@@ -37,24 +18,37 @@ export function AppSidebar({
   user: User;
   activeLabel: SidebarLabel;
 }) {
+  const navItems: Array<{
+    label: SidebarLabel;
+    href: string;
+    icon: ReactNode;
+  }> = getPrimaryNavItems(user.role).map((item) => ({
+    ...item,
+    icon:
+      item.label === "Home" ? (
+        <IconHome />
+      ) : item.label === "Projects" ? (
+        <IconFolder />
+      ) : item.label === "Tasks" ? (
+        <IconCheckCircle />
+      ) : item.label === "Team" ? (
+        <IconUsers />
+      ) : (
+        <IconUser />
+      ),
+  }));
+
   return (
     <Sidebar>
       <div>
         <Brand>haus</Brand>
         <SidebarNav aria-label="Primary sections">
-          {navItems.map((item) =>
-            item.href ? (
-              <SidebarLink key={item.label} href={item.href} $active={item.label === activeLabel}>
-                <SidebarIcon>{item.icon}</SidebarIcon>
-                <span>{item.label}</span>
-              </SidebarLink>
-            ) : (
-              <SidebarButton key={item.label} type="button">
-                <SidebarIcon>{item.icon}</SidebarIcon>
-                <span>{item.label}</span>
-              </SidebarButton>
-            ),
-          )}
+          {navItems.map((item) => (
+            <SidebarLink key={item.label} href={item.href} $active={item.label === activeLabel}>
+              <SidebarIcon>{item.icon}</SidebarIcon>
+              <span>{item.label}</span>
+            </SidebarLink>
+          ))}
         </SidebarNav>
       </div>
 
@@ -105,10 +99,10 @@ const sidebarItemCss = css<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 56px;
+  min-height: 40px;
   padding: 0 16px;
   border: 0;
-  border-radius: 18px;
+  border-radius: 10px;
   color: ${({ $active }) => ($active ? "var(--color-text)" : "var(--color-text-muted)")};
   background: ${({ $active }) => ($active ? "#f5efe5" : "transparent")};
   box-shadow: ${({ $active }) =>
@@ -119,10 +113,6 @@ const sidebarItemCss = css<{ $active?: boolean }>`
 `;
 
 const SidebarLink = styled(Link)<{ $active?: boolean }>`
-  ${sidebarItemCss}
-`;
-
-const SidebarButton = styled.button`
   ${sidebarItemCss}
 `;
 

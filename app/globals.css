@@ -190,6 +190,42 @@ textarea:focus {
   gap: var(--space-2);
 }
 
+.onboarding-card {
+  gap: 20px;
+  padding: 30px 24px 26px;
+}
+
+.onboarding-brand {
+  gap: 10px;
+}
+
+.onboarding-form {
+  gap: 16px;
+}
+
+.onboarding-summary {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 20px;
+  background: rgba(250, 248, 244, 0.88);
+}
+
+.onboarding-summary div {
+  display: grid;
+  gap: 4px;
+}
+
+.onboarding-summary strong {
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.onboarding-inline {
+  margin: 0;
+}
+
 .auth-brand {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
@@ -573,8 +609,8 @@ textarea:focus {
 .secondary-button,
 .danger-button,
 .nav-item {
-  min-height: 44px;
-  border-radius: var(--radius-md);
+  min-height: 40px;
+  border-radius: 10px;
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
@@ -582,8 +618,8 @@ textarea:focus {
   border: 1px solid var(--color-border);
   background: var(--color-surface-soft);
   color: var(--color-text-muted);
-  padding: 12px;
-  font-size: 15px;
+  padding: 10px 14px;
+  font-size: 14px;
   font-weight: 500;
 }
 
@@ -599,8 +635,8 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 18px;
-  font-size: 15px;
+  padding: 0 16px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -885,6 +921,10 @@ textarea:focus {
   .auth-footnote {
     margin-top: 16px;
   }
+
+  .onboarding-card {
+    width: min(100%, 560px);
+  }
 }
 
 @media (max-width: 767px) {
@@ -960,6 +1000,17 @@ textarea:focus {
   .auth-field,
   .auth-submit {
     width: min(100%, 320px);
+  }
+
+  .onboarding-card {
+    width: min(100%, 320px);
+    padding: 0;
+  }
+
+  .onboarding-summary {
+    width: min(100%, 320px);
+    padding: 16px;
+    gap: 12px;
   }
 
   .auth-brand {

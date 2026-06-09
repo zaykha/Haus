@@ -5,9 +5,9 @@ import {
   ReactNode,
   useContext,
   useEffect,
-  useMemo,
   useState,
 } from "react";
+import type { User as AuthUser } from "@supabase/supabase-js";
 import { initialAppState } from "@/lib/mock-data";
 import { appMode } from "@/lib/config";
 import {
@@ -20,8 +20,8 @@ import {
   Project,
   ProjectStage,
   ProjectStatus,
+  TaskPriority,
   Role,
-  Session,
   TaskStatus,
   User,
 } from "@/lib/types";
@@ -39,10 +39,6 @@ import {
   canUpdateProjectWorkflow,
 } from "@/lib/permissions";
 
-const STORAGE_KEY = "haus-app-state";
-const LEGACY_STORAGE_KEY = "haus-demo-state";
-const SESSION_KEY = "haus-session";
-
 interface AppStateContextValue {
   mode: "mock" | "supabase";
   ready: boolean;
@@ -57,8 +53,7 @@ interface AppStateContextValue {
     category: string;
     dueDate: string;
     clientId: string;
-    staffIds: string[];
-  }) => Project;
+  }) => Promise<Project>;
   updateProject: (
     projectId: string,
     project: {
@@ -68,38 +63,52 @@ interface AppStateContextValue {
       category: string;
       dueDate: string;
       clientId: string;
-      staffIds: string[];
     },
-  ) => void;
-  deleteProject: (projectId: string) => void;
-  updateProjectWorkflow: (projectId: string, status: ProjectStatus, stage: ProjectStage) => void;
+  ) => Promise<void>;
+  deleteProject: (projectId: string) => Promise<void>;
+  updateProjectWorkflow: (
+    projectId: string,
+    status: ProjectStatus,
+    stage: ProjectStage,
+  ) => Promise<void>;
   createTask: (
     projectId: string,
-    task: { title: string; assigneeId: string; status?: TaskStatus },
-  ) => void;
+    task: { title: string; assigneeId: string; status?: TaskStatus; dueDate: string; priority: TaskPriority },
+  ) => Promise<void>;
   updateTask: (
     projectId: string,
     taskId: string,
-    task: { title: string; assigneeId: string; status: TaskStatus },
-  ) => void;
-  deleteTask: (projectId: string, taskId: string) => void;
+    task: { title: string; assigneeId: string; status: TaskStatus; dueDate: string; priority: TaskPriority },
+  ) => Promise<void>;
+  deleteTask: (projectId: string, taskId: string) => Promise<void>;
   addFile: (
     projectId: string,
     payload: { title: string; version: string; visibility: FileVisibility; notes: string },
-  ) => void;
-  addComment: (projectId: string, payload: { body: string; internalOnly: boolean }) => void;
-  addFeedback: (projectId: string, payload: { action: FeedbackAction; body: string }) => void;
-  updateTaskStatus: (projectId: string, taskId: string, status: "todo" | "in_progress" | "done") => void;
+  ) => Promise<void>;
+  addComment: (projectId: string, payload: { body: string; internalOnly: boolean }) => Promise<void>;
+  addFeedback: (
+    projectId: string,
+    payload: { action: FeedbackAction; body: string; rating?: number | null },
+  ) => Promise<void>;
+  updateTaskStatus: (
+    projectId: string,
+    taskId: string,
+    status: "todo" | "in_progress" | "done",
+  ) => Promise<void>;
   createInvitation: (payload: {
-    name: string;
+    name?: string;
     email: string;
     role: Role;
     projectId: string | null;
     expiresAt: string;
   }) => Promise<{ inviteLink: string; invitation: Invitation }>;
-  revokeInvitation: (invitationId: string) => void;
+  revokeInvitation: (invitationId: string) => Promise<void>;
   getInvitationByToken: (token: string) => Invitation | null;
-  acceptInvitation: (payload: { token: string; password: string }) => Promise<{ user: User | null }>;
+  acceptInvitation: (payload: {
+    token: string;
+    name: string;
+    password: string;
+  }) => Promise<{ user: User | null }>;
 }
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
@@ -109,62 +118,70 @@ type ProfileRecord = {
   email: string;
   name: string;
   role: Role;
+  company: string | null;
 };
 
-function readStoredState() {
-  if (typeof window === "undefined") {
-    return initialAppState;
-  }
+type ProjectRecord = {
+  id: string;
+  name: string;
+  image_url: string | null;
+  client_id: string | null;
+  owner_id: string | null;
+  description: string | null;
+  category: string | null;
+  stage: string | null;
+  status: string | null;
+  due_date: string | null;
+  created_at: string;
+};
 
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    return initialAppState;
-  }
+type ProjectMemberRecord = {
+  project_id: string;
+  profile_id: string;
+  role: Role;
+};
 
-  try {
-    return JSON.parse(raw) as DemoState;
-  } catch {
-    return initialAppState;
-  }
-}
+type TaskRecord = {
+  id: string;
+  project_id: string;
+  title: string;
+  assignee_id: string;
+  status: TaskStatus;
+  due_date: string;
+  priority: TaskPriority;
+  created_at: string;
+};
 
-function readStoredSession() {
-  if (typeof window === "undefined") {
-    return null;
-  }
+type ProjectFileRecord = {
+  id: string;
+  project_id: string;
+  title: string;
+  version: string;
+  file_url: string | null;
+  uploaded_by: string;
+  created_at: string;
+  visibility: FileVisibility;
+  notes: string;
+};
 
-  const raw = window.localStorage.getItem(SESSION_KEY);
-  if (!raw) {
-    return null;
-  }
+type ProjectCommentRecord = {
+  id: string;
+  project_id: string;
+  author_id: string;
+  body: string;
+  internal_only: boolean;
+  created_at: string;
+};
 
-  try {
-    return JSON.parse(raw) as Session;
-  } catch {
-    return null;
-  }
-}
-
-function persistState(nextState: DemoState) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-}
-
-function persistSession(session: Session | null) {
-  if (!session) {
-    window.localStorage.removeItem(SESSION_KEY);
-    return;
-  }
-
-  window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-}
-
-function buildMockInviteLink(token: string) {
-  if (typeof window === "undefined") {
-    return `/accept-invite?token=${encodeURIComponent(token)}`;
-  }
-
-  return `${window.location.origin}/accept-invite?token=${encodeURIComponent(token)}`;
-}
+type ProjectFeedbackRecord = {
+  id: string;
+  project_id: string;
+  author_id: string;
+  action: FeedbackAction;
+  body: string;
+  rating: number | null;
+  created_at: string;
+};
 
 function generateToken() {
   if (typeof window !== "undefined" && window.crypto?.randomUUID) {
@@ -172,6 +189,20 @@ function generateToken() {
   }
 
   return `${Date.now()}${Math.random().toString(36).slice(2, 18)}`;
+}
+
+function deriveInviteName(email: string, providedName?: string) {
+  const trimmed = providedName?.trim();
+  if (trimmed) {
+    return trimmed;
+  }
+
+  const localPart = email.split("@")[0] ?? "User";
+  return localPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
 }
 
 function deriveInvitationStatus(invitation: Invitation): InvitationStatus {
@@ -193,30 +224,337 @@ function ensureInternalAssignee(users: User[], assigneeId: string) {
 }
 
 function ensureClientUser(users: User[], clientId: string) {
+  if (!clientId) {
+    return true;
+  }
+
   return users.some((candidate) => candidate.id === clientId && candidate.role === "client");
 }
 
-function mergeUserByEmail(users: User[], nextUser: User) {
-  const nextEmail = nextUser.email.toLowerCase();
-  const existingIndex = users.findIndex((candidate) => candidate.email.toLowerCase() === nextEmail);
+function normalizeProjectStage(stage: string | null | undefined): ProjectStage {
+  switch (stage) {
+    case "concept":
+    case "design":
+    case "review":
+    case "delivery":
+      return stage;
+    default:
+      return "intake";
+  }
+}
 
-  if (existingIndex === -1) {
-    return [...users, nextUser];
+function normalizeProjectStatus(status: string | null | undefined): ProjectStatus {
+  switch (status) {
+    case "review":
+    case "approved":
+    case "revision":
+    case "done":
+      return status;
+    default:
+      return "active";
+  }
+}
+
+function toAppUser(profile: ProfileRecord): User {
+  return {
+    id: profile.id,
+    email: profile.email,
+    name: profile.name,
+    role: profile.role,
+    company: profile.company ?? undefined,
+  };
+}
+
+async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) {
+    throw new Error("Supabase client is not configured");
   }
 
-  return users.map((candidate, index) => (index === existingIndex ? { ...candidate, ...nextUser } : candidate));
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, email, name, role, company")
+    .eq("id", authUser.id)
+    .maybeSingle();
+
+  return {
+    id: authUser.id,
+    email: profile?.email ?? authUser.email ?? "",
+    name:
+      profile?.name ??
+      ((authUser.user_metadata.name as string | undefined) ?? authUser.email?.split("@")[0] ?? "User"),
+    role: profile?.role ?? ((authUser.user_metadata.role as Role | undefined) ?? "client"),
+    company: profile?.company ?? undefined,
+  };
+}
+
+async function fetchRemoteInvitations(currentUser: User) {
+  if (!canInviteUsers(currentUser.role)) {
+    return [] as Invitation[];
+  }
+
+  const response = await fetch("/api/invitations/list", {
+    headers: {
+      "x-haus-user-id": currentUser.id,
+      "x-haus-user-role": currentUser.role,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to load invitations");
+  }
+
+  const payload = (await response.json()) as { invitations?: Invitation[] };
+  return payload.invitations ?? [];
+}
+
+async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) {
+    throw new Error("Supabase client is not configured");
+  }
+
+  const [
+    profilesResult,
+    projectsResult,
+    invitations,
+  ] = await Promise.all([
+    supabase.from("profiles").select("id, email, name, role, company").order("created_at", { ascending: true }),
+    supabase
+      .from("projects")
+      .select("id, name, image_url, client_id, owner_id, description, category, stage, status, due_date, created_at")
+      .order("created_at", { ascending: false }),
+    fetchRemoteInvitations(currentUser),
+  ]);
+
+  if (profilesResult.error) {
+    throw new Error(profilesResult.error.message);
+  }
+
+  if (projectsResult.error) {
+    throw new Error(projectsResult.error.message);
+  }
+
+  const profiles = (profilesResult.data ?? []) as ProfileRecord[];
+  const projects = (projectsResult.data ?? []) as ProjectRecord[];
+  const projectIds = projects.map((project) => project.id);
+
+  const [
+    membersResult,
+    tasksResult,
+    filesResult,
+    commentsResult,
+    feedbackResult,
+  ] = projectIds.length
+    ? await Promise.all([
+        supabase
+          .from("project_members")
+          .select("project_id, profile_id, role")
+          .in("project_id", projectIds),
+        supabase
+          .from("tasks")
+          .select("id, project_id, title, assignee_id, status, due_date, priority, created_at")
+          .in("project_id", projectIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("project_files")
+          .select("id, project_id, title, version, file_url, uploaded_by, created_at, visibility, notes")
+          .in("project_id", projectIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("project_comments")
+          .select("id, project_id, author_id, body, internal_only, created_at")
+          .in("project_id", projectIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("project_feedback")
+          .select("id, project_id, author_id, action, body, rating, created_at")
+          .in("project_id", projectIds)
+          .order("created_at", { ascending: false }),
+      ])
+    : [
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
+
+  if (membersResult.error) {
+    throw new Error(membersResult.error.message);
+  }
+
+  if (tasksResult.error) {
+    throw new Error(tasksResult.error.message);
+  }
+
+  if (filesResult.error) {
+    throw new Error(filesResult.error.message);
+  }
+
+  if (commentsResult.error) {
+    throw new Error(commentsResult.error.message);
+  }
+
+  if (feedbackResult.error) {
+    throw new Error(feedbackResult.error.message);
+  }
+
+  const members = (membersResult.data ?? []) as ProjectMemberRecord[];
+  const tasks = (tasksResult.data ?? []) as TaskRecord[];
+  const files = (filesResult.data ?? []) as ProjectFileRecord[];
+  const comments = (commentsResult.data ?? []) as ProjectCommentRecord[];
+  const feedback = (feedbackResult.data ?? []) as ProjectFeedbackRecord[];
+
+  const staffIdsByProject = new Map<string, string[]>();
+  const tasksByProject = new Map<string, Project["tasks"]>();
+  const filesByProject = new Map<string, Project["files"]>();
+  const commentsByProject = new Map<string, Project["comments"]>();
+  const feedbackByProject = new Map<string, Project["feedback"]>();
+
+  for (const membership of members) {
+    if (membership.role === "client") {
+      continue;
+    }
+
+    const current = staffIdsByProject.get(membership.project_id) ?? [];
+    current.push(membership.profile_id);
+    staffIdsByProject.set(membership.project_id, current);
+  }
+
+  for (const task of tasks) {
+    const current = tasksByProject.get(task.project_id) ?? [];
+    current.push({
+      id: task.id,
+      title: task.title,
+      assigneeId: task.assignee_id,
+      status: task.status,
+      dueDate: task.due_date,
+      priority: task.priority,
+    });
+    tasksByProject.set(task.project_id, current);
+  }
+
+  for (const file of files) {
+    const current = filesByProject.get(file.project_id) ?? [];
+    current.push({
+      id: file.id,
+      title: file.title,
+      version: file.version,
+      uploadedBy: file.uploaded_by,
+      createdAt: file.created_at,
+      visibility: file.visibility,
+      notes: file.notes,
+    });
+    filesByProject.set(file.project_id, current);
+  }
+
+  for (const comment of comments) {
+    const current = commentsByProject.get(comment.project_id) ?? [];
+    current.push({
+      id: comment.id,
+      authorId: comment.author_id,
+      body: comment.body,
+      internalOnly: comment.internal_only,
+      createdAt: comment.created_at,
+    } satisfies Comment);
+    commentsByProject.set(comment.project_id, current);
+  }
+
+  for (const item of feedback) {
+    const current = feedbackByProject.get(item.project_id) ?? [];
+    current.push({
+      id: item.id,
+      authorId: item.author_id,
+      action: item.action,
+      body: item.body,
+      rating: item.rating,
+      createdAt: item.created_at,
+    });
+    feedbackByProject.set(item.project_id, current);
+  }
+
+  return {
+    users: profiles.map(toAppUser),
+    invitations,
+    projects: projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      imageUrl: project.image_url ?? null,
+      clientId: project.client_id ?? "",
+      ownerId: project.owner_id ?? currentUser.id,
+      description: project.description ?? "",
+      category: project.category ?? "",
+      stage: normalizeProjectStage(project.stage),
+      status: normalizeProjectStatus(project.status),
+      dueDate: project.due_date ?? "",
+      staffIds: staffIdsByProject.get(project.id) ?? [],
+      tasks: tasksByProject.get(project.id) ?? [],
+      files: filesByProject.get(project.id) ?? [],
+      comments: commentsByProject.get(project.id) ?? [],
+      feedback: feedbackByProject.get(project.id) ?? [],
+    })),
+  };
 }
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DemoState>(initialAppState);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-    setState(readStoredState());
-    setSession(readStoredSession());
-    setReady(true);
+    if (appMode !== "supabase") {
+      setReady(true);
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setReady(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function syncAuth(nextAuthUser: AuthUser | null) {
+      if (!nextAuthUser) {
+        if (!cancelled) {
+          setUser(null);
+          setState(initialAppState);
+          setReady(true);
+        }
+        return;
+      }
+
+      try {
+        const nextUser = await fetchAuthUserProfile(nextAuthUser);
+        if (!cancelled) {
+          setUser(nextUser);
+        }
+      } catch {
+        if (!cancelled) {
+          setUser(null);
+          setState(initialAppState);
+        }
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+        }
+      }
+    }
+
+    void supabase.auth.getUser().then(({ data }) => syncAuth(data.user ?? null));
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      void syncAuth(session?.user ?? null);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -224,73 +562,43 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    let cancelled = false;
-
-    async function syncSupabaseSession() {
-      const supabase = getSupabaseBrowserClient();
-      if (!supabase) {
-        return;
-      }
-
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-
-      if (!authUser || cancelled) {
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("id, email, name, role")
-        .eq("id", authUser.id)
-        .maybeSingle();
-
-      const nextUser: User = {
-        id: authUser.id,
-        email: profile?.email ?? authUser.email ?? "",
-        name: profile?.name ?? ((authUser.user_metadata.name as string | undefined) ?? authUser.email?.split("@")[0] ?? "User"),
-        role: profile?.role ?? ((authUser.user_metadata.role as Role | undefined) ?? "client"),
-        company: state.users.find((candidate) => candidate.email.toLowerCase() === (profile?.email ?? authUser.email ?? "").toLowerCase())?.company,
-      };
-
-      const nextSession: Session = {
-        email: nextUser.email,
-        role: nextUser.role,
-      };
-
-      setSession(nextSession);
-      persistSession(nextSession);
-      updateState((current) => ({
-        ...current,
-        users: mergeUserByEmail(current.users, nextUser),
-      }));
+    if (!user) {
+      setState(initialAppState);
+      return;
     }
 
-    void syncSupabaseSession();
+    let cancelled = false;
+
+    async function loadWorkspace() {
+      try {
+        const nextState = await fetchWorkspaceState(user);
+        if (!cancelled) {
+          setState(nextState);
+        }
+      } catch {
+        if (!cancelled) {
+          setState(initialAppState);
+        }
+      }
+    }
+
+    void loadWorkspace();
 
     return () => {
       cancelled = true;
     };
-  }, [ready]);
+  }, [ready, user]);
 
-  const user = useMemo(() => {
-    if (!session) {
-      return null;
+  const refreshWorkspace = async (currentUser: User) => {
+    if (appMode !== "supabase") {
+      return;
     }
 
-    return (
-      state.users.find(
-        (candidate) => candidate.email === session.email && candidate.role === session.role,
-      ) ?? null
-    );
-  }, [session, state.users]);
+    const nextState = await fetchWorkspaceState(currentUser);
+    setState(nextState);
+  };
 
   const login = async (email: string, password?: string) => {
-    const matchedUser = state.users.find(
-      (candidate) => candidate.email.toLowerCase() === email.toLowerCase(),
-    );
-
     if (appMode === "supabase") {
       const supabase = getSupabaseBrowserClient();
       const { data, error } = await supabase!.auth.signInWithPassword({
@@ -302,51 +610,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         throw new Error(error?.message ?? "Unable to sign in.");
       }
 
-      const { data: profile } = await supabase!
-        .from("profiles")
-        .select("id, email, name, role")
-        .eq("id", data.user.id)
-        .maybeSingle();
-
-      const role =
-        profile?.role ??
-        matchedUser?.role ??
-        ((data.user.user_metadata.role as Role | undefined) ?? "client");
-      const name =
-        profile?.name ??
-        matchedUser?.name ??
-        ((data.user.user_metadata.name as string | undefined) ?? email.split("@")[0]);
-
-      const nextUser: User = {
-        id: data.user.id,
-        email: profile?.email ?? data.user.email ?? email,
-        role,
-        name,
-        company: matchedUser?.company,
-      };
-
-      const nextSession = { email: nextUser.email, role: nextUser.role };
-      setSession(nextSession);
-      persistSession(nextSession);
-      updateState((current) => ({
-        ...current,
-        users: mergeUserByEmail(current.users, nextUser),
-      }));
+      const nextUser = await fetchAuthUserProfile(data.user);
+      setUser(nextUser);
+      await refreshWorkspace(nextUser);
       return;
     }
 
-    if (!matchedUser) {
-      throw new Error("No account found for this email.");
-    }
-
-    const nextSession = { email: matchedUser.email, role: matchedUser.role };
-    setSession(nextSession);
-    persistSession(nextSession);
+    throw new Error("Mock mode is not enabled.");
   };
 
   const logout = async () => {
-    setSession(null);
-    persistSession(null);
+    setUser(null);
+    setState(initialAppState);
 
     if (appMode === "supabase") {
       const supabase = getSupabaseBrowserClient();
@@ -354,97 +629,114 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateState = (updater: (current: DemoState) => DemoState) => {
-    setState((current) => {
-      const nextState = updater(current);
-      persistState(nextState);
-      return nextState;
-    });
-  };
-
-  const createProject: AppStateContextValue["createProject"] = (project) => {
+  const createProject: AppStateContextValue["createProject"] = async (project) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
 
     ensureAuthorized(canCreateProject(user.role), "Only managers can create projects");
     ensureAuthorized(ensureClientUser(state.users, project.clientId), "Project client must be a client user");
-    ensureAuthorized(
-      project.staffIds.every((staffId) => ensureInternalAssignee(state.users, staffId)),
-      "Project staff must be internal users",
-    );
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { data, error } = await supabase!
+      .from("projects")
+      .insert({
+        name: project.name,
+        image_url: project.imageUrl?.trim() ? project.imageUrl.trim() : null,
+        client_id: project.clientId || null,
+        owner_id: user.id,
+        description: project.description,
+        category: project.category,
+        stage: "intake",
+        status: "active",
+        due_date: project.dueDate,
+      })
+      .select("id, name, image_url, client_id, owner_id, description, category, stage, status, due_date, created_at")
+      .single();
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "Unable to create project");
+    }
 
     const createdProject: Project = {
-      id: `p${Date.now()}`,
-      name: project.name,
-      imageUrl: project.imageUrl?.trim() ? project.imageUrl.trim() : null,
-      clientId: project.clientId,
-      ownerId: user.id,
-      description: project.description,
-      category: project.category,
-      stage: "intake",
-      status: "active",
-      dueDate: project.dueDate,
-      staffIds: project.staffIds,
+      id: data.id,
+      name: data.name,
+      imageUrl: data.image_url ?? null,
+      clientId: data.client_id ?? "",
+      ownerId: data.owner_id ?? user.id,
+      description: data.description ?? "",
+      category: data.category ?? "",
+      stage: normalizeProjectStage(data.stage),
+      status: normalizeProjectStatus(data.status),
+      dueDate: data.due_date ?? "",
+      staffIds: [],
       tasks: [],
       files: [],
       comments: [],
       feedback: [],
     };
 
-    updateState((current) => ({
-      ...current,
-      projects: [createdProject, ...current.projects],
-    }));
-
+    await refreshWorkspace(user);
     return createdProject;
   };
 
-  const updateProject: AppStateContextValue["updateProject"] = (projectId, project) => {
+  const updateProject: AppStateContextValue["updateProject"] = async (projectId, project) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
 
     ensureAuthorized(canEditProject(user.role), "Only managers can edit projects");
     ensureAuthorized(ensureClientUser(state.users, project.clientId), "Project client must be a client user");
-    ensureAuthorized(
-      project.staffIds.every((staffId) => ensureInternalAssignee(state.users, staffId)),
-      "Project staff must be internal users",
-    );
 
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((candidate) =>
-        candidate.id === projectId
-          ? {
-              ...candidate,
-              name: project.name,
-              imageUrl: project.imageUrl?.trim() ? project.imageUrl.trim() : null,
-              description: project.description,
-              category: project.category,
-              dueDate: project.dueDate,
-              clientId: project.clientId,
-              staffIds: project.staffIds,
-            }
-          : candidate,
-      ),
-    }));
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase!
+      .from("projects")
+      .update({
+        name: project.name,
+        image_url: project.imageUrl?.trim() ? project.imageUrl.trim() : null,
+        description: project.description,
+        category: project.category,
+        due_date: project.dueDate,
+        client_id: project.clientId || null,
+      })
+      .eq("id", projectId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await refreshWorkspace(user);
   };
 
-  const deleteProject: AppStateContextValue["deleteProject"] = (projectId) => {
+  const deleteProject: AppStateContextValue["deleteProject"] = async (projectId) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
 
     ensureAuthorized(canDeleteProject(user.role), "Only managers can delete projects");
 
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.filter((candidate) => candidate.id !== projectId),
-    }));
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase!.from("projects").delete().eq("id", projectId);
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await refreshWorkspace(user);
   };
 
-  const updateProjectWorkflow: AppStateContextValue["updateProjectWorkflow"] = (
+  const updateProjectWorkflow: AppStateContextValue["updateProjectWorkflow"] = async (
     projectId,
     status,
     stage,
@@ -458,15 +750,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       "Only managers can update project workflow",
     );
 
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((project) =>
-        project.id === projectId ? { ...project, status, stage } : project,
-      ),
-    }));
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase!.from("projects").update({ status, stage }).eq("id", projectId);
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await refreshWorkspace(user);
   };
 
-  const createTask: AppStateContextValue["createTask"] = (projectId, task) => {
+  const createTask: AppStateContextValue["createTask"] = async (projectId, task) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
@@ -478,28 +775,28 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       "Tasks can only be assigned to internal staff",
     );
 
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((project) =>
-        project.id === projectId
-          ? {
-              ...project,
-              tasks: [
-                {
-                  id: `t${Date.now()}`,
-                  title: task.title,
-                  assigneeId: task.assigneeId,
-                  status: task.status ?? "todo",
-                },
-                ...project.tasks,
-              ],
-            }
-          : project,
-      ),
-    }));
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase!.from("tasks").insert({
+      project_id: projectId,
+      title: task.title,
+      assignee_id: task.assigneeId,
+      status: task.status ?? "todo",
+      due_date: task.dueDate,
+      priority: task.priority,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await refreshWorkspace(user);
   };
 
-  const updateTask: AppStateContextValue["updateTask"] = (projectId, taskId, task) => {
+  const updateTask: AppStateContextValue["updateTask"] = async (projectId, taskId, task) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
@@ -511,132 +808,127 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       "Tasks can only be assigned to internal staff",
     );
 
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((project) =>
-        project.id === projectId
-          ? {
-              ...project,
-              tasks: project.tasks.map((candidate) =>
-                candidate.id === taskId
-                  ? {
-                      ...candidate,
-                      title: task.title,
-                      assigneeId: task.assigneeId,
-                      status: task.status,
-                    }
-                  : candidate,
-              ),
-            }
-          : project,
-      ),
-    }));
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase!
+      .from("tasks")
+      .update({
+        title: task.title,
+        assignee_id: task.assigneeId,
+        status: task.status,
+        due_date: task.dueDate,
+        priority: task.priority,
+      })
+      .eq("id", taskId)
+      .eq("project_id", projectId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await refreshWorkspace(user);
   };
 
-  const deleteTask: AppStateContextValue["deleteTask"] = (projectId, taskId) => {
+  const deleteTask: AppStateContextValue["deleteTask"] = async (projectId, taskId) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
 
     ensureAuthorized(canDeleteTask(user.role), "Only managers can delete tasks");
 
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((project) =>
-        project.id === projectId
-          ? {
-              ...project,
-              tasks: project.tasks.filter((candidate) => candidate.id !== taskId),
-            }
-          : project,
-      ),
-    }));
-  };
-
-  const addFile: AppStateContextValue["addFile"] = (projectId, payload) => {
-    if (!user) {
-      return;
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
     }
 
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((project) =>
-        project.id === projectId
-          ? {
-              ...project,
-              files: [
-                {
-                  id: `f${Date.now()}`,
-                  title: payload.title,
-                  version: payload.version,
-                  uploadedBy: user.id,
-                  createdAt: new Date().toISOString(),
-                  visibility: payload.visibility,
-                  notes: payload.notes,
-                },
-                ...project.files,
-              ],
-            }
-          : project,
-      ),
-    }));
-  };
-
-  const addComment: AppStateContextValue["addComment"] = (projectId, payload) => {
-    if (!user) {
-      return;
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase!.from("tasks").delete().eq("id", taskId).eq("project_id", projectId);
+    if (error) {
+      throw new Error(error.message);
     }
 
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((project) =>
-        project.id === projectId
-          ? {
-              ...project,
-              comments: [
-                {
-                  id: `c${Date.now()}`,
-                  authorId: user.id,
-                  body: payload.body,
-                  internalOnly: payload.internalOnly,
-                  createdAt: new Date().toISOString(),
-                } satisfies Comment,
-                ...project.comments,
-              ],
-            }
-          : project,
-      ),
-    }));
+    await refreshWorkspace(user);
   };
 
-  const addFeedback: AppStateContextValue["addFeedback"] = (projectId, payload) => {
+  const addFile: AppStateContextValue["addFile"] = async (projectId, payload) => {
     if (!user) {
-      return;
+      throw new Error("Unauthorized");
     }
 
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((project) =>
-        project.id === projectId
-          ? {
-              ...project,
-              feedback: [
-                {
-                  id: `fb${Date.now()}`,
-                  authorId: user.id,
-                  action: payload.action,
-                  body: payload.body,
-                  createdAt: new Date().toISOString(),
-                },
-                ...project.feedback,
-              ],
-            }
-          : project,
-      ),
-    }));
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase!.from("project_files").insert({
+      project_id: projectId,
+      title: payload.title,
+      version: payload.version,
+      file_url: null,
+      uploaded_by: user.id,
+      visibility: payload.visibility,
+      notes: payload.notes,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await refreshWorkspace(user);
   };
 
-  const updateTaskStatus: AppStateContextValue["updateTaskStatus"] = (projectId, taskId, status) => {
+  const addComment: AppStateContextValue["addComment"] = async (projectId, payload) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase!.from("project_comments").insert({
+      project_id: projectId,
+      author_id: user.id,
+      body: payload.body,
+      internal_only: payload.internalOnly,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await refreshWorkspace(user);
+  };
+
+  const addFeedback: AppStateContextValue["addFeedback"] = async (projectId, payload) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase!.from("project_feedback").insert({
+      project_id: projectId,
+      author_id: user.id,
+      action: payload.action,
+      body: payload.body,
+      rating: payload.rating ?? null,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await refreshWorkspace(user);
+  };
+
+  const updateTaskStatus: AppStateContextValue["updateTaskStatus"] = async (projectId, taskId, status) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
@@ -653,17 +945,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       "You do not have permission to update this task",
     );
 
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((project) =>
-        project.id === projectId
-          ? {
-              ...project,
-              tasks: project.tasks.map((task) => (task.id === taskId ? { ...task, status } : task)),
-            }
-          : project,
-      ),
-    }));
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase!
+      .from("tasks")
+      .update({ status })
+      .eq("id", taskId)
+      .eq("project_id", projectId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await refreshWorkspace(user);
   };
 
   const createInvitation: AppStateContextValue["createInvitation"] = async (payload) => {
@@ -685,68 +982,70 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error ?? "Failed to create invitation");
+        const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorPayload?.error ?? "Failed to create invitation");
       }
 
       const result = (await response.json()) as { inviteLink: string; invitation: Invitation };
-      updateState((current) => ({
-        ...current,
-        invitations: [result.invitation, ...current.invitations],
-      }));
+      await refreshWorkspace(user);
       return result;
     }
 
     const token = generateToken();
     const timestamp = new Date().toISOString();
-    const invitation: Invitation = {
-      id: `inv${Date.now()}`,
-      email: payload.email.toLowerCase(),
-      name: payload.name,
-      role: payload.role,
-      projectId: payload.projectId,
-      tokenHash: token,
-      status: "pending",
-      expiresAt: payload.expiresAt,
-      acceptedAt: null,
-      createdBy: user.id,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
-
-    updateState((current) => ({
-      ...current,
-      invitations: [invitation, ...current.invitations],
-    }));
-
+    const derivedName = deriveInviteName(payload.email, payload.name);
     return {
-      inviteLink: buildMockInviteLink(token),
-      invitation,
+      inviteLink: `/onboarding?token=${encodeURIComponent(token)}`,
+      invitation: {
+        id: `inv${Date.now()}`,
+        email: payload.email.toLowerCase(),
+        name: derivedName,
+        role: payload.role,
+        projectId: payload.projectId,
+        tokenHash: token,
+        status: "pending",
+        expiresAt: payload.expiresAt,
+        acceptedAt: null,
+        createdBy: user.id,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
     };
   };
 
-  const revokeInvitation: AppStateContextValue["revokeInvitation"] = (invitationId) => {
+  const revokeInvitation: AppStateContextValue["revokeInvitation"] = async (invitationId) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
 
     ensureAuthorized(canInviteUsers(user.role), "Only managers can revoke invitations");
 
-    updateState((current) => ({
-      ...current,
-      invitations: current.invitations.map((invitation) =>
-        invitation.id === invitationId
-          ? {
-              ...invitation,
-              status: "revoked",
-              updatedAt: new Date().toISOString(),
-            }
-          : invitation,
-      ),
-    }));
+    if (appMode === "supabase") {
+      const response = await fetch("/api/invitations/revoke", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-haus-user-id": user.id,
+          "x-haus-user-role": user.role,
+        },
+        body: JSON.stringify({ invitationId }),
+      });
+
+      if (!response.ok) {
+        const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorPayload?.error ?? "Failed to revoke invitation");
+      }
+
+      await refreshWorkspace(user);
+      return;
+    }
   };
 
   const getInvitationByToken: AppStateContextValue["getInvitationByToken"] = (token) => {
+    if (appMode === "supabase") {
+      return null;
+    }
+
     const invitation = state.invitations.find((candidate) => candidate.tokenHash === token) ?? null;
     if (!invitation) {
       return null;
@@ -758,98 +1057,41 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
   };
 
-  const acceptInvitation: AppStateContextValue["acceptInvitation"] = async ({ token, password }) => {
+  const acceptInvitation: AppStateContextValue["acceptInvitation"] = async ({
+    token,
+    name,
+    password,
+  }) => {
     if (appMode === "supabase") {
       const response = await fetch("/api/invitations/accept", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token, name, password }),
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error ?? "Failed to accept invitation");
+        const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorPayload?.error ?? "Failed to accept invitation");
       }
 
       const result = (await response.json()) as { user: User };
       const supabase = getSupabaseBrowserClient();
-      await supabase?.auth.signInWithPassword({
+      const signInResult = await supabase?.auth.signInWithPassword({
         email: result.user.email,
         password,
       });
+      if (signInResult?.error) {
+        throw new Error(signInResult.error.message);
+      }
 
-      const nextSession: Session = {
-        email: result.user.email,
-        role: result.user.role,
-      };
-
-      setSession(nextSession);
-      persistSession(nextSession);
-      updateState((current) => ({
-        ...current,
-        users: mergeUserByEmail(current.users, result.user),
-      }));
-
+      setUser(result.user);
+      await refreshWorkspace(result.user);
       return result;
     }
 
-    const invitation = state.invitations.find((candidate) => candidate.tokenHash === token) ?? null;
-    if (!invitation) {
-      throw new Error("Invitation not found");
-    }
-
-    const status = deriveInvitationStatus(invitation);
-    if (status !== "pending") {
-      throw new Error(`Invitation is ${status}`);
-    }
-
-    const newUser: User = {
-      id: `u${Date.now()}`,
-      name: invitation.name,
-      email: invitation.email,
-      role: invitation.role,
-      company: invitation.role === "client" ? "Client" : "Haus",
-    };
-
-    const nextSession: Session = {
-      email: newUser.email,
-      role: newUser.role,
-    };
-
-    setSession(nextSession);
-    persistSession(nextSession);
-
-    updateState((current) => ({
-      ...current,
-      users: mergeUserByEmail(current.users, newUser),
-      projects: current.projects.map((project) => {
-        if (project.id !== invitation.projectId) {
-          return project;
-        }
-
-        if (newUser.role === "client") {
-          return { ...project, clientId: newUser.id };
-        }
-
-        return project.staffIds.includes(newUser.id)
-          ? project
-          : { ...project, staffIds: [...project.staffIds, newUser.id] };
-      }),
-      invitations: current.invitations.map((candidate) =>
-        candidate.id === invitation.id
-          ? {
-              ...candidate,
-              status: "accepted",
-              acceptedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            }
-          : candidate,
-      ),
-    }));
-
-    return { user: newUser };
+    return { user: null };
   };
 
   return (

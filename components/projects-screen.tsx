@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -93,9 +93,12 @@ function getStatusTone(status: ProjectStatus) {
 
 export function ProjectsScreen() {
   const { state, user } = useAppState();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [sort, setSort] = useState<SortKey>("due_date");
+  const [showFilters, setShowFilters] = useState(false);
 
   if (!user) {
     return null;
@@ -130,6 +133,23 @@ export function ProjectsScreen() {
     });
   }, [filter, search, sort, userNames, visibleProjects]);
 
+  const pageSize = 4;
+  const totalProjects = filteredProjects.length;
+  const totalPages = Math.max(1, Math.ceil(totalProjects / pageSize));
+  const activePage = Math.min(currentPage, totalPages);
+  const paginatedProjects = filteredProjects.slice(
+    (activePage - 1) * pageSize,
+    activePage * pageSize,
+  );
+  const rangeStart = totalProjects ? (activePage - 1) * pageSize + 1 : 0;
+  const rangeEnd = totalProjects ? Math.min(activePage * pageSize, totalProjects) : 0;
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSearch(searchDraft);
+    setCurrentPage(1);
+  };
+
   return (
     <PageShell>
       <AppSidebar user={user} activeLabel="Projects" />
@@ -157,16 +177,60 @@ export function ProjectsScreen() {
         </MobileHeader>
 
         <Toolbar>
-          <SearchWrap>
-            <SearchIcon>
-              <IconSearch />
-            </SearchIcon>
-            <SearchInput
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search projects, clients, or keywords..."
-            />
-          </SearchWrap>
+          <SearchControls onSubmit={handleSearchSubmit}>
+            <SearchWrap>
+              <SearchInput
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                placeholder="Search projects, clients, or keywords..."
+              />
+            </SearchWrap>
+            <FilterMenuWrap>
+              <FilterButton
+                type="button"
+                aria-label="Open filters"
+                aria-expanded={showFilters}
+                onClick={() => setShowFilters((current) => !current)}
+              >
+                <ButtonIcon>
+                  <IconFilter />
+                </ButtonIcon>
+              </FilterButton>
+              {showFilters ? (
+                <FilterPopup>
+                  <FilterPopupTitle>Filter projects</FilterPopupTitle>
+                  <FilterSelect
+                    value={filter}
+                    onChange={(event) => {
+                      setFilter(event.target.value as FilterKey);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    {filterOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </FilterSelect>
+                  <FilterSelect
+                    value={sort}
+                    onChange={(event) => {
+                      setSort(event.target.value as SortKey);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="due_date">Sort by due date</option>
+                    <option value="name">Sort by name</option>
+                  </FilterSelect>
+                </FilterPopup>
+              ) : null}
+            </FilterMenuWrap>
+            <SearchButton type="submit" aria-label="Search projects">
+              <ButtonIcon>
+                <IconSearch />
+              </ButtonIcon>
+            </SearchButton>
+          </SearchControls>
 
           {canManage ? (
             <CreateButton href="/projects/new">
@@ -178,32 +242,9 @@ export function ProjectsScreen() {
           ) : null}
         </Toolbar>
 
-        <FilterBar>
-          <FilterScroll>
-            {filterOptions.map((option) => (
-              <FilterChip
-                key={option.key}
-                type="button"
-                $active={filter === option.key}
-                onClick={() => setFilter(option.key)}
-              >
-                {option.label}
-              </FilterChip>
-            ))}
-          </FilterScroll>
-
-          <SortWrap>
-            <span>Sort:</span>
-            <SortSelect value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
-              <option value="due_date">Due date</option>
-              <option value="name">Name</option>
-            </SortSelect>
-          </SortWrap>
-        </FilterBar>
-
         <DesktopList>
-          {filteredProjects.length ? (
-            filteredProjects.map((project) => {
+          {paginatedProjects.length ? (
+            paginatedProjects.map((project) => {
               const tone = getStatusTone(project.status);
 
               return (
@@ -275,17 +316,11 @@ export function ProjectsScreen() {
               <EmptyCopy>Try another search term or create a new project workspace.</EmptyCopy>
             </EmptyCard>
           )}
-
-          {filteredProjects.length ? (
-            <CountText>
-              Showing 1-{filteredProjects.length} of {filteredProjects.length} projects
-            </CountText>
-          ) : null}
         </DesktopList>
 
         <MobileList>
-          {filteredProjects.length ? (
-            filteredProjects.map((project) => {
+          {paginatedProjects.length ? (
+            paginatedProjects.map((project) => {
               const tone = getStatusTone(project.status);
 
               return (
@@ -321,6 +356,31 @@ export function ProjectsScreen() {
             </EmptyCard>
           )}
         </MobileList>
+
+        {filteredProjects.length ? (
+          <PaginationBar>
+            <CountText>
+              Showing {rangeStart} to {rangeEnd} of {totalProjects} projects
+            </CountText>
+            <PaginationControls>
+              <PaginationButton
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={activePage === 1}
+              >
+                Last
+              </PaginationButton>
+              <PaginationCurrent>{activePage}</PaginationCurrent>
+              <PaginationButton
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={activePage === totalPages}
+              >
+                Next
+              </PaginationButton>
+            </PaginationControls>
+          </PaginationBar>
+        ) : null}
       </Content>
     </PageShell>
   );
@@ -389,10 +449,10 @@ const sidebarItemCss = css<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 56px;
+  min-height: 40px;
   padding: 0 16px;
   border: 0;
-  border-radius: 18px;
+  border-radius: 10px;
   color: ${({ $active }) => ($active ? "var(--color-text)" : "var(--color-text-muted)")};
   background: ${({ $active }) => ($active ? "#f5efe5" : "transparent")};
   box-shadow: ${({ $active }) =>
@@ -473,7 +533,6 @@ const Content = styled.section`
 const headerCss = css`
   h1 {
     margin: 4px 0 8px;
-    font-size: clamp(2rem, 5vw, 2.95rem);
     line-height: 1;
     letter-spacing: -0.04em;
   }
@@ -513,7 +572,11 @@ const Eyebrow = styled.p`
   letter-spacing: 0.04em;
 `;
 
-const Title = styled.h1``;
+const Title = styled.h1`
+  margin: 0;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+`;
 
 const Subtitle = styled.p`
   margin: 0;
@@ -556,11 +619,21 @@ const Toolbar = styled.section`
   }
 `;
 
-const SearchWrap = styled.div`
-  position: relative;
+const SearchControls = styled.form`
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
 
   ${desktop} {
     flex: 1;
+  }
+`;
+
+const SearchWrap = styled.div`
+  flex: 1;
+
+  ${desktop} {
+    min-width: 0;
   }
 `;
 
@@ -582,27 +655,74 @@ const SearchIcon = styled.span`
 const SearchInput = styled.input`
   ${controlSurface}
   width: 100%;
-  min-height: 56px;
-  padding: 0 18px 0 46px;
-  border-radius: 18px;
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
   color: var(--color-text);
   font-size: 0.94rem;
 
   ${desktop} {
-    min-height: 56px;
-    border-radius: 18px;
+    min-height: 40px;
+    border-radius: 10px;
   }
 `;
 
+const FilterMenuWrap = styled.div`
+  position: relative;
+`;
+
+const FilterButton = styled.button`
+  ${controlSurface}
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+`;
+
+const SearchButton = styled(FilterButton)`
+  background: var(--color-primary);
+  color: #fff;
+`;
+
+const FilterPopup = styled.div`
+  ${cardSurface}
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 10;
+  width: min(280px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+`;
+
+const FilterPopupTitle = styled.strong`
+  font-size: 0.9rem;
+  color: var(--color-text);
+`;
+
+const FilterSelect = styled.select`
+  ${controlSurface}
+  width: 100%;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+`;
+
 const CreateButton = styled(Link)`
-  min-height: 56px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 0 20px;
+  padding: 0 16px;
   border: 0;
-  border-radius: 16px;
+  border-radius: 10px;
   background: var(--color-primary);
   color: #fff;
   font-size: 14px;
@@ -611,7 +731,7 @@ const CreateButton = styled(Link)`
   text-decoration: none;
 
   ${desktop} {
-    min-height: 62px;
+    min-height: 40px;
     flex: 0 0 230px;
   }
 `;
@@ -865,10 +985,60 @@ const EmptyCopy = styled.p`
 `;
 
 const CountText = styled.p`
-  margin: 6px 0 0;
-  text-align: center;
+  margin: 0;
   color: var(--color-text-muted);
   font-size: 0.84rem;
+`;
+
+const PaginationBar = styled.section`
+  ${cardSurface}
+  display: grid;
+  gap: 14px;
+  padding: 10px 16px;
+  border-radius: 24px;
+  margin-top: 14px;
+
+  ${desktop} {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 10px 22px;
+  }
+`;
+
+const PaginationControls = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+`;
+
+const PaginationButton = styled.button`
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+
+  &:disabled {
+    opacity: 0.5;
+  }
+`;
+
+const PaginationCurrent = styled.span`
+  min-width: 48px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #214f39;
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 700;
 `;
 
 const MobileList = styled.section`
@@ -1023,6 +1193,16 @@ function IconSearch() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="11" cy="11" r="6.5" />
       <path d="m16 16 4.5 4.5" />
+    </svg>
+  );
+}
+
+function IconFilter() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <path d="M4 7h16" />
+      <path d="M7 12h10" />
+      <path d="M10 17h4" />
     </svg>
   );
 }

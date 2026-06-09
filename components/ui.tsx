@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PropsWithChildren } from "react";
+import { useAppState } from "@/components/app-state";
+import { getPrimaryNavItems } from "@/lib/navigation";
 
 export function Shell({ children }: PropsWithChildren) {
   return (
@@ -17,14 +19,23 @@ export function Shell({ children }: PropsWithChildren) {
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { user } = useAppState();
 
-  const items = [
-    { href: "/dashboard", label: "Home", icon: <IconHome /> },
-    { href: "/projects", label: "Projects", icon: <IconFolder /> },
-    { href: "/tasks", label: "Tasks", icon: <IconList /> },
-    { href: "/team", label: "Team", icon: <IconUsers /> },
-    { href: "/profile", label: "Profile", icon: <IconProfile /> },
-  ];
+  const items = getPrimaryNavItems(user?.role).map((item) => ({
+    ...item,
+    icon:
+      item.label === "Home" ? (
+        <IconHome />
+      ) : item.label === "Projects" ? (
+        <IconFolder />
+      ) : item.label === "Tasks" ? (
+        <IconList />
+      ) : item.label === "Team" || item.label === "Clients" ? (
+        <IconUsers />
+      ) : (
+        <IconProfile />
+      ),
+  }));
 
   return (
     <nav className="bottom-nav" aria-label="Primary">

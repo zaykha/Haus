@@ -11,9 +11,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body = (await request.json()) as { token?: string; password?: string };
-  if (!body.token || !body.password || body.password.length < 8) {
-    return NextResponse.json({ error: "Token and password are required" }, { status: 400 });
+  const body = (await request.json()) as { token?: string; name?: string; password?: string };
+  if (!body.token || !body.name?.trim() || !body.password || body.password.length < 8) {
+    return NextResponse.json({ error: "Name, token, and password are required" }, { status: 400 });
   }
 
   const tokenHash = hashInvitationToken(body.token);
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     password: body.password,
     email_confirm: true,
     user_metadata: {
-      name: invitation.name,
+      name: body.name.trim(),
       role: invitation.role,
     },
   });
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
   const profilePayload = {
     id: authUser.user.id,
     email: invitation.email,
-    name: invitation.name,
+    name: body.name.trim(),
     role: invitation.role,
   };
 
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     user: {
       id: authUser.user.id,
       email: invitation.email,
-      name: invitation.name,
+      name: body.name.trim(),
       role: invitation.role,
     },
   });

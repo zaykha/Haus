@@ -1,52 +1,19 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { useAppState } from "@/components/app-state";
+import { ConfirmActionModal } from "@/components/confirm-action-modal";
+import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { canInviteUsers } from "@/lib/permissions";
 import { Role } from "@/lib/types";
 import { formatRole } from "@/lib/display";
 
 const desktop = "@media (min-width: 768px)";
+const PAGE_SIZE = 6;
 
-type MemberStatus = "active" | "away" | "inactive";
 type RoleFilter = "all" | Role;
-type StatusFilter = "all" | MemberStatus;
-
-const roleOptions: { label: string; value: Role }[] = [
-  { label: "Communication Manager", value: "communication_manager" },
-  { label: "Creative Manager", value: "creative_manager" },
-  { label: "Designer", value: "designer" },
-  { label: "Client", value: "client" },
-];
-
-function getMemberStatus(projectCount: number, role: Role): MemberStatus {
-  if (role === "communication_manager" || role === "creative_manager") {
-    return "active";
-  }
-
-  if (projectCount >= 3) {
-    return "active";
-  }
-
-  if (projectCount > 0) {
-    return "away";
-  }
-
-  return "inactive";
-}
-
-function getStatusTone(status: MemberStatus) {
-  switch (status) {
-    case "active":
-      return { bg: "#e5f4e8", fg: "#4c8f5c", label: "Active" };
-    case "away":
-      return { bg: "#fff1da", fg: "#ca8a22", label: "Away" };
-    default:
-      return { bg: "#f4f1ed", fg: "#8d857b", label: "Inactive" };
-  }
-}
 
 function getRoleTone(role: Role) {
   switch (role) {
@@ -78,19 +45,15 @@ function invitationPill(status: string) {
 }
 
 export function TeamScreen() {
-  const { state, user, createInvitation, revokeInvitation } = useAppState();
+  const { state, user, revokeInvitation } = useAppState();
+  const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [showInviteForm, setShowInviteForm] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("designer");
-  const [projectId, setProjectId] = useState<string>("");
-  const [expiresAt, setExpiresAt] = useState("2026-06-18");
-  const [latestInviteLink, setLatestInviteLink] = useState("");
-  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
-  const [submitError, setSubmitError] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
+  const [isRevoking, setIsRevoking] = useState(false);
 
   if (!user) {
     return null;
@@ -98,9 +61,26 @@ export function TeamScreen() {
 
   const canManageInvites = canInviteUsers(user.role);
   const members = useMemo(() => {
-    return state.users
-      .filter((member) => member.role !== "client")
-      .map((member) => {
+    const existingMembers = state.users.filter((member) => member.role !== "client");
+    const knownEmails = new Set(
+      existingMembers.map((member) => `${member.email.toLowerCase()}::${member.role}`),
+    );
+    const acceptedInviteMembers = state.invitations
+      .filter(
+        (invitation) =>
+          invitation.role !== "client" &&
+          invitation.status === "accepted" &&
+          !knownEmails.has(`${invitation.email.toLowerCase()}::${invitation.role}`),
+      )
+      .map((invitation) => ({
+        id: `accepted-invite:${invitation.id}`,
+        name: invitation.name,
+        email: invitation.email,
+        role: invitation.role,
+        company: "Haus",
+      }));
+
+    return [...existingMembers, ...acceptedInviteMembers].map((member) => {
         const projectCount = state.projects.filter(
           (project) =>
             project.ownerId === member.id ||
@@ -111,10 +91,9 @@ export function TeamScreen() {
         return {
           ...member,
           projectCount,
-          status: getMemberStatus(projectCount, member.role),
         };
       });
-  }, [state.projects, state.users]);
+  }, [state.invitations, state.projects, state.users]);
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -126,11 +105,10 @@ export function TeamScreen() {
         (member.company ?? "").toLowerCase().includes(q);
 
       const matchesRole = roleFilter === "all" ? true : member.role === roleFilter;
-      const matchesStatus = statusFilter === "all" ? true : member.status === statusFilter;
 
-      return matchesSearch && matchesRole && matchesStatus;
+      return matchesSearch && matchesRole;
     });
-  }, [members, roleFilter, search, statusFilter]);
+  }, [members, roleFilter, search]);
 
   const invitationRows = useMemo(
     () =>
@@ -147,7 +125,8 @@ export function TeamScreen() {
             status: derivedStatus,
             project: state.projects.find((project) => project.id === invitation.projectId) ?? null,
           };
-        }),
+        })
+        .filter((invitation) => invitation.status === "pending"),
     [state.invitations, state.projects],
   );
 
@@ -158,43 +137,57 @@ export function TeamScreen() {
       member.role === "creative_manager" || member.role === "communication_manager",
   ).length;
   const othersCount = Math.max(0, totalMembers - designerCount - managerCount);
+  const totalPages = Math.max(1, Math.ceil(filteredMembers.length / PAGE_SIZE));
+  const paginatedMembers = filteredMembers.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+  const rangeStart = filteredMembers.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0;
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, filteredMembers.length);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSubmitError("");
-
-    try {
-      const result = await createInvitation({
-        name,
-        email,
-        role,
-        projectId: projectId || null,
-        expiresAt: new Date(`${expiresAt}T23:59:59.000Z`).toISOString(),
-      });
-
-      setLatestInviteLink(result.inviteLink);
-      setName("");
-      setEmail("");
-      setRole("designer");
-      setProjectId("");
-      setExpiresAt("2026-06-18");
-      setCopyState("idle");
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Failed to create invite");
-    }
+    setSearch(searchDraft);
+    setCurrentPage(1);
   };
 
-  const copyLink = async () => {
-    if (!latestInviteLink) {
-      return;
-    }
-
-    await navigator.clipboard.writeText(latestInviteLink);
-    setCopyState("copied");
-  };
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   return (
     <Shell>
+      <ConfirmActionModal
+        open={Boolean(revokeTarget)}
+        title="Revoke invitation"
+        description={`This will disable the invite link for ${revokeTarget?.email ?? "this invite"}.`}
+        confirmLabel="Revoke invite"
+        tone="danger"
+        busy={isRevoking}
+        onCancel={() => {
+          if (!isRevoking) {
+            setRevokeTarget(null);
+          }
+        }}
+        onConfirm={async () => {
+          if (!revokeTarget) {
+            return;
+          }
+
+          setIsRevoking(true);
+          try {
+            await revokeInvitation(revokeTarget.id);
+            setRevokeTarget(null);
+          } finally {
+            setIsRevoking(false);
+          }
+        }}
+      />
+      <InviteWorkspaceModal
+        open={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        variant="team"
+      />
       <AppSidebar user={user} activeLabel="Team" />
 
       <Content>
@@ -203,15 +196,59 @@ export function TeamScreen() {
             <Title>Team</Title>
             <Subtitle>Manage your team members, roles, and permissions.</Subtitle>
           </HeaderCopy>
+        </Header>
+
+        <Toolbar>
+          <SearchControls onSubmit={handleSearchSubmit}>
+            <SearchWrap>
+              <SearchInput
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                placeholder="Search team members..."
+              />
+            </SearchWrap>
+            <FilterMenuWrap>
+              <FilterButton
+                type="button"
+                aria-label="Open filters"
+                aria-expanded={showFilters}
+                onClick={() => setShowFilters((current) => !current)}
+              >
+                <IconWrap>
+                  <IconSliders />
+                </IconWrap>
+              </FilterButton>
+              {showFilters ? (
+                <FilterPopup>
+                  <FilterPopupTitle>Filter team</FilterPopupTitle>
+                  <TextSelect
+                    value={roleFilter}
+                    onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
+                  >
+                    <option value="all">All Roles</option>
+                    <option value="creative_manager">Creative Manager</option>
+                    <option value="communication_manager">Communication Manager</option>
+                    <option value="designer">Designer</option>
+                  </TextSelect>
+                </FilterPopup>
+              ) : null}
+            </FilterMenuWrap>
+            <SearchButton type="submit" aria-label="Search team members">
+              <IconWrap>
+                <IconSearch />
+              </IconWrap>
+            </SearchButton>
+          </SearchControls>
+
           {canManageInvites ? (
-            <InviteButton type="button" onClick={() => setShowInviteForm((current) => !current)}>
+            <InviteButton type="button" onClick={() => setShowInviteModal(true)}>
               <IconWrap>
                 <IconPlus />
               </IconWrap>
               <span>Invite Member</span>
             </InviteButton>
           ) : null}
-        </Header>
+        </Toolbar>
 
         <StatsRow>
           <StatCard>
@@ -252,140 +289,18 @@ export function TeamScreen() {
           </StatCard>
         </StatsRow>
 
-        {canManageInvites && showInviteForm ? (
-          <InvitePanel>
-            <PanelHeader>
-              <PanelTitle>Invite team member</PanelTitle>
-            </PanelHeader>
-
-            <InviteForm onSubmit={handleSubmit}>
-              <Field>
-                <FieldLabel>Name</FieldLabel>
-                <TextInput value={name} onChange={(event) => setName(event.target.value)} required />
-              </Field>
-              <Field>
-                <FieldLabel>Email</FieldLabel>
-                <TextInput
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel>Role</FieldLabel>
-                <TextSelect value={role} onChange={(event) => setRole(event.target.value as Role)}>
-                  {roleOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {formatRole(option.value)}
-                    </option>
-                  ))}
-                </TextSelect>
-              </Field>
-              <Field>
-                <FieldLabel>Assigned project</FieldLabel>
-                <TextSelect value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                  <option value="">No project yet</option>
-                  {state.projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </TextSelect>
-              </Field>
-              <Field>
-                <FieldLabel>Expiry date</FieldLabel>
-                <TextInput
-                  type="date"
-                  value={expiresAt}
-                  onChange={(event) => setExpiresAt(event.target.value)}
-                  required
-                />
-              </Field>
-              <FormActions>
-                <GhostButton type="button" onClick={() => setShowInviteForm(false)}>
-                  Cancel
-                </GhostButton>
-                <InviteButton type="submit">
-                  <span>Generate Invite Link</span>
-                </InviteButton>
-              </FormActions>
-            </InviteForm>
-
-            {submitError ? <InlineError>{submitError}</InlineError> : null}
-
-            {latestInviteLink ? (
-              <GeneratedLink>
-                <FieldLabel>Copyable invite link</FieldLabel>
-                <LinkBox>{latestInviteLink}</LinkBox>
-                <GhostButton type="button" onClick={copyLink}>
-                  {copyState === "copied" ? "Copied" : "Copy link"}
-                </GhostButton>
-              </GeneratedLink>
-            ) : null}
-          </InvitePanel>
-        ) : null}
-
-        <ControlsPanel>
-          <SearchRow>
-            <SearchWrap>
-              <SearchIcon>
-                <IconSearch />
-              </SearchIcon>
-              <SearchInput
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search team members..."
-              />
-            </SearchWrap>
-          </SearchRow>
-
-          <FiltersRow>
-            <SelectWrap>
-              <TextSelect
-                value={roleFilter}
-                onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
-              >
-                <option value="all">All Roles</option>
-                <option value="creative_manager">Creative Manager</option>
-                <option value="communication_manager">Communication Manager</option>
-                <option value="designer">Designer</option>
-              </TextSelect>
-            </SelectWrap>
-            <SelectWrap>
-              <TextSelect
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              >
-                <option value="all">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="away">Away</option>
-                <option value="inactive">Inactive</option>
-              </TextSelect>
-            </SelectWrap>
-            <FilterButton type="button">
-              <IconWrap>
-                <IconSliders />
-              </IconWrap>
-            </FilterButton>
-          </FiltersRow>
-        </ControlsPanel>
-
         <DesktopTable>
           <TableHeader>
             <HeaderCell $wide>Member</HeaderCell>
             <HeaderCell>Role</HeaderCell>
             <HeaderCell>Projects</HeaderCell>
-            <HeaderCell>Status</HeaderCell>
             <HeaderCell>Joined</HeaderCell>
-            <HeaderCell $narrow>Actions</HeaderCell>
           </TableHeader>
 
           <TableBody>
-            {filteredMembers.length ? (
-              filteredMembers.map((member, index) => {
+            {paginatedMembers.length ? (
+              paginatedMembers.map((member, index) => {
                 const roleTone = getRoleTone(member.role);
-                const statusTone = getStatusTone(member.status);
 
                 return (
                   <TableRow key={member.id}>
@@ -402,14 +317,7 @@ export function TeamScreen() {
                       </Pill>
                     </RoleCell>
                     <CountCell>{member.projectCount || "—"}</CountCell>
-                    <StatusCell>
-                      <StatusPill style={{ background: statusTone.bg, color: statusTone.fg }}>
-                        <StatusDot style={{ background: statusTone.fg }} />
-                        <span>{statusTone.label}</span>
-                      </StatusPill>
-                    </StatusCell>
-                    <JoinedCell>{mockJoinDate(index)}</JoinedCell>
-                    <ActionCell>...</ActionCell>
+                    <JoinedCell>{mockJoinDate((currentPage - 1) * PAGE_SIZE + index)}</JoinedCell>
                   </TableRow>
                 );
               })
@@ -423,20 +331,33 @@ export function TeamScreen() {
 
           <TableFooter>
             <span>
-              Showing 1 to {filteredMembers.length} of {members.length} members
+              Showing {rangeStart} to {rangeEnd} of {filteredMembers.length} members
             </span>
             <Pagination>
-              <PageButton>{"<"}</PageButton>
-              <PageButton $active>1</PageButton>
-              <PageButton>2</PageButton>
-              <PageButton>{">"}</PageButton>
+              <PageButton
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                Last
+              </PageButton>
+              <PageButton $active type="button">
+                {currentPage}
+              </PageButton>
+              <PageButton
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </PageButton>
             </Pagination>
           </TableFooter>
         </DesktopTable>
 
         <MobileList>
-          {filteredMembers.length ? (
-            filteredMembers.map((member) => {
+          {paginatedMembers.length ? (
+            paginatedMembers.map((member) => {
               const roleTone = getRoleTone(member.role);
               return (
                 <MobileCard key={member.id}>
@@ -449,7 +370,6 @@ export function TeamScreen() {
                         {formatRole(member.role)}
                       </Pill>
                     </MemberCopy>
-                    <ActionCell>...</ActionCell>
                   </MobileCardRow>
                 </MobileCard>
               );
@@ -482,7 +402,15 @@ export function TeamScreen() {
                     <InvitationActions>
                       <Pill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</Pill>
                       {canManageInvites && invitation.status === "pending" ? (
-                        <TinyDangerButton type="button" onClick={() => revokeInvitation(invitation.id)}>
+                        <TinyDangerButton
+                          type="button"
+                          onClick={() =>
+                            setRevokeTarget({
+                              id: invitation.id,
+                              email: invitation.email,
+                            })
+                          }
+                        >
                           Revoke
                         </TinyDangerButton>
                       ) : null}
@@ -569,7 +497,7 @@ const HeaderCopy = styled.div`
 
 const Title = styled.h1`
   margin: 0;
-  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  font-size: clamp(1.45rem, 3vw, 2rem);
   line-height: 1;
   letter-spacing: -0.04em;
 `;
@@ -708,18 +636,18 @@ const FieldLabel = styled.span`
 const TextInput = styled.input`
   ${controlSurface}
   width: 100%;
-  min-height: 48px;
+  min-height: 40px;
   padding: 0 14px;
-  border-radius: 14px;
+  border-radius: 10px;
   color: var(--color-text);
 `;
 
 const TextSelect = styled.select`
   ${controlSurface}
   width: 100%;
-  min-height: 48px;
+  min-height: 40px;
   padding: 0 14px;
-  border-radius: 14px;
+  border-radius: 10px;
   color: var(--color-text);
 `;
 
@@ -730,56 +658,67 @@ const FormActions = styled.div`
   gap: 10px;
 `;
 
-const ControlsPanel = styled.section`
-  ${cardSurface}
+const Toolbar = styled.section`
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px;
-  border-radius: 20px;
-`;
 
-const SearchRow = styled.div`
-  display: flex;
+  ${desktop} {
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+  }
 `;
 
 const SearchWrap = styled.div`
-  position: relative;
   flex: 1;
+
+  ${desktop} {
+    min-width: 0;
+  }
 `;
 
-const SearchIcon = styled.span`
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  width: 18px;
-  height: 18px;
-  transform: translateY(-50%);
-  color: var(--color-text-light);
+const SearchControls = styled.form`
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
 
-  svg {
-    width: 100%;
-    height: 100%;
+  ${desktop} {
+    flex: 1;
   }
 `;
 
 const SearchInput = styled.input`
   ${controlSurface}
   width: 100%;
-  min-height: 56px;
-  padding: 0 44px 0 44px;
-  border-radius: 18px;
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
   color: var(--color-text);
   font-size: 0.94rem;
 `;
 
-const FiltersRow = styled.div`
-  display: flex;
-  gap: 10px;
+const FilterMenuWrap = styled.div`
+  position: relative;
 `;
 
-const SelectWrap = styled.div`
-  flex: 1;
+const FilterPopup = styled.div`
+  ${cardSurface}
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 10;
+  width: min(260px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+`;
+
+const FilterPopupTitle = styled.strong`
+  font-size: 0.9rem;
+  color: var(--color-text);
 `;
 
 const DesktopTable = styled.section`
@@ -806,8 +745,8 @@ const TableHeader = styled.div`
   text-transform: uppercase;
 `;
 
-const HeaderCell = styled.span<{ $wide?: boolean; $narrow?: boolean }>`
-  flex: ${({ $wide, $narrow }) => ($wide ? "1.6" : $narrow ? "0 0 52px" : "1")};
+const HeaderCell = styled.span<{ $wide?: boolean }>`
+  flex: ${({ $wide }) => ($wide ? "1.6" : "1")};
 `;
 
 const TableBody = styled.div`
@@ -860,10 +799,6 @@ const CountCell = styled.div`
   color: var(--color-text);
 `;
 
-const StatusCell = styled.div`
-  flex: 1;
-`;
-
 const JoinedCell = styled.div`
   flex: 1;
   color: var(--color-text);
@@ -871,20 +806,12 @@ const JoinedCell = styled.div`
   font-weight: 500;
 `;
 
-const ActionCell = styled.div`
-  flex: 0 0 52px;
-  color: var(--color-text-muted);
-  font-size: 1rem;
-  font-weight: 700;
-  text-align: center;
-`;
-
 const TableFooter = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 18px;
+  padding: 10px 18px;
   border-top: 1px solid rgba(230, 224, 215, 0.8);
   color: var(--color-text-muted);
   font-size: 0.86rem;
@@ -896,14 +823,19 @@ const Pagination = styled.div`
 `;
 
 const PageButton = styled.button<{ $active?: boolean }>`
-  width: 38px;
+  min-width: 38px;
   height: 38px;
+  padding: 0 14px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 12px;
   background: ${({ $active }) => ($active ? "#1f4339" : "#fff")};
   color: ${({ $active }) => ($active ? "#fff" : "var(--color-text)")};
   font-size: 0.9rem;
   font-weight: 700;
+
+  &:disabled {
+    opacity: 0.45;
+  }
 `;
 
 const MobileList = styled.section`
@@ -1003,50 +935,35 @@ const Pill = styled.span`
   white-space: nowrap;
 `;
 
-const StatusPill = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  width: fit-content;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  white-space: nowrap;
-`;
-
-const StatusDot = styled.span`
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-`;
-
 const InviteButton = styled.button`
-  min-height: 48px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 0 18px;
+  padding: 0 16px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 10px;
   background: #1f4339;
   color: #fff;
-  font-size: 0.92rem;
+  font-size: 0.9rem;
   font-weight: 700;
   box-shadow: 0 14px 26px rgba(31, 68, 57, 0.16);
+
+  ${desktop} {
+    flex: 0 0 230px;
+  }
 `;
 
 const GhostButton = styled.button`
-  min-height: 44px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   padding: 0 14px;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 14px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.88);
   color: var(--color-text);
   font-size: 0.88rem;
@@ -1054,13 +971,21 @@ const GhostButton = styled.button`
 `;
 
 const FilterButton = styled.button`
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 14px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.88);
   color: var(--color-text);
+`;
+
+const SearchButton = styled(FilterButton)`
+  background: #1f4339;
+  color: #fff;
 `;
 
 const IconWrap = styled.span`

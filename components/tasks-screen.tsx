@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -157,9 +157,12 @@ function getPriorityTone(priority: DerivedPriority) {
 
 export function TasksScreen() {
   const { state, user } = useAppState();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [sort, setSort] = useState<SortKey>("due_date");
+  const [showFilters, setShowFilters] = useState(false);
 
   if (!user) {
     return null;
@@ -169,6 +172,7 @@ export function TasksScreen() {
   const userNames = new Map(state.users.map((member) => [member.id, member.name]));
   const roleLabel = formatRole(user.role).toUpperCase();
   const canManage = canCreateTask(user.role);
+  const isDesigner = user.role === "designer";
 
   const allTasks = useMemo<TaskRow[]>(
     () =>
@@ -181,9 +185,9 @@ export function TasksScreen() {
           projectId: project.id,
           projectName: project.name,
           projectMark: getProjectMark(project),
-          dueDate: project.dueDate,
+          dueDate: task.dueDate ?? project.dueDate,
           status: deriveTaskStatus(task.status, project),
-          priority: derivePriority(project.dueDate, task.status),
+          priority: task.priority ?? derivePriority(task.dueDate ?? project.dueDate, task.status),
         })),
       ),
     [userNames, visibleProjects],
@@ -228,6 +232,19 @@ export function TasksScreen() {
 
   const focusTasks = filteredTasks.filter((task) => task.status !== "completed").slice(0, 3);
   const upcomingTasks = [...filteredTasks].slice(0, 3);
+  const pageSize = 3;
+  const totalTasks = filteredTasks.length;
+  const totalPages = Math.max(1, Math.ceil(totalTasks / pageSize));
+  const activePage = Math.min(currentPage, totalPages);
+  const paginatedTasks = filteredTasks.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const rangeStart = totalTasks ? (activePage - 1) * pageSize + 1 : 0;
+  const rangeEnd = totalTasks ? Math.min(activePage * pageSize, totalTasks) : 0;
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSearch(searchDraft);
+    setCurrentPage(1);
+  };
 
   return (
     <Shell>
@@ -239,8 +256,9 @@ export function TasksScreen() {
             <Eyebrow>{roleLabel}</Eyebrow>
             <Title>Tasks</Title>
             <Subtitle>
-              Manage deliverables, assign staff, and track project work across all active
-              projects.
+              {isDesigner
+                ? "See the tasks assigned across the projects you are working on."
+                : "Manage deliverables, assign staff, and track project work across all active projects."}
             </Subtitle>
           </div>
           <BellButton type="button" aria-label="Notifications">
@@ -250,16 +268,61 @@ export function TasksScreen() {
         </Header>
 
         <Toolbar>
-          <SearchWrap>
-            <SearchIcon>
-              <IconSearch />
-            </SearchIcon>
-            <SearchInput
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search tasks, projects, or staff..."
-            />
-          </SearchWrap>
+          <SearchControls onSubmit={handleSearchSubmit}>
+            <SearchWrap>
+              <SearchInput
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                placeholder="Search tasks, projects, or staff..."
+              />
+            </SearchWrap>
+            <FilterMenuWrap>
+              <FilterButton
+                type="button"
+                aria-label="Open filters"
+                aria-expanded={showFilters}
+                onClick={() => setShowFilters((current) => !current)}
+              >
+                <ActionIcon>
+                  <IconFilter />
+                </ActionIcon>
+              </FilterButton>
+              {showFilters ? (
+                <FilterPopup>
+                  <FilterPopupTitle>Filter tasks</FilterPopupTitle>
+                  <FilterSelect
+                    value={filter}
+                    onChange={(event) => {
+                      setFilter(event.target.value as FilterKey);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    {filterOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </FilterSelect>
+                  <FilterSelect
+                    value={sort}
+                    onChange={(event) => {
+                      setSort(event.target.value as SortKey);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="due_date">Sort by due date</option>
+                    <option value="priority">Sort by priority</option>
+                    <option value="name">Sort by name</option>
+                  </FilterSelect>
+                </FilterPopup>
+              ) : null}
+            </FilterMenuWrap>
+            <SearchButton type="submit" aria-label="Search tasks">
+              <ActionIcon>
+                <IconSearch />
+              </ActionIcon>
+            </SearchButton>
+          </SearchControls>
 
           {canManage ? (
             <CreateButton type="button">
@@ -271,91 +334,61 @@ export function TasksScreen() {
           ) : null}
         </Toolbar>
 
-        <StatsGrid>
-          <StatCard>
-            <StatLeft>
-              <StatIcon $tone="soft-green">
-                <IconFolder />
-              </StatIcon>
-            </StatLeft>
-            <StatCopy>
-              <StatLabel>Open Tasks</StatLabel>
-              <StatValue>{openCount}</StatValue>
-              <StatNote $tone="positive">+6 from last week</StatNote>
-            </StatCopy>
-          </StatCard>
+        {isDesigner ? null : (
+          <StatsGrid>
+            <StatCard>
+              <StatLeft>
+                <StatIcon $tone="soft-green">
+                  <IconFolder />
+                </StatIcon>
+              </StatLeft>
+              <StatCopy>
+                <StatLabel>Open Tasks</StatLabel>
+                <StatValue>{openCount}</StatValue>
+                <StatNote $tone="positive">+6 from last week</StatNote>
+              </StatCopy>
+            </StatCard>
 
-          <StatCard>
-            <StatLeft>
-              <StatIcon $tone="soft-gold">
-                <IconCalendar />
-              </StatIcon>
-            </StatLeft>
-            <StatCopy>
-              <StatLabel>Due Today</StatLabel>
-              <StatValue>{dueTodayCount}</StatValue>
-              <StatNote $tone="positive">+2 from yesterday</StatNote>
-            </StatCopy>
-          </StatCard>
+            <StatCard>
+              <StatLeft>
+                <StatIcon $tone="soft-gold">
+                  <IconCalendar />
+                </StatIcon>
+              </StatLeft>
+              <StatCopy>
+                <StatLabel>Due Today</StatLabel>
+                <StatValue>{dueTodayCount}</StatValue>
+                <StatNote $tone="positive">+2 from yesterday</StatNote>
+              </StatCopy>
+            </StatCard>
 
-          <StatCard>
-            <StatLeft>
-              <StatIcon $tone="soft-red">
-                <IconAlert />
-              </StatIcon>
-            </StatLeft>
-            <StatCopy>
-              <StatLabel>Overdue</StatLabel>
-              <StatValue>{overdueCount}</StatValue>
-              <StatNote $tone="warning">-1 from yesterday</StatNote>
-            </StatCopy>
-          </StatCard>
+            <StatCard>
+              <StatLeft>
+                <StatIcon $tone="soft-red">
+                  <IconAlert />
+                </StatIcon>
+              </StatLeft>
+              <StatCopy>
+                <StatLabel>Overdue</StatLabel>
+                <StatValue>{overdueCount}</StatValue>
+                <StatNote $tone="warning">-1 from yesterday</StatNote>
+              </StatCopy>
+            </StatCard>
 
-          <DesktopOnlyCard>
-            <StatLeft>
-              <StatIcon $tone="soft-green">
-                <IconCheckCircle />
-              </StatIcon>
-            </StatLeft>
-            <StatCopy>
-              <StatLabel>Completed This Week</StatLabel>
-              <StatValue>{completedCount}</StatValue>
-              <StatNote $tone="positive">+20% from last week</StatNote>
-            </StatCopy>
-          </DesktopOnlyCard>
-        </StatsGrid>
-
-        <FilterBar>
-          <FilterScroll>
-            {filterOptions.map((option) => (
-              <FilterChip
-                key={option.key}
-                type="button"
-                $active={filter === option.key}
-                onClick={() => setFilter(option.key)}
-              >
-                {option.label}
-              </FilterChip>
-            ))}
-          </FilterScroll>
-
-          <DesktopControls>
-            <GhostButton type="button">
-              <ActionIcon>
-                <IconFilter />
-              </ActionIcon>
-              <span>Filter</span>
-            </GhostButton>
-            <SortWrap>
-              <span>Sort:</span>
-              <SortSelect value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
-                <option value="due_date">Due date</option>
-                <option value="priority">Priority</option>
-                <option value="name">Name</option>
-              </SortSelect>
-            </SortWrap>
-          </DesktopControls>
-        </FilterBar>
+            <DesktopOnlyCard>
+              <StatLeft>
+                <StatIcon $tone="soft-green">
+                  <IconCheckCircle />
+                </StatIcon>
+              </StatLeft>
+              <StatCopy>
+                <StatLabel>Completed This Week</StatLabel>
+                <StatValue>{completedCount}</StatValue>
+                <StatNote $tone="positive">+20% from last week</StatNote>
+              </StatCopy>
+            </DesktopOnlyCard>
+          </StatsGrid>
+        )}
 
         <DesktopPanel>
           <TaskTableHeader>
@@ -370,8 +403,8 @@ export function TasksScreen() {
           </TaskTableHeader>
 
           <TaskTable>
-            {filteredTasks.length ? (
-              filteredTasks.map((task) => {
+            {paginatedTasks.length ? (
+              paginatedTasks.map((task) => {
                 const statusTone = getStatusTone(task.status);
                 const priorityTone = getPriorityTone(task.priority);
                 return (
@@ -417,11 +450,36 @@ export function TasksScreen() {
               </EmptyState>
             )}
           </TaskTable>
+
+          {filteredTasks.length ? (
+            <InlinePaginationBar>
+              <CountText>
+                Showing {rangeStart} to {rangeEnd} of {totalTasks} tasks
+              </CountText>
+              <PaginationControls>
+                <PaginationButton
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={activePage === 1}
+                >
+                  Last
+                </PaginationButton>
+                <PaginationCurrent>{activePage}</PaginationCurrent>
+                <PaginationButton
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={activePage === totalPages}
+                >
+                  Next
+                </PaginationButton>
+              </PaginationControls>
+            </InlinePaginationBar>
+          ) : null}
         </DesktopPanel>
 
         <MobileTaskList>
           {filteredTasks.length ? (
-            filteredTasks.map((task) => {
+            paginatedTasks.map((task) => {
               const statusTone = getStatusTone(task.status);
               const priorityTone = getPriorityTone(task.priority);
               return (
@@ -463,75 +521,104 @@ export function TasksScreen() {
           )}
         </MobileTaskList>
 
-        <DesktopBottomGrid>
-          <Panel>
-            <PanelHeader>
-              <PanelTitle>Today's Focus</PanelTitle>
-            </PanelHeader>
-            <FocusList>
-              {focusTasks.length ? (
-                focusTasks.map((task) => {
-                  const priorityTone = getPriorityTone(task.priority);
-                  return (
-                    <FocusRow key={task.id}>
-                      <FocusBullet />
-                      <FocusCopy>
-                        <TaskTitle>{task.title}</TaskTitle>
-                        <TaskMeta>{task.projectName}</TaskMeta>
-                      </FocusCopy>
-                      <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
-                        {priorityTone.label}
-                      </Pill>
-                    </FocusRow>
-                  );
-                })
-              ) : (
-                <EmptyState>
-                  <strong>No focus tasks</strong>
-                  <p>There are no open tasks in the current filter.</p>
-                </EmptyState>
-              )}
-            </FocusList>
-            <PanelFooterLink href="/tasks">
-              <span>View my tasks</span>
-              <IconArrowRight />
-            </PanelFooterLink>
-          </Panel>
+        {filteredTasks.length ? (
+          <MobileOnlyPagination>
+          <PaginationBar>
+            <CountText>
+              Showing {rangeStart} to {rangeEnd} of {totalTasks} tasks
+            </CountText>
+            <PaginationControls>
+              <PaginationButton
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={activePage === 1}
+              >
+                Last
+              </PaginationButton>
+              <PaginationCurrent>{activePage}</PaginationCurrent>
+              <PaginationButton
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={activePage === totalPages}
+              >
+                Next
+              </PaginationButton>
+              </PaginationControls>
+          </PaginationBar>
+          </MobileOnlyPagination>
+        ) : null}
 
-          <Panel>
-            <PanelHeader>
-              <PanelTitle>Upcoming Deadlines</PanelTitle>
-            </PanelHeader>
-            <FocusList>
-              {upcomingTasks.length ? (
-                upcomingTasks.map((task) => {
-                  const priorityTone = getPriorityTone(task.priority);
-                  return (
-                    <DeadlineRow key={task.id}>
-                      <DeadlineDate>{formatShortDate(task.dueDate)}</DeadlineDate>
-                      <FocusCopy>
-                        <TaskTitle>{task.title}</TaskTitle>
-                        <TaskMeta>{task.projectName}</TaskMeta>
-                      </FocusCopy>
-                      <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
-                        {priorityTone.label}
-                      </Pill>
-                    </DeadlineRow>
-                  );
-                })
-              ) : (
-                <EmptyState>
-                  <strong>No deadlines found</strong>
-                  <p>Upcoming deadlines will appear here as tasks are created.</p>
-                </EmptyState>
-              )}
-            </FocusList>
-            <PanelFooterLink href="/projects">
-              <span>View calendar</span>
-              <IconArrowRight />
-            </PanelFooterLink>
-          </Panel>
-        </DesktopBottomGrid>
+        {isDesigner ? null : (
+          <DesktopBottomGrid>
+            <Panel>
+              <PanelHeader>
+                <PanelTitle>Today's Focus</PanelTitle>
+              </PanelHeader>
+              <FocusList>
+                {focusTasks.length ? (
+                  focusTasks.map((task) => {
+                    const priorityTone = getPriorityTone(task.priority);
+                    return (
+                      <FocusRow key={task.id}>
+                        <FocusBullet />
+                        <FocusCopy>
+                          <TaskTitle>{task.title}</TaskTitle>
+                          <TaskMeta>{task.projectName}</TaskMeta>
+                        </FocusCopy>
+                        <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
+                          {priorityTone.label}
+                        </Pill>
+                      </FocusRow>
+                    );
+                  })
+                ) : (
+                  <EmptyState>
+                    <strong>No focus tasks</strong>
+                    <p>There are no open tasks in the current filter.</p>
+                  </EmptyState>
+                )}
+              </FocusList>
+              <PanelFooterLink href="/tasks">
+                <span>View my tasks</span>
+                <IconArrowRight />
+              </PanelFooterLink>
+            </Panel>
+
+            <Panel>
+              <PanelHeader>
+                <PanelTitle>Upcoming Deadlines</PanelTitle>
+              </PanelHeader>
+              <FocusList>
+                {upcomingTasks.length ? (
+                  upcomingTasks.map((task) => {
+                    const priorityTone = getPriorityTone(task.priority);
+                    return (
+                      <DeadlineRow key={task.id}>
+                        <DeadlineDate>{formatShortDate(task.dueDate)}</DeadlineDate>
+                        <FocusCopy>
+                          <TaskTitle>{task.title}</TaskTitle>
+                          <TaskMeta>{task.projectName}</TaskMeta>
+                        </FocusCopy>
+                        <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
+                          {priorityTone.label}
+                        </Pill>
+                      </DeadlineRow>
+                    );
+                  })
+                ) : (
+                  <EmptyState>
+                    <strong>No deadlines found</strong>
+                    <p>Upcoming deadlines will appear here as tasks are created.</p>
+                  </EmptyState>
+                )}
+              </FocusList>
+              <PanelFooterLink href="/projects">
+                <span>View calendar</span>
+                <IconArrowRight />
+              </PanelFooterLink>
+            </Panel>
+          </DesktopBottomGrid>
+        )}
       </Content>
     </Shell>
   );
@@ -689,7 +776,7 @@ const Eyebrow = styled.p`
 
 const Title = styled.h1`
   margin: 4px 0 6px;
-  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  font-size: clamp(1.45rem, 3vw, 2rem);
   line-height: 1;
   letter-spacing: -0.04em;
 `;
@@ -751,11 +838,21 @@ const Toolbar = styled.section`
   }
 `;
 
-const SearchWrap = styled.div`
-  position: relative;
+const SearchControls = styled.form`
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
 
   ${desktop} {
     flex: 1;
+  }
+`;
+
+const SearchWrap = styled.div`
+  flex: 1;
+
+  ${desktop} {
+    min-width: 0;
   }
 `;
 
@@ -776,28 +873,80 @@ const SearchIcon = styled.span`
 
 const SearchInput = styled.input`
   width: 100%;
-  min-height: 56px;
-  padding: 0 18px 0 46px;
+  min-height: 40px;
+  padding: 0 18px;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 18px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow-sm);
   color: var(--color-text);
   font-size: 0.94rem;
 `;
 
+const FilterMenuWrap = styled.div`
+  position: relative;
+`;
+
+const FilterButton = styled.button`
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text);
+`;
+
+const SearchButton = styled(FilterButton)`
+  background: #1f4339;
+  color: #fff;
+`;
+
+const FilterPopup = styled.div`
+  ${cardSurface}
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 10;
+  width: min(280px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+`;
+
+const FilterPopupTitle = styled.strong`
+  font-size: 0.9rem;
+  color: var(--color-text);
+`;
+
+const FilterSelect = styled.select`
+  width: 100%;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--color-text);
+`;
+
 const CreateButton = styled.button`
-  min-height: 56px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 0 20px;
+  padding: 0 16px;
   border: 0;
-  border-radius: 16px;
+  border-radius: 10px;
   background: #1f4339;
   color: #fff;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 700;
   box-shadow: 0 14px 26px rgba(31, 68, 57, 0.16);
 
@@ -819,18 +968,18 @@ const StatsGrid = styled.section`
 
 const StatCard = styled.article`
   ${cardSurface}
-  min-height: 96px;
+  min-height: 100px;
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
-  padding: 12px;
+  padding: 5px;
   border-radius: 18px;
 
   ${desktop} {
-    min-height: 132px;
+    min-height: 100px;
     grid-template-columns: 52px minmax(0, 1fr);
-    padding: 18px 20px;
+    padding: 5px 20px;
     border-radius: 20px;
   }
 `;
@@ -1096,6 +1245,81 @@ const MobileTaskList = styled.div`
   ${desktop} {
     display: none;
   }
+`;
+
+const PaginationBar = styled.section`
+  ${cardSurface}
+  display: grid;
+  gap: 14px;
+  padding: 10px;
+  border-radius: 24px;
+
+  ${desktop} {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 10px 22px;
+  }
+`;
+
+const MobileOnlyPagination = styled.div`
+  ${desktop} {
+    display: none;
+  }
+`;
+
+const InlinePaginationBar = styled.div`
+  display: none;
+
+  ${desktop} {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 22px;
+    border-top: 1px solid rgba(230, 224, 215, 0.8);
+  }
+`;
+
+const CountText = styled.p`
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+`;
+
+const PaginationControls = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+`;
+
+const PaginationButton = styled.button`
+  min-height: 30px;
+  padding: 0 18px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+
+  &:disabled {
+    opacity: 0.5;
+  }
+`;
+
+const PaginationCurrent = styled.span`
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0 14px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #214f39;
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 700;
 `;
 
 const MobileTaskCard = styled(Link)`

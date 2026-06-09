@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     expiresAt?: string;
   };
 
-  if (!body.name || !body.email || !body.role || !body.expiresAt) {
+  if (!body.email || !body.role || !body.expiresAt) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
@@ -38,12 +38,19 @@ export async function POST(request: NextRequest) {
 
   const token = generateSecureInvitationToken();
   const tokenHash = hashInvitationToken(token);
+  const derivedName =
+    body.name?.trim() ||
+    (body.email.split("@")[0] ?? "User")
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+      .join(" ");
 
   const { data, error } = await supabase
     .from("invitations")
     .insert({
       email: body.email.toLowerCase(),
-      name: body.name,
+      name: derivedName,
       role: body.role,
       project_id: body.projectId,
       token_hash: tokenHash,
@@ -59,7 +66,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error?.message ?? "Failed to create invitation" }, { status: 500 });
   }
 
-  const inviteLink = `${request.nextUrl.origin}/accept-invite?token=${encodeURIComponent(token)}`;
+  const inviteLink = `${request.nextUrl.origin}/onboarding?token=${encodeURIComponent(token)}`;
 
   return NextResponse.json({
     inviteLink,

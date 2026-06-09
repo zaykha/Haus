@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -48,6 +48,9 @@ const sideNavItems = [
   { label: "Reports", icon: <IconChart /> },
   { label: "Files", icon: <IconFile /> },
 ] as const;
+
+const PRIORITY_PROJECTS_PAGE_SIZE = 2;
+const TASKS_PAGE_SIZE = 4;
 
 function formatDueDate(value: string) {
   if (!value) {
@@ -135,6 +138,8 @@ function getFeedbackTone(action: FeedbackAction) {
 
 export function DashboardScreen() {
   const { state, user } = useAppState();
+  const [priorityPage, setPriorityPage] = useState(1);
+  const [tasksPage, setTasksPage] = useState(1);
 
   if (!user) {
     return null;
@@ -145,6 +150,7 @@ export function DashboardScreen() {
   const firstName = user.name.split(" ")[0] ?? user.name;
   const roleLabel = formatRole(user.role).toUpperCase();
   const canManage = canManageWorkspace(user.role);
+  const isDesigner = user.role === "designer";
 
   const projectRows = useMemo(
     () =>
@@ -233,8 +239,18 @@ export function DashboardScreen() {
   const feedbackCount = projectRows.filter((project) => project.status === "review").length;
   const completedCount = projectRows.filter((project) => project.status === "done").length;
 
-  const priorityProjects = projectRows.slice(0, 3);
-  const myTasks = openTasks.slice(0, 5);
+  const priorityProjectPageCount = Math.max(1, Math.ceil(projectRows.length / PRIORITY_PROJECTS_PAGE_SIZE));
+  const tasksPageCount = Math.max(1, Math.ceil(openTasks.length / TASKS_PAGE_SIZE));
+  const currentPriorityPage = Math.min(priorityPage, priorityProjectPageCount);
+  const currentTasksPage = Math.min(tasksPage, tasksPageCount);
+  const priorityProjects = projectRows.slice(
+    (currentPriorityPage - 1) * PRIORITY_PROJECTS_PAGE_SIZE,
+    currentPriorityPage * PRIORITY_PROJECTS_PAGE_SIZE,
+  );
+  const dashboardTasks = openTasks.slice(
+    (currentTasksPage - 1) * TASKS_PAGE_SIZE,
+    currentTasksPage * TASKS_PAGE_SIZE,
+  );
   const recentFeedback = feedbackRows.slice(0, 3);
   const recentActivity = activityRows.slice(0, 4);
 
@@ -270,7 +286,11 @@ export function DashboardScreen() {
           <div>
             <Eyebrow>{roleLabel}</Eyebrow>
             <Title>Welcome back, {firstName}</Title>
-            <Subtitle>Track projects, team activity, feedback, and upcoming deadlines.</Subtitle>
+            <Subtitle>
+              {isDesigner
+                ? "See the projects and tasks currently assigned to you."
+                : "Track projects, team activity, feedback, and upcoming deadlines."}
+            </Subtitle>
           </div>
           <HeaderUser>
             <HeaderAvatar>{user.name.slice(0, 1)}</HeaderAvatar>
@@ -281,65 +301,67 @@ export function DashboardScreen() {
           </HeaderUser>
         </Header>
 
-        <StatsGrid>
-          <StatCard>
-            <StatCopy>
-              <StatLabel>Active Projects</StatLabel>
-              <StatValue>{activeProjectsCount}</StatValue>
-              <StatNote $tone="positive">
-                {projectRows.length ? `+${Math.min(activeProjectsCount, 2)} from last month` : "No active projects yet"}
-              </StatNote>
-            </StatCopy>
-            <StatIcon $tone="dark">
-              <IconFolder />
-            </StatIcon>
-          </StatCard>
+        {isDesigner ? null : (
+          <StatsGrid>
+            <StatCard>
+              <StatCopy>
+                <StatLabel>Active Projects</StatLabel>
+                <StatValue>{activeProjectsCount}</StatValue>
+                <StatNote $tone="positive">
+                  {projectRows.length ? `+${Math.min(activeProjectsCount, 2)} from last month` : "No active projects yet"}
+                </StatNote>
+              </StatCopy>
+              <StatIcon $tone="dark">
+                <IconFolder />
+              </StatIcon>
+            </StatCard>
 
-          <StatCard>
-            <StatCopy>
-              <StatLabel>Tasks Due Today</StatLabel>
-              <StatValue>{dueSoonTasksCount}</StatValue>
-              <StatNote $tone="warning">
-                {dueSoonTasksCount ? `${Math.min(dueSoonTasksCount, 2)} overdue` : "Nothing due today"}
-              </StatNote>
-            </StatCopy>
-            <StatIcon $tone="soft-green">
-              <IconCheckCircle />
-            </StatIcon>
-          </StatCard>
+            <StatCard>
+              <StatCopy>
+                <StatLabel>Tasks Due Today</StatLabel>
+                <StatValue>{dueSoonTasksCount}</StatValue>
+                <StatNote $tone="warning">
+                  {dueSoonTasksCount ? `${Math.min(dueSoonTasksCount, 2)} overdue` : "Nothing due today"}
+                </StatNote>
+              </StatCopy>
+              <StatIcon $tone="soft-green">
+                <IconCheckCircle />
+              </StatIcon>
+            </StatCard>
 
-          <StatCard>
-            <StatCopy>
-              <StatLabel>Awaiting Feedback</StatLabel>
-              <StatValue>{feedbackCount}</StatValue>
-              <StatNote $tone="warning">
-                {feedbackCount ? `+${feedbackCount} from last week` : "No feedback waiting"}
-              </StatNote>
-            </StatCopy>
-            <StatIcon $tone="soft-gold">
-              <IconComment />
-            </StatIcon>
-          </StatCard>
+            <StatCard>
+              <StatCopy>
+                <StatLabel>Awaiting Feedback</StatLabel>
+                <StatValue>{feedbackCount}</StatValue>
+                <StatNote $tone="warning">
+                  {feedbackCount ? `+${feedbackCount} from last week` : "No feedback waiting"}
+                </StatNote>
+              </StatCopy>
+              <StatIcon $tone="soft-gold">
+                <IconComment />
+              </StatIcon>
+            </StatCard>
 
-          <StatCard>
-            <StatCopy>
-              <StatLabel>Completed This Month</StatLabel>
-              <StatValue>{completedCount}</StatValue>
-              <StatNote $tone="positive">
-                {completedCount ? `+${completedCount * 10}% from last month` : "No completed work yet"}
-              </StatNote>
-            </StatCopy>
-            <StatIcon $tone="dark">
-              <IconFlag />
-            </StatIcon>
-          </StatCard>
-        </StatsGrid>
+            <StatCard>
+              <StatCopy>
+                <StatLabel>Completed This Month</StatLabel>
+                <StatValue>{completedCount}</StatValue>
+                <StatNote $tone="positive">
+                  {completedCount ? `+${completedCount * 10}% from last month` : "No completed work yet"}
+                </StatNote>
+              </StatCopy>
+              <StatIcon $tone="dark">
+                <IconFlag />
+              </StatIcon>
+            </StatCard>
+          </StatsGrid>
+        )}
 
         <TopGrid>
           <Panel>
             <PanelHeader>
-              <PanelTitle>Priority Projects</PanelTitle>
-              <PanelLink href="/projects">View all</PanelLink>
+              <PanelTitle>{isDesigner ? "Projects" : "Priority Projects"}</PanelTitle>
+              {isDesigner ? null : <PanelLink href="/projects">View all</PanelLink>}
             </PanelHeader>
 
             <ProjectList>
@@ -351,78 +373,81 @@ export function DashboardScreen() {
                       <ProjectMark>{getProjectMark(project)}</ProjectMark>
                       <ProjectBody>
                         <ProjectTop>
-                          <div>
-                            <ProjectTitle>{project.name}</ProjectTitle>
-                            <ProjectSub>{project.clientName}</ProjectSub>
-                          </div>
-                          <StatusPill style={{ background: tone.bg, color: tone.fg }}>
-                            {getProjectStatusLabel(project.status)}
-                          </StatusPill>
-                        </ProjectTop>
-
-                        <DesktopProjectMeta>
-                          <MetaGroup>
-                            <MetaLabel>Status</MetaLabel>
-                            <MetaValue>{getProjectStatusLabel(project.status)}</MetaValue>
-                          </MetaGroup>
+                          <ProjectTitle>{project.name}</ProjectTitle>
                           <MetaGroup>
                             <MetaLabel>Due date</MetaLabel>
                             <MetaValue>{formatDueDate(project.dueDate)}</MetaValue>
                           </MetaGroup>
                           <MetaGroup>
-                            <MetaLabel>Staff</MetaLabel>
-                            <AvatarStack>
-                              {project.staffIds.slice(0, 3).map((staffId) => (
-                                <Avatar key={staffId}>
-                                  {(userNames.get(staffId) ?? "?").slice(0, 1)}
-                                </Avatar>
-                              ))}
-                              {project.staffIds.length > 3 ? (
-                                <Avatar $muted>+{project.staffIds.length - 3}</Avatar>
-                              ) : null}
-                            </AvatarStack>
+                            <MetaLabel>Stage</MetaLabel>
+                            <MetaValue>{formatProjectStage(project.stage)}</MetaValue>
                           </MetaGroup>
                           <MetaGroup>
                             <MetaLabel>Progress</MetaLabel>
                             <MetaValue>{project.progress}%</MetaValue>
                           </MetaGroup>
-                        </DesktopProjectMeta>
+                        </ProjectTop>
 
-                        <MobileProjectMeta>
-                          <ProjectSub>Due {formatDueDate(project.dueDate)}</ProjectSub>
-                        </MobileProjectMeta>
+                        <ProgressRow $barOnly>
+                          <ProgressBar>
+                            <ProgressFill style={{ width: `${project.progress}%` }} />
+                          </ProgressBar>
+                        </ProgressRow>
 
-                        <ProjectBottom>
-                          <StageName>{formatProjectStage(project.stage)}</StageName>
-                          <ProgressRow>
-                            <ProgressBar>
-                              <ProgressFill style={{ width: `${project.progress}%` }} />
-                            </ProgressBar>
-                            <ProgressValue>{project.progress}%</ProgressValue>
-                          </ProgressRow>
-                        </ProjectBottom>
+                        <ProjectStatusRow>
+                          <StatusPill style={{ background: tone.bg, color: tone.fg }}>
+                            {getProjectStatusLabel(project.status)}
+                          </StatusPill>
+                        </ProjectStatusRow>
                       </ProjectBody>
                     </ProjectRow>
                   );
                 })
               ) : (
                 <EmptyBlock>
-                  <strong>No priority projects yet</strong>
-                  <p>Projects will appear here after a manager creates one.</p>
+                  <strong>{isDesigner ? "No assigned projects yet" : "No priority projects yet"}</strong>
+                  <p>
+                    {isDesigner
+                      ? "Projects assigned to you will appear here."
+                      : "Projects will appear here after a manager creates one."}
+                  </p>
                 </EmptyBlock>
               )}
             </ProjectList>
+            {projectRows.length > PRIORITY_PROJECTS_PAGE_SIZE ? (
+              <PanelPagination>
+                <PageButton
+                  type="button"
+                  onClick={() => setPriorityPage((current) => Math.max(1, current - 1))}
+                  disabled={currentPriorityPage === 1}
+                >
+                  Prev
+                </PageButton>
+                <PageMeta>
+                  {currentPriorityPage} / {priorityProjectPageCount}
+                </PageMeta>
+                <PageButton
+                  type="button"
+                  onClick={() =>
+                    setPriorityPage((current) => Math.min(priorityProjectPageCount, current + 1))
+                  }
+                  disabled={currentPriorityPage === priorityProjectPageCount}
+                >
+                  Next
+                </PageButton>
+              </PanelPagination>
+            ) : null}
           </Panel>
 
           <Panel>
             <PanelHeader>
-              <PanelTitle>{canManage ? "My Tasks" : "Tasks Due Today"}</PanelTitle>
+              <PanelTitle>Tasks</PanelTitle>
               <PanelLink href="/tasks">View all</PanelLink>
             </PanelHeader>
 
             <TaskList>
-              {myTasks.length ? (
-                myTasks.map((task) => (
+              {dashboardTasks.length ? (
+                dashboardTasks.map((task) => (
                   <TaskRow key={task.id} href={`/projects/${task.projectId}`}>
                     <TaskCircle $urgent={task.status === "todo"} />
                     <TaskCopy>
@@ -439,167 +464,192 @@ export function DashboardScreen() {
                 </EmptyBlock>
               )}
             </TaskList>
+            {openTasks.length > TASKS_PAGE_SIZE ? (
+              <PanelPagination>
+                <PageButton
+                  type="button"
+                  onClick={() => setTasksPage((current) => Math.max(1, current - 1))}
+                  disabled={currentTasksPage === 1}
+                >
+                  Prev
+                </PageButton>
+                <PageMeta>
+                  {currentTasksPage} / {tasksPageCount}
+                </PageMeta>
+                <PageButton
+                  type="button"
+                  onClick={() => setTasksPage((current) => Math.min(tasksPageCount, current + 1))}
+                  disabled={currentTasksPage === tasksPageCount}
+                >
+                  Next
+                </PageButton>
+              </PanelPagination>
+            ) : null}
           </Panel>
         </TopGrid>
 
-        <MobileOnlyPanel>
-          <PanelHeader>
-            <PanelTitle>Recent Feedback</PanelTitle>
-            <PanelLink href="/projects">View all</PanelLink>
-          </PanelHeader>
-          <FeedbackList>
-            {recentFeedback.length ? (
-              recentFeedback.slice(0, 1).map((feedback) => {
-                const tone = getFeedbackTone(feedback.action);
-                return (
-                  <FeedbackRowCard key={feedback.id}>
-                    <FeedbackAvatar>{feedback.clientName.slice(0, 2).toUpperCase()}</FeedbackAvatar>
-                    <FeedbackCopy>
-                      <FeedbackBody>{feedback.body}</FeedbackBody>
-                      <FeedbackProject>{feedback.projectName}</FeedbackProject>
-                    </FeedbackCopy>
-                    <StatusPill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</StatusPill>
-                  </FeedbackRowCard>
-                );
-              })
-            ) : (
-              <EmptyBlock>
-                <strong>No feedback yet</strong>
-                <p>Client comments will appear here once reviews start coming in.</p>
-              </EmptyBlock>
-            )}
-          </FeedbackList>
-        </MobileOnlyPanel>
-
-        <BottomGrid>
-          <Panel>
-            <PanelHeader>
-              <PanelTitle>Project Progress Overview</PanelTitle>
-              <PanelTag>This Month</PanelTag>
-            </PanelHeader>
-            <DonutWrap>
-              <DonutChart style={{ background: donut }}>
-                <DonutCenter>
-                  <strong>{projectRows.length}</strong>
-                  <span>Active Projects</span>
-                </DonutCenter>
-              </DonutChart>
-              <LegendList>
-                <LegendItem>
-                  <LegendDot $color="#5ca16d" />
-                  <span>Completed</span>
-                  <strong>{completedPct}%</strong>
-                </LegendItem>
-                <LegendItem>
-                  <LegendDot $color="#1f4339" />
-                  <span>In Progress</span>
-                  <strong>{inProgressPct}%</strong>
-                </LegendItem>
-                <LegendItem>
-                  <LegendDot $color="#d69b47" />
-                  <span>In Review</span>
-                  <strong>{reviewPct}%</strong>
-                </LegendItem>
-                <LegendItem>
-                  <LegendDot $color="#d3ccc1" />
-                  <span>On Hold</span>
-                  <strong>{holdPct}%</strong>
-                </LegendItem>
-              </LegendList>
-            </DonutWrap>
-          </Panel>
-
-          <Panel>
-            <PanelHeader>
-              <PanelTitle>Recent Client Feedback</PanelTitle>
-              <PanelLink href="/projects">View all</PanelLink>
-            </PanelHeader>
-            <FeedbackList>
-              {recentFeedback.length ? (
-                recentFeedback.map((feedback) => {
-                  const tone = getFeedbackTone(feedback.action);
-                  return (
-                    <FeedbackRowCard key={feedback.id}>
-                      <FeedbackAvatar>{feedback.clientName.slice(0, 2).toUpperCase()}</FeedbackAvatar>
-                      <FeedbackCopy>
-                        <FeedbackBody>{feedback.body}</FeedbackBody>
-                        <FeedbackProject>{feedback.projectName}</FeedbackProject>
-                      </FeedbackCopy>
-                      <StatusPill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</StatusPill>
-                    </FeedbackRowCard>
-                  );
-                })
-              ) : (
-                <EmptyBlock>
-                  <strong>No feedback yet</strong>
-                  <p>Client feedback will appear here once comments start coming in.</p>
-                </EmptyBlock>
-              )}
-            </FeedbackList>
-          </Panel>
-
-          <Panel>
-            <PanelHeader>
-              <PanelTitle>Team Activity</PanelTitle>
-              <PanelLink href="/team">View all</PanelLink>
-            </PanelHeader>
-            <ActivityList>
-              {recentActivity.length ? (
-                recentActivity.map((item) => (
-                  <ActivityRowCard key={item.id}>
-                    <FeedbackAvatar>{item.actor.slice(0, 1).toUpperCase()}</FeedbackAvatar>
-                    <FeedbackCopy>
-                      <FeedbackBody>
-                        {item.actor} {item.detail}
-                      </FeedbackBody>
-                      <FeedbackProject>{item.projectName}</FeedbackProject>
-                    </FeedbackCopy>
-                    <ActivityTime>{timeAgo(item.createdAt)}</ActivityTime>
-                  </ActivityRowCard>
-                ))
-              ) : (
-                <EmptyBlock>
-                  <strong>No recent activity</strong>
-                  <p>File uploads, comments, and feedback updates will appear here.</p>
-                </EmptyBlock>
-              )}
-            </ActivityList>
-          </Panel>
-
-          {canManage ? (
-            <Panel>
+        {isDesigner ? null : (
+          <>
+            <MobileOnlyPanel>
               <PanelHeader>
-                <PanelTitle>Quick Actions</PanelTitle>
+                <PanelTitle>Recent Feedback</PanelTitle>
+                <PanelLink href="/projects">View all</PanelLink>
               </PanelHeader>
-              <ActionList>
-                <ActionButton href="/projects/new">
-                  <ActionIcon>
-                    <IconPlus />
-                  </ActionIcon>
-                  <span>Create Project</span>
-                </ActionButton>
-                <ActionButton href="/tasks">
-                  <ActionIcon>
-                    <IconCheckCircle />
-                  </ActionIcon>
-                  <span>Add Task</span>
-                </ActionButton>
-                <ActionButton href="/team">
-                  <ActionIcon>
-                    <IconUsers />
-                  </ActionIcon>
-                  <span>Invite Client</span>
-                </ActionButton>
-                <ActionButton href="/projects">
-                  <ActionIcon>
-                    <IconUpload />
-                  </ActionIcon>
-                  <span>Upload File</span>
-                </ActionButton>
-              </ActionList>
-            </Panel>
-          ) : null}
-        </BottomGrid>
+              <FeedbackList>
+                {recentFeedback.length ? (
+                  recentFeedback.slice(0, 1).map((feedback) => {
+                    const tone = getFeedbackTone(feedback.action);
+                    return (
+                      <FeedbackRowCard key={feedback.id}>
+                        <FeedbackAvatar>{feedback.clientName.slice(0, 2).toUpperCase()}</FeedbackAvatar>
+                        <FeedbackCopy>
+                          <FeedbackBody>{feedback.body}</FeedbackBody>
+                          <FeedbackProject>{feedback.projectName}</FeedbackProject>
+                        </FeedbackCopy>
+                        <StatusPill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</StatusPill>
+                      </FeedbackRowCard>
+                    );
+                  })
+                ) : (
+                  <EmptyBlock>
+                    <strong>No feedback yet</strong>
+                    <p>Client comments will appear here once reviews start coming in.</p>
+                  </EmptyBlock>
+                )}
+              </FeedbackList>
+            </MobileOnlyPanel>
+
+            <BottomGrid>
+              <Panel>
+                <PanelHeader>
+                  <PanelTitle>Project Progress Overview</PanelTitle>
+                  <PanelTag>This Month</PanelTag>
+                </PanelHeader>
+                <DonutWrap>
+                  <DonutChart style={{ background: donut }}>
+                    <DonutCenter>
+                      <strong>{projectRows.length}</strong>
+                      <span>Active Projects</span>
+                    </DonutCenter>
+                  </DonutChart>
+                  <LegendList>
+                    <LegendItem>
+                      <LegendDot $color="#5ca16d" />
+                      <span>Completed</span>
+                      <strong>{completedPct}%</strong>
+                    </LegendItem>
+                    <LegendItem>
+                      <LegendDot $color="#1f4339" />
+                      <span>In Progress</span>
+                      <strong>{inProgressPct}%</strong>
+                    </LegendItem>
+                    <LegendItem>
+                      <LegendDot $color="#d69b47" />
+                      <span>In Review</span>
+                      <strong>{reviewPct}%</strong>
+                    </LegendItem>
+                    <LegendItem>
+                      <LegendDot $color="#d3ccc1" />
+                      <span>On Hold</span>
+                      <strong>{holdPct}%</strong>
+                    </LegendItem>
+                  </LegendList>
+                </DonutWrap>
+              </Panel>
+
+              <Panel>
+                <PanelHeader>
+                  <PanelTitle>Recent Client Feedback</PanelTitle>
+                  <PanelLink href="/projects">View all</PanelLink>
+                </PanelHeader>
+                <FeedbackList>
+                  {recentFeedback.length ? (
+                    recentFeedback.map((feedback) => {
+                      const tone = getFeedbackTone(feedback.action);
+                      return (
+                        <FeedbackRowCard key={feedback.id}>
+                          <FeedbackAvatar>{feedback.clientName.slice(0, 2).toUpperCase()}</FeedbackAvatar>
+                          <FeedbackCopy>
+                            <FeedbackBody>{feedback.body}</FeedbackBody>
+                            <FeedbackProject>{feedback.projectName}</FeedbackProject>
+                          </FeedbackCopy>
+                          <StatusPill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</StatusPill>
+                        </FeedbackRowCard>
+                      );
+                    })
+                  ) : (
+                    <EmptyBlock>
+                      <strong>No feedback yet</strong>
+                      <p>Client feedback will appear here once comments start coming in.</p>
+                    </EmptyBlock>
+                  )}
+                </FeedbackList>
+              </Panel>
+
+              <Panel>
+                <PanelHeader>
+                  <PanelTitle>Team Activity</PanelTitle>
+                  <PanelLink href="/team">View all</PanelLink>
+                </PanelHeader>
+                <ActivityList>
+                  {recentActivity.length ? (
+                    recentActivity.map((item) => (
+                      <ActivityRowCard key={item.id}>
+                        <FeedbackAvatar>{item.actor.slice(0, 1).toUpperCase()}</FeedbackAvatar>
+                        <FeedbackCopy>
+                          <FeedbackBody>
+                            {item.actor} {item.detail}
+                          </FeedbackBody>
+                          <FeedbackProject>{item.projectName}</FeedbackProject>
+                        </FeedbackCopy>
+                        <ActivityTime>{timeAgo(item.createdAt)}</ActivityTime>
+                      </ActivityRowCard>
+                    ))
+                  ) : (
+                    <EmptyBlock>
+                      <strong>No recent activity</strong>
+                      <p>File uploads, comments, and feedback updates will appear here.</p>
+                    </EmptyBlock>
+                  )}
+                </ActivityList>
+              </Panel>
+
+              {canManage ? (
+                <Panel>
+                  <PanelHeader>
+                    <PanelTitle>Quick Actions</PanelTitle>
+                  </PanelHeader>
+                  <ActionList>
+                    <ActionButton href="/projects/new">
+                      <ActionIcon>
+                        <IconPlus />
+                      </ActionIcon>
+                      <span>Create Project</span>
+                    </ActionButton>
+                    <ActionButton href="/tasks">
+                      <ActionIcon>
+                        <IconCheckCircle />
+                      </ActionIcon>
+                      <span>Add Task</span>
+                    </ActionButton>
+                    <ActionButton href="/team">
+                      <ActionIcon>
+                        <IconUsers />
+                      </ActionIcon>
+                      <span>Invite Client</span>
+                    </ActionButton>
+                    <ActionButton href="/projects">
+                      <ActionIcon>
+                        <IconUpload />
+                      </ActionIcon>
+                      <span>Upload File</span>
+                    </ActionButton>
+                  </ActionList>
+                </Panel>
+              ) : null}
+            </BottomGrid>
+          </>
+        )}
       </Content>
     </Shell>
   );
@@ -671,10 +721,10 @@ const sideItemCss = css<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 56px;
+  min-height: 40px;
   padding: 0 16px;
   border: 0;
-  border-radius: 18px;
+  border-radius: 10px;
   background: ${({ $active }) => ($active ? "#f5efe5" : "transparent")};
   box-shadow: ${({ $active }) =>
     $active ? "inset 0 0 0 1px rgba(230, 224, 215, 0.9)" : "none"};
@@ -768,7 +818,7 @@ const Eyebrow = styled.p`
 
 const Title = styled.h1`
   margin: 4px 0 6px;
-  font-size: clamp(1.65rem, 4vw, 2.45rem);
+  font-size: clamp(1.45rem, 3vw, 2rem);
   line-height: 1;
   letter-spacing: -0.04em;
 `;
@@ -841,8 +891,8 @@ const StatCard = styled.article`
   ${desktop} {
     grid-template-columns: minmax(0, 1fr) 52px;
     align-items: start;
-    min-height: 120px;
-    padding: 18px 20px;
+    min-height: 100px;
+    padding: 10px 20px;
     border-radius: 20px;
   }
 `;
@@ -984,7 +1034,7 @@ const PanelTag = styled.span`
 
 const ProjectList = styled.div`
   display: grid;
-  gap: 10px;
+  gap: 8px;
 `;
 
 const ProjectRow = styled(Link)`
@@ -993,7 +1043,7 @@ const ProjectRow = styled(Link)`
   gap: 12px;
   align-items: start;
   text-decoration: none;
-  padding: 10px 0;
+  padding: 8px 0;
   border-top: 1px solid rgba(230, 224, 215, 0.65);
 
   &:first-child {
@@ -1002,15 +1052,15 @@ const ProjectRow = styled(Link)`
   }
 
   ${desktop} {
-    grid-template-columns: 74px minmax(0, 1fr);
-    gap: 14px;
-    padding: 12px 0;
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 12px;
+    padding: 10px 0;
   }
 `;
 
 const ProjectMark = styled.div`
-  width: 48px;
-  height: 48px;
+  width: 42px;
+  height: 42px;
   border-radius: 12px;
   display: grid;
   place-items: center;
@@ -1020,60 +1070,43 @@ const ProjectMark = styled.div`
   font-weight: 600;
 
   ${desktop} {
-    width: 56px;
-    height: 56px;
-    border-radius: 14px;
-    font-size: 1.2rem;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    font-size: 1.05rem;
   }
 `;
 
 const ProjectBody = styled.div`
   display: grid;
-  gap: 8px;
+  gap: 6px;
 `;
 
 const ProjectTop = styled.div`
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-`;
-
-const ProjectTitle = styled.strong`
-  display: block;
-  font-size: 0.88rem;
-  line-height: 1.3;
+  display: grid;
+  gap: 8px;
 
   ${desktop} {
-    font-size: 0.92rem;
-  }
-`;
-
-const ProjectSub = styled.p`
-  margin: 2px 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.76rem;
-`;
-
-const DesktopProjectMeta = styled.div`
-  display: none;
-
-  ${desktop} {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1.8fr) repeat(3, minmax(88px, auto));
+    align-items: end;
     gap: 12px;
   }
 `;
 
-const MobileProjectMeta = styled.div`
+const ProjectTitle = styled.strong`
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.2;
+
   ${desktop} {
-    display: none;
+    font-size: 0.86rem;
   }
 `;
 
 const MetaGroup = styled.div`
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  align-content: start;
 `;
 
 const MetaLabel = styled.span`
@@ -1085,29 +1118,19 @@ const MetaLabel = styled.span`
 `;
 
 const MetaValue = styled.strong`
-  font-size: 0.82rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
 `;
 
-const ProjectBottom = styled.div`
+const ProgressRow = styled.div<{ $barOnly?: boolean }>`
   display: grid;
-  gap: 6px;
-`;
-
-const StageName = styled.span`
-  color: var(--color-text);
-  font-size: 0.76rem;
-  font-weight: 600;
-`;
-
-const ProgressRow = styled.div`
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   align-items: center;
 `;
 
 const ProgressBar = styled.div`
-  height: 6px;
+  height: 5px;
   border-radius: 999px;
   background: #ece7df;
   overflow: hidden;
@@ -1119,10 +1142,9 @@ const ProgressFill = styled.div`
   background: linear-gradient(90deg, #83c37d, #4f8f5e);
 `;
 
-const ProgressValue = styled.span`
-  color: var(--color-text);
-  font-size: 0.76rem;
-  font-weight: 700;
+const ProjectStatusRow = styled.div`
+  display: flex;
+  justify-content: flex-start;
 `;
 
 const StatusPill = styled.span`
@@ -1137,32 +1159,9 @@ const StatusPill = styled.span`
   white-space: nowrap;
 `;
 
-const AvatarStack = styled.div`
-  display: flex;
-  align-items: center;
-`;
-
-const Avatar = styled.span<{ $muted?: boolean }>`
-  width: 26px;
-  height: 26px;
-  margin-left: -8px;
-  border: 2px solid #fff;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: ${({ $muted }) => ($muted ? "#f5efe5" : "#d9cfbf")};
-  color: ${({ $muted }) => ($muted ? "var(--color-text-muted)" : "#fff")};
-  font-size: 0.64rem;
-  font-weight: 700;
-
-  &:first-child {
-    margin-left: 0;
-  }
-`;
-
 const TaskList = styled.div`
   display: grid;
-  gap: 12px;
+  gap: 10px;
 `;
 
 const TaskRow = styled(Link)`
@@ -1171,6 +1170,7 @@ const TaskRow = styled(Link)`
   gap: 10px;
   align-items: start;
   text-decoration: none;
+  padding: 2px 0;
 `;
 
 const TaskCircle = styled.span<{ $urgent: boolean }>`
@@ -1183,24 +1183,53 @@ const TaskCircle = styled.span<{ $urgent: boolean }>`
 
 const TaskCopy = styled.div`
   display: grid;
-  gap: 4px;
+  gap: 2px;
 `;
 
 const TaskTitle = styled.strong`
-  font-size: 0.88rem;
-  line-height: 1.25;
+  font-size: 0.84rem;
+  line-height: 1.2;
 `;
 
 const TaskSub = styled.p`
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
 `;
 
 const TaskDate = styled.span`
   color: #da6a43;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 700;
+`;
+
+const PanelPagination = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
+`;
+
+const PageButton = styled.button`
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text);
+  font-size: 0.74rem;
+  font-weight: 700;
+
+  &:disabled {
+    opacity: 0.45;
+  }
+`;
+
+const PageMeta = styled.span`
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
 `;
 
 const DonutWrap = styled.div`
@@ -1210,16 +1239,16 @@ const DonutWrap = styled.div`
 `;
 
 const DonutChart = styled.div`
-  width: 170px;
-  height: 170px;
+  width: 150px;
+  height: 150px;
   border-radius: 999px;
   display: grid;
   place-items: center;
 `;
 
 const DonutCenter = styled.div`
-  width: 151px;
-  height: 151px;
+  width: 141px;
+  height: 141px;
   border-radius: 999px;
   display: flex;
   flex-direction: column;

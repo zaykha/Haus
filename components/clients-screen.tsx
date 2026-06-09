@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
+import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
 import { formatRole } from "@/lib/display";
 import { canCreateClient } from "@/lib/permissions";
 
 type ClientFilter = "all" | "active" | "feedback" | "approvals" | "inactive";
-type ClientStatus = "active" | "waiting_feedback" | "approval_needed" | "onboarding" | "inactive";
+const PAGE_SIZE = 6;
 
 type ClientRow = {
   id: string;
@@ -17,10 +18,15 @@ type ClientRow = {
   email: string;
   company: string;
   projectCount: number;
-  status: ClientStatus;
   lastActivityDate: string | null;
   lastActivityLabel: string;
-  pendingItems: string;
+  pendingCount: number;
+  pendingProjects: Array<{
+    id: string;
+    name: string;
+    status: "review" | "revision";
+    dueDate: string;
+  }>;
   latestFeedback: Array<{
     id: string;
     body: string;
@@ -71,60 +77,15 @@ function getProjectMark(name: string) {
   return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
 }
 
-function getClientStatus(projects: Array<{ status: string; feedbackCount: number }>): ClientStatus {
-  if (!projects.length) {
-    return "inactive";
-  }
-
-  if (projects.some((project) => project.status === "revision")) {
-    return "approval_needed";
-  }
-
-  if (projects.some((project) => project.status === "review")) {
-    return "waiting_feedback";
-  }
-
-  if (projects.every((project) => project.status === "done")) {
-    return "inactive";
-  }
-
-  if (projects.length <= 1) {
-    return "onboarding";
-  }
-
-  return "active";
-}
-
-function getStatusTone(status: ClientStatus) {
-  switch (status) {
-    case "active":
-      return { bg: "#e5f4e8", fg: "#5ca16d", label: "Active" };
-    case "waiting_feedback":
-      return { bg: "#fff1da", fg: "#ca8a22", label: "Waiting Feedback" };
-    case "approval_needed":
-      return { bg: "#ffe7e5", fg: "#e06457", label: "Approval Needed" };
-    case "onboarding":
-      return { bg: "#e9ecff", fg: "#6d7fe2", label: "Onboarding" };
-    default:
-      return { bg: "#f4f1ed", fg: "#8d857b", label: "Inactive" };
-  }
-}
-
-function getFeedbackTone(action: "approve" | "request_revision" | "comment") {
-  switch (action) {
-    case "approve":
-      return { bg: "#e5f4e8", fg: "#5ca16d", label: "Positive" };
-    case "request_revision":
-      return { bg: "#ffe7e5", fg: "#e06457", label: "Negative" };
-    default:
-      return { bg: "#fff1da", fg: "#ca8a22", label: "Neutral" };
-  }
-}
-
 export function ClientsScreen() {
   const { state, user } = useAppState();
+  const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ClientFilter>("all");
+  const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<ClientRow | null>(null);
 
   if (!user) {
     return null;
@@ -134,16 +95,26 @@ export function ClientsScreen() {
   const canManage = canCreateClient(user.role);
 
   const clients = useMemo<ClientRow[]>(() => {
-    return state.users
-      .filter((member) => member.role === "client")
+    const existingClients = state.users.filter((member) => member.role === "client");
+    const knownEmails = new Set(existingClients.map((member) => member.email.toLowerCase()));
+    const acceptedInviteClients = state.invitations
+      .filter(
+        (invitation) =>
+          invitation.role === "client" &&
+          invitation.status === "accepted" &&
+          !knownEmails.has(invitation.email.toLowerCase()),
+      )
+      .map((invitation) => ({
+        id: `accepted-invite:${invitation.id}`,
+        name: invitation.name,
+        email: invitation.email,
+        role: invitation.role,
+        company: "Client account",
+      }));
+
+    return [...existingClients, ...acceptedInviteClients]
       .map((client) => {
         const clientProjects = state.projects.filter((project) => project.clientId === client.id);
-        const status = getClientStatus(
-          clientProjects.map((project) => ({
-            status: project.status,
-            feedbackCount: project.feedback.length,
-          })),
-        );
 
         const latestProject = [...clientProjects].sort(
           (a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime(),
@@ -160,35 +131,39 @@ export function ClientsScreen() {
           )
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-        const pendingApprovals = clientProjects.filter((project) => project.status === "revision").length;
-        const pendingFeedback = clientProjects.filter((project) => project.status === "review").length;
+        const pendingProjects = clientProjects
+          .filter(
+            (project): project is typeof project & { status: "review" | "revision" } =>
+              project.status === "review" || project.status === "revision",
+          )
+          .map((project) => ({
+            id: project.id,
+            name: project.name,
+            status: project.status,
+            dueDate: project.dueDate,
+          }));
 
         return {
           id: client.id,
-          name: client.company ?? client.name,
+          name: client.name,
           email: client.email,
           company: client.company ?? "Client account",
           projectCount: clientProjects.length,
-          status,
           lastActivityDate: latestFeedback[0]?.createdAt ?? latestProject?.dueDate ?? null,
           lastActivityLabel:
             latestFeedback[0]?.action === "approve"
               ? "Logo concepts approved"
               : latestFeedback[0]?.action === "request_revision"
                 ? "Feedback requested"
-                : latestProject
+              : latestProject
                   ? `${latestProject.name} updated`
                   : "No recent activity",
-          pendingItems:
-            pendingApprovals > 0
-              ? `${pendingApprovals} approval${pendingApprovals > 1 ? "s" : ""}`
-              : pendingFeedback > 0
-                ? `${pendingFeedback} feedback`
-                : "—",
+          pendingCount: pendingProjects.length,
+          pendingProjects,
           latestFeedback,
         };
       });
-  }, [state.projects, state.users]);
+  }, [state.invitations, state.projects, state.users]);
 
   const filteredClients = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -203,34 +178,92 @@ export function ClientsScreen() {
         filter === "all"
           ? true
           : filter === "feedback"
-            ? client.status === "waiting_feedback"
-            : filter === "approvals"
-              ? client.status === "approval_needed"
-              : client.status === filter;
+            ? client.pendingProjects.some((project) => project.status === "review")
+          : filter === "approvals"
+              ? client.pendingProjects.some((project) => project.status === "revision")
+              : filter === "active"
+                ? client.projectCount > 0 && client.pendingCount === 0
+                : client.projectCount === 0;
 
       return matchesSearch && matchesFilter;
     });
   }, [clients, filter, search]);
 
-  const activeCount = clients.filter((client) => client.status === "active").length;
-  const pendingFeedbackCount = clients.filter((client) => client.status === "waiting_feedback").length;
-  const approvalsCount = clients.filter((client) => client.status === "approval_needed").length;
-  const newCount = clients.filter((client) => client.status === "onboarding").length;
+  const totalCount = clients.length;
+  const activeCount = clients.filter((client) => client.projectCount > 0 && client.pendingCount === 0).length;
+  const pendingFeedbackCount = clients.filter((client) =>
+    client.pendingProjects.some((project) => project.status === "review"),
+  ).length;
+  const approvalsCount = clients.filter((client) =>
+    client.pendingProjects.some((project) => project.status === "revision"),
+  ).length;
 
-  const recentFeedback = filteredClients
-    .flatMap((client) =>
-      client.latestFeedback.map((feedback) => ({
-        ...feedback,
-        clientName: client.name,
-      })),
-    )
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 3);
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSearch(searchDraft);
+    setCurrentPage(1);
+  };
 
-  const activityRows = filteredClients.slice(0, 4);
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE));
+  const paginatedClients = filteredClients.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+  const rangeStart = filteredClients.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0;
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, filteredClients.length);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   return (
     <Shell>
+      {selectedClient ? (
+        <ClientDetailsOverlay onClick={() => setSelectedClient(null)}>
+          <ClientDetailsCard onClick={(event) => event.stopPropagation()}>
+            <DialogHeader>
+              <div>
+                <PanelTitle>{selectedClient.company}</PanelTitle>
+                <ClientMeta>
+                  {selectedClient.name} · {selectedClient.email}
+                </ClientMeta>
+              </div>
+              <DialogHeaderActions>
+                <DatePill>{formatDate(selectedClient.lastActivityDate)}</DatePill>
+                <DialogCloseButton type="button" onClick={() => setSelectedClient(null)}>
+                  Close
+                </DialogCloseButton>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogSection>
+              <DialogLabel>Pending items</DialogLabel>
+              {selectedClient.pendingProjects.length ? (
+                <DialogList>
+                  {selectedClient.pendingProjects.map((project) => (
+                    <DialogRow key={project.id}>
+                      <div>
+                        <DialogProjectName>{project.name}</DialogProjectName>
+                        <ClientMeta>
+                          {project.status === "revision" ? "Approval needed" : "Waiting feedback"} ·{" "}
+                          {formatShortDate(project.dueDate)}
+                        </ClientMeta>
+                      </div>
+                      <DialogLink href={`/projects/${project.id}`}>Open project</DialogLink>
+                    </DialogRow>
+                  ))}
+                </DialogList>
+              ) : (
+                <ClientMeta>No pending items for this client.</ClientMeta>
+              )}
+            </DialogSection>
+          </ClientDetailsCard>
+        </ClientDetailsOverlay>
+      ) : null}
+      <InviteWorkspaceModal
+        open={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        variant="client"
+      />
       <AppSidebar user={user} activeLabel="Clients" />
 
       <Content>
@@ -250,19 +283,50 @@ export function ClientsScreen() {
         </Header>
 
         <Toolbar>
-          <SearchWrap>
-            <SearchIcon>
-              <IconSearch />
-            </SearchIcon>
-            <SearchInput
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search clients, companies, or contacts..."
-            />
-          </SearchWrap>
+          <SearchControls onSubmit={handleSearchSubmit}>
+            <SearchWrap>
+              <SearchInput
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                placeholder="Search clients, companies, or contacts..."
+              />
+            </SearchWrap>
+            <FilterMenuWrap>
+              <FilterButton
+                type="button"
+                aria-label="Open filters"
+                aria-expanded={showFilters}
+                onClick={() => setShowFilters((current) => !current)}
+              >
+                <ActionIcon>
+                  <IconFilter />
+                </ActionIcon>
+              </FilterButton>
+              {showFilters ? (
+                <FilterPopup>
+                  <FilterPopupTitle>Filter clients</FilterPopupTitle>
+                  <FilterSelect
+                    value={filter}
+                    onChange={(event) => setFilter(event.target.value as ClientFilter)}
+                  >
+                    {filterOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </FilterSelect>
+                </FilterPopup>
+              ) : null}
+            </FilterMenuWrap>
+            <SearchButton type="submit" aria-label="Search clients">
+              <ActionIcon>
+                <IconSearch />
+              </ActionIcon>
+            </SearchButton>
+          </SearchControls>
 
           {canManage ? (
-            <InviteButton type="button">
+            <InviteButton type="button" onClick={() => setShowInviteModal(true)}>
               <ActionIcon>
                 <IconPlus />
               </ActionIcon>
@@ -277,8 +341,8 @@ export function ClientsScreen() {
               <IconUsers />
             </StatIcon>
             <StatCopy>
-              <StatValue>{activeCount}</StatValue>
-              <StatLabel>Active Clients</StatLabel>
+              <StatValue>{totalCount}</StatValue>
+              <StatLabel>Total Clients</StatLabel>
             </StatCopy>
           </StatCard>
           <StatCard>
@@ -287,7 +351,7 @@ export function ClientsScreen() {
             </StatIcon>
             <StatCopy>
               <StatValue>{pendingFeedbackCount}</StatValue>
-              <StatLabel>Pending</StatLabel>
+              <StatLabel>Awaiting Feedback</StatLabel>
             </StatCopy>
           </StatCard>
           <StatCard>
@@ -304,81 +368,42 @@ export function ClientsScreen() {
               <IconSpark />
             </StatIcon>
             <StatCopy>
-              <StatValue>{newCount}</StatValue>
-              <StatLabel>New</StatLabel>
+              <StatValue>{activeCount}</StatValue>
+              <StatLabel>Active Clients</StatLabel>
             </StatCopy>
           </StatCard>
         </StatsRow>
 
-        <FilterBar>
-          <FilterScroll>
-            {filterOptions.map((option) => (
-              <FilterChip
-                key={option.key}
-                type="button"
-                $active={filter === option.key}
-                onClick={() => setFilter(option.key)}
-              >
-                {option.label}
-              </FilterChip>
-            ))}
-          </FilterScroll>
-
-          <DesktopControls>
-            <GhostButton type="button">
-              <ActionIcon>
-                <IconFilter />
-              </ActionIcon>
-              <span>Filter</span>
-            </GhostButton>
-            <SortBadge>Sort: Last activity</SortBadge>
-          </DesktopControls>
-        </FilterBar>
-
         <DesktopPanel>
           <TableHeader>
             <span>Client</span>
-            <span>Company</span>
-            <span>Active Projects</span>
-            <span>Main Contact</span>
-            <span>Status</span>
+            <span>Projects</span>
             <span>Last Activity</span>
-            <span>Pending Items</span>
-            <span />
+            <span>Pending</span>
           </TableHeader>
 
           <TableBody>
-            {filteredClients.length ? (
-              filteredClients.map((client) => {
-                const tone = getStatusTone(client.status);
+            {paginatedClients.length ? (
+              paginatedClients.map((client) => {
                 return (
-                  <DesktopRow key={client.id}>
+                  <DesktopRow key={client.id} onClick={() => setSelectedClient(client)}>
                     <ClientCell>
-                      <ClientMark>{getProjectMark(client.name)}</ClientMark>
+                      <ClientMark>{getProjectMark(client.company)}</ClientMark>
                       <ClientCopy>
-                        <ClientName>{client.name}</ClientName>
                         <ClientMeta>{client.company}</ClientMeta>
+                        <ClientName>{client.name}</ClientName>
+                        <ClientMeta>{client.email}</ClientMeta>
                       </ClientCopy>
                     </ClientCell>
-                    <MetaColumn>
-                      <ClientMeta>{client.company}</ClientMeta>
-                      <ClientMeta>{client.email}</ClientMeta>
-                    </MetaColumn>
                     <CountCell>{client.projectCount}</CountCell>
                     <MetaColumn>
-                      <ContactAvatar>{client.name.slice(0, 1)}</ContactAvatar>
-                      <div>
-                        <ClientMeta>{client.name}</ClientMeta>
-                        <ClientMeta>{client.email}</ClientMeta>
-                      </div>
+                      <DatePill>{formatDate(client.lastActivityDate)}</DatePill>
                     </MetaColumn>
-                    <Pill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</Pill>
                     <MetaColumn>
-                      <ClientMeta>{formatDate(client.lastActivityDate)}</ClientMeta>
-                      <ClientMeta>{client.lastActivityLabel}</ClientMeta>
+                      <PendingPill $active={client.pendingCount > 0}>
+                        {client.pendingCount ? `${client.pendingCount} pending` : "Clear"}
+                      </PendingPill>
                     </MetaColumn>
-                    <PendingText>{client.pendingItems}</PendingText>
-                    <MoreButton>...</MoreButton>
                   </DesktopRow>
                 );
               })
@@ -389,25 +414,51 @@ export function ClientsScreen() {
               </EmptyState>
             )}
           </TableBody>
+          <TableFooter>
+            <span>
+              Showing {rangeStart} to {rangeEnd} of {filteredClients.length} clients
+            </span>
+            <Pagination>
+              <PageButton
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                Last
+              </PageButton>
+              <PageButton $active type="button">
+                {currentPage}
+              </PageButton>
+              <PageButton
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </PageButton>
+            </Pagination>
+          </TableFooter>
         </DesktopPanel>
 
         <MobileList>
-          {filteredClients.length ? (
-            filteredClients.map((client) => {
-              const tone = getStatusTone(client.status);
+          {paginatedClients.length ? (
+            paginatedClients.map((client) => {
               return (
-                <MobileCard key={client.id}>
+                <MobileCard key={client.id} onClick={() => setSelectedClient(client)}>
                   <MobileTop>
-                    <ClientMark>{getProjectMark(client.name)}</ClientMark>
+                    <ClientMark>{getProjectMark(client.company)}</ClientMark>
                     <ClientCopy>
+                      <ClientMeta>{client.company}</ClientMeta>
                       <ClientName>{client.name}</ClientName>
                       <ClientMeta>{client.email}</ClientMeta>
                       <ClientMeta>{client.projectCount} projects</ClientMeta>
                     </ClientCopy>
-                    <Pill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</Pill>
+                    <PendingPill $active={client.pendingCount > 0}>
+                      {client.pendingCount ? `${client.pendingCount} pending` : "Clear"}
+                    </PendingPill>
                   </MobileTop>
                   <MobileBottom>
-                    <ClientMeta>{formatShortDate(client.lastActivityDate)}</ClientMeta>
+                    <DatePill>{formatShortDate(client.lastActivityDate)}</DatePill>
                     <ClientMeta>{client.lastActivityLabel}</ClientMeta>
                     <ArrowWrap>
                       <IconArrowRight />
@@ -423,127 +474,6 @@ export function ClientsScreen() {
             </EmptyState>
           )}
         </MobileList>
-
-        <MobileFeedbackPanel>
-          <PanelHeader>
-            <PanelTitle>Recent Feedback</PanelTitle>
-            <PanelLink href="/projects">View all</PanelLink>
-          </PanelHeader>
-          <FeedbackList>
-            {recentFeedback.length ? (
-              recentFeedback.slice(0, 1).map((feedback) => {
-                const tone = getFeedbackTone(feedback.action);
-                return (
-                  <FeedbackRow key={feedback.id}>
-                    <ClientMark>{getProjectMark(feedback.clientName)}</ClientMark>
-                    <FeedbackCopy>
-                      <FeedbackBody>{feedback.body}</FeedbackBody>
-                      <ClientMeta>{formatShortDate(feedback.createdAt)}</ClientMeta>
-                    </FeedbackCopy>
-                    <Pill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</Pill>
-                  </FeedbackRow>
-                );
-              })
-            ) : (
-              <EmptyState>
-                <strong>No feedback yet</strong>
-                <p>Recent client feedback will appear here.</p>
-              </EmptyState>
-            )}
-          </FeedbackList>
-        </MobileFeedbackPanel>
-
-        <DesktopBottom>
-          <Panel>
-            <PanelHeader>
-              <PanelTitle>Recent Client Feedback</PanelTitle>
-              <PanelLink href="/projects">View all</PanelLink>
-            </PanelHeader>
-            <FeedbackList>
-              {recentFeedback.length ? (
-                recentFeedback.map((feedback) => {
-                  const tone = getFeedbackTone(feedback.action);
-                  return (
-                    <FeedbackRow key={feedback.id}>
-                      <ClientMark>{getProjectMark(feedback.clientName)}</ClientMark>
-                      <FeedbackCopy>
-                        <FeedbackBody>{feedback.body}</FeedbackBody>
-                        <ClientMeta>{feedback.clientName}</ClientMeta>
-                        <ClientMeta>{formatShortDate(feedback.createdAt)}</ClientMeta>
-                      </FeedbackCopy>
-                      <Pill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</Pill>
-                    </FeedbackRow>
-                  );
-                })
-              ) : (
-                <EmptyState>
-                  <strong>No feedback yet</strong>
-                  <p>Recent client feedback will appear here.</p>
-                </EmptyState>
-              )}
-            </FeedbackList>
-            <FooterLink href="/projects">
-              <span>View all feedback</span>
-              <IconArrowRight />
-            </FooterLink>
-          </Panel>
-
-          <Panel>
-            <PanelHeader>
-              <PanelTitle>Client Activity</PanelTitle>
-              <PanelLink href="/projects">View all</PanelLink>
-            </PanelHeader>
-            <ActivityList>
-              {activityRows.length ? (
-                activityRows.map((client) => (
-                  <ActivityRow key={client.id}>
-                    <ContactAvatar>{client.name.slice(0, 1)}</ContactAvatar>
-                    <FeedbackCopy>
-                      <FeedbackBody>{client.name} reviewed recent work</FeedbackBody>
-                      <ClientMeta>{client.lastActivityLabel}</ClientMeta>
-                    </FeedbackCopy>
-                    <ClientMeta>{formatDate(client.lastActivityDate)}</ClientMeta>
-                  </ActivityRow>
-                ))
-              ) : (
-                <EmptyState>
-                  <strong>No client activity</strong>
-                  <p>Client actions will appear here as feedback comes in.</p>
-                </EmptyState>
-              )}
-            </ActivityList>
-          </Panel>
-
-          {canManage ? (
-            <QuickActions>
-              <PanelTitle>Quick Actions</PanelTitle>
-              <QuickButton href="/team" $primary>
-                <ActionIcon>
-                  <IconPlus />
-                </ActionIcon>
-                <span>Invite Client</span>
-              </QuickButton>
-              <QuickButton href="/team">
-                <ActionIcon>
-                  <IconUser />
-                </ActionIcon>
-                <span>Add Contact</span>
-              </QuickButton>
-              <QuickButton href="/projects">
-                <ActionIcon>
-                  <IconUpload />
-                </ActionIcon>
-                <span>Upload File</span>
-              </QuickButton>
-              <QuickButton href="/projects/new">
-                <ActionIcon>
-                  <IconFolder />
-                </ActionIcon>
-                <span>Create Project</span>
-              </QuickButton>
-            </QuickActions>
-          ) : null}
-        </DesktopBottom>
       </Content>
     </Shell>
   );
@@ -603,7 +533,7 @@ const Eyebrow = styled.p`
 
 const Title = styled.h1`
   margin: 4px 0 6px;
-  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  font-size: clamp(1.45rem, 3vw, 2rem);
   line-height: 1;
   letter-spacing: -0.04em;
 `;
@@ -666,53 +596,100 @@ const Toolbar = styled.section`
   }
 `;
 
-const SearchWrap = styled.div`
-  position: relative;
+const SearchControls = styled.form`
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
 
   ${desktop} {
     flex: 1;
   }
 `;
 
-const SearchIcon = styled.span`
-  position: absolute;
-  left: 18px;
-  top: 50%;
-  width: 18px;
-  height: 18px;
-  transform: translateY(-50%);
-  color: var(--color-text-light);
+const SearchWrap = styled.div`
+  flex: 1;
 
-  svg {
-    width: 100%;
-    height: 100%;
+  ${desktop} {
+    min-width: 0;
   }
 `;
 
 const SearchInput = styled.input`
   width: 100%;
-  min-height: 56px;
-  padding: 0 18px 0 46px;
+  min-height: 40px;
+  padding: 0 18px;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 18px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow-sm);
   color: var(--color-text);
   font-size: 0.94rem;
 `;
 
+const FilterMenuWrap = styled.div`
+  position: relative;
+`;
+
+const FilterButton = styled.button`
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text);
+`;
+
+const SearchButton = styled(FilterButton)`
+  background: #1f4339;
+  color: #fff;
+`;
+
+const FilterPopup = styled.div`
+  ${cardSurface}
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 10;
+  width: min(260px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+`;
+
+const FilterPopupTitle = styled.strong`
+  font-size: 0.9rem;
+  color: var(--color-text);
+`;
+
+const FilterSelect = styled.select`
+  width: 100%;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--color-text);
+`;
+
 const InviteButton = styled.button`
-  min-height: 56px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 0 20px;
+  padding: 0 16px;
   border: 0;
-  border-radius: 16px;
+  border-radius: 10px;
   background: #1f4339;
   color: #fff;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 700;
   box-shadow: 0 14px 26px rgba(31, 68, 57, 0.16);
 
@@ -803,79 +780,6 @@ const StatLabel = styled.span`
   font-weight: 600;
 `;
 
-const FilterBar = styled.section`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-
-  ${desktop} {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-`;
-
-const FilterScroll = styled.div`
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
-`;
-
-const FilterChip = styled.button<{ $active: boolean }>`
-  flex: 0 0 auto;
-  min-height: 36px;
-  padding: 0 16px;
-  border-radius: 999px;
-  border: 1px solid ${({ $active }) => ($active ? "rgba(24, 62, 51, 0.16)" : "var(--color-border)")};
-  background: ${({ $active }) => ($active ? "#203f35" : "rgba(255, 255, 255, 0.92)")};
-  color: ${({ $active }) => ($active ? "#fff" : "var(--color-text)")};
-  font-size: 0.84rem;
-  font-weight: 600;
-`;
-
-const DesktopControls = styled.div`
-  display: none;
-
-  ${desktop} {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-`;
-
-const GhostButton = styled.button`
-  min-height: 42px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
-  color: var(--color-text);
-  font-size: 0.88rem;
-  font-weight: 600;
-`;
-
-const SortBadge = styled.span`
-  min-height: 42px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 16px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
-  color: var(--color-text);
-  font-size: 0.88rem;
-  font-weight: 600;
-`;
-
 const DesktopPanel = styled.section`
   ${cardSurface}
   display: none;
@@ -902,8 +806,13 @@ const TableHeader = styled.div`
     flex: 1;
   }
 
-  span:last-child {
-    flex: 0 0 48px;
+  span:first-child {
+    flex: 1.4;
+  }
+
+  span:nth-child(2) {
+    flex: 0 0 110px;
+    text-align: center;
   }
 `;
 
@@ -912,12 +821,45 @@ const TableBody = styled.div`
   flex-direction: column;
 `;
 
+const TableFooter = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px;
+  border-top: 1px solid rgba(230, 224, 215, 0.8);
+  color: var(--color-text-muted);
+  font-size: 0.86rem;
+`;
+
+const Pagination = styled.div`
+  display: flex;
+  gap: 8px;
+`;
+
+const PageButton = styled.button<{ $active?: boolean }>`
+  min-width: 38px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 12px;
+  background: ${({ $active }) => ($active ? "#1f4339" : "#fff")};
+  color: ${({ $active }) => ($active ? "#fff" : "var(--color-text)")};
+  font-size: 0.9rem;
+  font-weight: 700;
+
+  &:disabled {
+    opacity: 0.45;
+  }
+`;
+
 const DesktopRow = styled.article`
   display: flex;
   align-items: center;
   gap: 18px;
   padding: 16px 18px;
   border-top: 1px solid rgba(230, 224, 215, 0.8);
+  cursor: pointer;
 `;
 
 const ClientCell = styled.div`
@@ -962,36 +904,6 @@ const CountCell = styled.div`
   text-align: center;
 `;
 
-const ContactAvatar = styled.span`
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: #ded6c8;
-  color: #fff;
-  font-size: 0.78rem;
-  font-weight: 700;
-`;
-
-const PendingText = styled.span`
-  flex: 0 0 110px;
-  color: #e06457;
-  font-size: 0.84rem;
-  font-weight: 700;
-`;
-
-const MoreButton = styled.button`
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 14px;
-  background: #fff;
-  color: var(--color-text-muted);
-  font-size: 1rem;
-  font-weight: 700;
-`;
-
 const MobileList = styled.div`
   display: flex;
   flex-direction: column;
@@ -1009,6 +921,7 @@ const MobileCard = styled.article`
   gap: 12px;
   padding: 16px;
   border-radius: 20px;
+  cursor: pointer;
 `;
 
 const MobileTop = styled.div`
@@ -1048,132 +961,9 @@ const ArrowWrap = styled.span`
   }
 `;
 
-const MobileFeedbackPanel = styled.section`
-  ${cardSurface}
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 20px;
-
-  ${desktop} {
-    display: none;
-  }
-`;
-
-const DesktopBottom = styled.section`
-  display: none;
-
-  ${desktop} {
-    display: flex;
-    gap: 16px;
-    align-items: stretch;
-  }
-`;
-
-const Panel = styled.section`
-  ${cardSurface}
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 22px;
-`;
-
-const QuickActions = styled(Panel)`
-  flex: 0 0 280px;
-`;
-
-const PanelHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-`;
-
 const PanelTitle = styled.h2`
   margin: 0;
   font-size: 0.96rem;
-`;
-
-const PanelLink = styled(Link)`
-  color: var(--color-text-muted);
-  font-size: 0.82rem;
-  font-weight: 600;
-  text-decoration: none;
-`;
-
-const FeedbackList = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`;
-
-const FeedbackRow = styled.article`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-`;
-
-const FeedbackCopy = styled.div`
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
-
-const FeedbackBody = styled.p`
-  margin: 0;
-  color: var(--color-text);
-  font-size: 0.88rem;
-  line-height: 1.4;
-`;
-
-const ActivityList = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`;
-
-const ActivityRow = styled.article`
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-`;
-
-const QuickButton = styled(Link)<{ $primary?: boolean }>`
-  min-height: 46px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 0 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  background: ${({ $primary }) => ($primary ? "#1f4339" : "#fff")};
-  color: ${({ $primary }) => ($primary ? "#fff" : "var(--color-text)")};
-  font-size: 0.86rem;
-  font-weight: 700;
-  text-decoration: none;
-`;
-
-const FooterLink = styled(Link)`
-  margin-top: 4px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  align-self: flex-end;
-  color: var(--color-text);
-  font-size: 0.86rem;
-  font-weight: 600;
-  text-decoration: none;
-
-  svg {
-    width: 16px;
-    height: 16px;
-  }
 `;
 
 const Pill = styled.span`
@@ -1186,6 +976,100 @@ const Pill = styled.span`
   font-size: 0.74rem;
   font-weight: 700;
   white-space: nowrap;
+`;
+
+const DatePill = styled(Pill)`
+  background: rgba(244, 241, 237, 0.9);
+  color: var(--color-text);
+`;
+
+const PendingPill = styled(Pill)<{ $active?: boolean }>`
+  background: ${({ $active }) => ($active ? "#ffe7e5" : "#e5f4e8")};
+  color: ${({ $active }) => ($active ? "#e06457" : "#5ca16d")};
+`;
+
+const ClientDetailsOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(21, 18, 13, 0.4);
+`;
+
+const ClientDetailsCard = styled.div`
+  ${cardSurface}
+  width: min(540px, calc(100vw - 32px));
+  border-radius: 24px;
+`;
+
+const DialogHeader = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 20px 0;
+`;
+
+const DialogHeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+`;
+
+const DialogSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+`;
+
+const DialogLabel = styled.strong`
+  font-size: 0.9rem;
+  color: var(--color-text);
+`;
+
+const DialogList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const DialogRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+`;
+
+const DialogProjectName = styled.strong`
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.9rem;
+`;
+
+const DialogLink = styled(Link)`
+  color: var(--color-text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-decoration: none;
+`;
+
+const DialogCloseButton = styled.button`
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-text);
+  font-size: 0.82rem;
+  font-weight: 700;
 `;
 
 const ActionIcon = styled.span`
@@ -1259,15 +1143,6 @@ function IconUsers() {
   );
 }
 
-function IconUser() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="8" r="3.5" />
-      <path d="M5.5 19a6.5 6.5 0 0 1 13 0" />
-    </svg>
-  );
-}
-
 function IconFolder() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1314,16 +1189,6 @@ function IconFilter() {
       <path d="M4 6h16" />
       <path d="M7 12h10" />
       <path d="M10 18h4" />
-    </svg>
-  );
-}
-
-function IconUpload() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 16V6" />
-      <path d="m8 10 4-4 4 4" />
-      <path d="M5 18.5h14" />
     </svg>
   );
 }

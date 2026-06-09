@@ -12,12 +12,10 @@ const desktop = "@media (min-width: 768px)";
 
 const initialValues: ProjectFormValues = {
   name: "",
-  imageUrl: "",
   description: "",
   category: "Brand Identity",
   dueDate: "2026-06-30",
   clientId: "",
-  staffIds: [],
 };
 
 export function ProjectCreateScreen() {
@@ -30,17 +28,14 @@ export function ProjectCreateScreen() {
 
   const canManage = canCreateProject(user.role);
   const clients = state.users.filter((candidate) => candidate.role === "client");
-  const staff = state.users.filter((candidate) => candidate.role !== "client");
 
   const handleSubmit = async (values: ProjectFormValues) => {
-    const project = createProject({
+    const project = await createProject({
       name: values.name,
-      imageUrl: values.imageUrl,
       description: values.description,
       category: values.category,
       dueDate: values.dueDate,
       clientId: values.clientId,
-      staffIds: values.staffIds,
     });
 
     router.push(`/projects/${project.id}`);
@@ -55,27 +50,19 @@ export function ProjectCreateScreen() {
           <Eyebrow>{formatRole(user.role).toUpperCase()}</Eyebrow>
           <Title>Create project</Title>
           <Subtitle>
-            Create a new project workspace, assign the client, choose staff, and set the first
-            delivery timeline.
+            Create the project workspace first, then link client, company, and team when you are
+            ready.
           </Subtitle>
         </Header>
 
         {canManage ? (
-          clients.length && staff.length ? (
-            <ProjectForm
-              initialValues={initialValues}
-              clients={clients}
-              staff={staff}
-              submitLabel="Create Project"
-              onSubmit={handleSubmit}
-              onCancel={() => router.push("/projects")}
-            />
-          ) : (
-            <EmptyCard>
-              <strong>Project setup needs users first</strong>
-              <p>Add at least one client and one internal team member before creating a project.</p>
-            </EmptyCard>
-          )
+          <ProjectForm
+            initialValues={initialValues}
+            clients={clients}
+            submitLabel="Create Project"
+            onSubmit={handleSubmit}
+            onCancel={() => router.push("/projects")}
+          />
         ) : (
           <EmptyCard>
             <strong>Access restricted</strong>
