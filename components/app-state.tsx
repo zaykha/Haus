@@ -7,7 +7,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import type { User as AuthUser } from "@supabase/supabase-js";
+import type { SupabaseClient, User as AuthUser } from "@supabase/supabase-js";
 import { initialAppState } from "@/lib/mock-data";
 import { appMode } from "@/lib/config";
 import {
@@ -259,7 +259,15 @@ function ensureAuthorized(condition: boolean, message: string) {
     throw new Error(message);
   }
 }
+function getWorkspaceSupabase(): SupabaseClient {
+  const supabase = getSupabaseBrowserClient();
 
+  if (!supabase) {
+    throw new Error("Supabase client is not configured");
+  }
+
+  return supabase as unknown as SupabaseClient;
+}
 function ensureInternalAssignee(users: User[], assigneeId: string) {
   return users.some((candidate) => candidate.id === assigneeId && candidate.role !== "client");
 }
@@ -311,23 +319,28 @@ function toAppUser(profile: ProfileRecord): User {
 }
 
 async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
-  const supabase = getSupabaseBrowserClient();
-  if (!supabase) {
-    throw new Error("Supabase client is not configured");
-  }
+  const supabase = getWorkspaceSupabase();
 
-  const { data: profile } = await supabase
+  const { data, error } = await supabase
     .from("profiles")
     .select("id, email, name, role, company")
     .eq("id", authUser.id)
     .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const profile = data as ProfileRecord | null;
 
   return {
     id: authUser.id,
     email: profile?.email ?? authUser.email ?? "",
     name:
       profile?.name ??
-      ((authUser.user_metadata.name as string | undefined) ?? authUser.email?.split("@")[0] ?? "User"),
+      ((authUser.user_metadata.name as string | undefined) ??
+        authUser.email?.split("@")[0] ??
+        "User"),
     role: profile?.role ?? ((authUser.user_metadata.role as Role | undefined) ?? "client"),
     company: profile?.company ?? undefined,
   };
@@ -384,10 +397,7 @@ async function apiRequest<T>(input: string, init?: RequestInit): Promise<T> {
 }
 
 async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
-  const supabase = getSupabaseBrowserClient();
-  if (!supabase) {
-    throw new Error("Supabase client is not configured");
-  }
+  const supabase = getWorkspaceSupabase();
 
   const [
     profilesResult,
@@ -609,8 +619,9 @@ async function insertProjectActivity(
   action: ProjectActivityAction,
   message: string,
 ) {
-  const supabase = getSupabaseBrowserClient();
-  const { error } = await supabase!.from("project_activity").insert({
+  const supabase = getWorkspaceSupabase();
+
+  const { error } = await supabase.from("project_activity").insert({
     project_id: projectId,
     actor_id: actorId,
     action,
@@ -696,11 +707,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const currentUser = user;
     let cancelled = false;
 
     async function loadWorkspace() {
       try {
-        const nextState = await fetchWorkspaceState(user);
+        const nextState = await fetchWorkspaceState(currentUser);
         if (!cancelled) {
           setState(nextState);
         }
@@ -753,7 +765,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setState(initialAppState);
 
     if (appMode === "supabase") {
-      const supabase = getSupabaseBrowserClient();
+      const supabase = getWorkspaceSupabase();
       await supabase?.auth.signOut().catch(() => null);
     }
   };
@@ -992,7 +1004,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
+    const supabase = getWorkspaceSupabase();
     const { error } = await supabase!.from("project_files").insert({
       project_id: projectId,
       title: payload.title,
@@ -1021,7 +1033,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
+    const supabase = getWorkspaceSupabase();
     const { error } = await supabase!.from("project_comments").insert({
       project_id: projectId,
       author_id: user.id,
@@ -1052,7 +1064,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
+    const supabase = getWorkspaceSupabase();
     const { error } = await supabase!.from("project_feedback").insert({
       project_id: projectId,
       author_id: user.id,
@@ -1225,7 +1237,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }
 
       const result = (await response.json()) as { user: User };
-      const supabase = getSupabaseBrowserClient();
+      const supabase = getWorkspaceSupabase();
       const signInResult = await supabase?.auth.signInWithPassword({
         email: result.user.email,
         password,

@@ -326,15 +326,15 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const availableStaff = state.users.filter((candidate) => candidate.role !== "client");
   const client = state.users.find((candidate) => candidate.id === project.clientId);
   const owner = state.users.find((candidate) => candidate.id === project.ownerId) ?? null;
-  const canEditDetails = canEditProject(user.role);
-  const canRemoveProject = canDeleteProject(user.role);
-  const canManageTasks = canCreateTask(user.role);
-  const canManageVersions = canUploadFiles(user.role);
-  const canLeaveClientFeedback = user.role === "client";
+  const canEditDetails = user ? canEditProject(user.role) : false;
+  const canRemoveProject = user ? canDeleteProject(user.role) : false;
+  const canManageTasks = user ? canCreateTask(user.role) : false;
+  const canManageVersions = user ? canUploadFiles(user.role) : false;
+  const canLeaveClientFeedback = user?.role === "client";
   const timelineIndex = getTimelineIndex(project.stage);
   const projectStatusTone = getProjectStatusTone(project.status);
   const visibleFiles =
-    user.role === "client"
+    user?.role === "client"
       ? project.files.filter((file) => file.visibility === "client")
       : project.files;
 
@@ -390,8 +390,10 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     return [...unique.values()];
   }, [project.staffIds, project.tasks, state.users]);
 
-  const visibleProjectTasks = useMemo(() => getVisibleTasksForUser(user, project), [project, user]);
-
+  const visibleProjectTasks = useMemo(
+    () => (user ? getVisibleTasksForUser(user, project) : []),
+    [project, user],
+  );
   const taskRows = useMemo(
     () =>
       visibleProjectTasks.map((task) => ({
@@ -577,8 +579,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
 
     // IMPORTANT: status change is driven by the manager workflow in this app.
-    // Client feedback records are stored as `project_feedback`; tasks/project workflow
-    // is updated by staff via task/project endpoints.
+    // Client review updates the task workflow through the client-approval endpoint.
+    // Feedback is stored separately in `project_feedback` for history/timeline.
   };
 
 

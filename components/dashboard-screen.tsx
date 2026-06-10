@@ -155,15 +155,49 @@ export function DashboardScreen() {
     [state.users],
   );
 
-  const visibleProjects = safeUser
-    ? state.projects.filter((project) => canViewProject(safeUser, project))
-    : [];
+  const visibleProjects = useMemo(
+    () =>
+      state.projects?.filter((project) => (safeUser ? canViewProject(safeUser, project) : false)) ??
+      [],
+    [safeUser, state.projects],
+  );
 
   const firstName = safeUser ? safeUser.name.split(" ")[0] ?? safeUser.name : "";
   const roleLabel = safeUser ? formatRole(safeUser.role).toUpperCase() : "";
   const canManage = safeUser ? canManageWorkspace(safeUser.role) : false;
   const isDesigner = safeUser ? safeUser.role === "designer" : false;
   const isClient = safeUser ? safeUser.role === "client" : false;
+
+  const projectRows = useMemo(() => {
+    const currentUser = safeUser;
+    const nextVisibleProjects = visibleProjects;
+
+    return nextVisibleProjects
+      .slice()
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+      .map((project) => {
+        const visibleTasks = currentUser ? getVisibleTasksForUser(currentUser, project) : [];
+        return {
+          ...project,
+          progress: getVisibleProjectProgress(
+            project,
+            visibleTasks.length,
+            visibleTasks.filter(
+              (task) =>
+                task.status === "done" ||
+                task.status === "review" ||
+                task.status === "approved",
+            ).length,
+          ),
+          clientName: getClientName(project, userNames),
+        };
+      });
+  }, [safeUser, userNames, visibleProjects]);
+
+
+  if (!user) {
+    return null;
+  }
 
   const availableProjects = visibleProjects;
   const availableStaff = state.users.filter((candidate) => candidate.role !== "client");
@@ -172,39 +206,14 @@ export function DashboardScreen() {
     availableProjects[0] ??
     null;
 
-  const projectRows = useMemo(
-    () =>
-      [...visibleProjects]
-        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
-        .map((project) => {
-          const visibleTasks = safeUser ? getVisibleTasksForUser(safeUser, project) : [];
-          return {
-            ...project,
-            progress: getVisibleProjectProgress(
-              project,
-              visibleTasks.length,
-              visibleTasks.filter(
-                (task) =>
-                  task.status === "done" ||
-                  task.status === "review" ||
-                  task.status === "approved",
-              ).length,
-            ),
-            clientName: getClientName(project, userNames),
-          };
-        }),
-    [safeUser, userNames, visibleProjects],
-  );
-
-  if (!user) {
-    return null;
-  }
-
   const openTasks = useMemo<EnrichedTask[]>(
     () =>
       projectRows.flatMap((project) =>
         getVisibleTasksForUser(user, project)
-          .filter((task) => task.status !== "approved" && (!isDesigner || task.assigneeId === user.id))
+          .filter(
+            (task) =>
+              task.status !== "approved" && (!isDesigner || task.assigneeId === user.id),
+          )
           .map((task) => ({
             id: task.id,
             title: task.title,
@@ -214,8 +223,9 @@ export function DashboardScreen() {
             projectDueDate: project.dueDate,
           })),
       ),
-    [isDesigner, projectRows, user.id],
+    [isDesigner, projectRows, user],
   );
+
 
   const feedbackRows = useMemo<FeedbackRow[]>(
     () =>
@@ -788,30 +798,30 @@ export function DashboardScreen() {
               </PanelHeader>
 
               <ActionList>
-                <ActionButton href="/projects/new">
+                <ActionLink href="/projects/new">
                   <ActionIcon>
                     <IconPlus />
                   </ActionIcon>
                   <span>Create Project</span>
-                </ActionButton>
-                <ActionButton as="button" type="button" onClick={openCreateTaskModal}>
+                </ActionLink>
+                <ActionButton type="button" onClick={openCreateTaskModal}>
                   <ActionIcon>
                     <IconCheckCircle />
                   </ActionIcon>
                   <span>Add Task</span>
                 </ActionButton>
-                <ActionButton href="/team">
+                <ActionLink href="/team">
                   <ActionIcon>
                     <IconUsers />
                   </ActionIcon>
                   <span>Invite Client</span>
-                </ActionButton>
-                <ActionButton href="/team">
+                </ActionLink>
+                <ActionLink href="/team">
                   <ActionIcon>
                     <IconUsers />
                   </ActionIcon>
                   <span>Invite Team</span>
-                </ActionButton>
+                </ActionLink>
               </ActionList>
             </Panel>
           ) : null}
@@ -1082,30 +1092,30 @@ export function DashboardScreen() {
                     <PanelTitle>Quick Actions</PanelTitle>
                   </PanelHeader>
                   <ActionList>
-                    <ActionButton href="/projects/new">
+                    <ActionLink href="/projects/new">
                       <ActionIcon>
                         <IconPlus />
                       </ActionIcon>
                       <span>Create Project</span>
-                    </ActionButton>
+                    </ActionLink>
                     <ActionButton as="button" type="button" onClick={openCreateTaskModal}>
                       <ActionIcon>
                         <IconCheckCircle />
                       </ActionIcon>
                       <span>Add Task</span>
                     </ActionButton>
-                    <ActionButton href="/team">
+                    <ActionLink href="/team">
                       <ActionIcon>
                         <IconUsers />
                       </ActionIcon>
                       <span>Invite Client</span>
-                    </ActionButton>
-                    <ActionButton href="/team">
+                    </ActionLink>
+                    <ActionLink href="/team">
                       <ActionIcon>
                         <IconUsers />
                       </ActionIcon>
                       <span>Invite Team</span>
-                    </ActionButton>
+                    </ActionLink>
                   </ActionList>
                 </Panel>
               ) : null}
@@ -1200,7 +1210,7 @@ const SideLink = styled(Link)<{ $active?: boolean }>`
   ${sideItemCss}
 `;
 
-const SideButton = styled.button`
+const SideButton = styled.button<{ $active?: boolean }>`
   ${sideItemCss}
 `;
 
@@ -1947,7 +1957,7 @@ const ActionList = styled.div`
   gap: 8px;
 `;
 
-const ActionButton = styled(Link)`
+const actionButtonCss = css`
   min-height: 44px;
   display: flex;
   align-items: center;
@@ -1967,6 +1977,15 @@ const ActionButton = styled(Link)`
     color: #fff;
     border-color: transparent;
   }
+`;
+
+const ActionLink = styled(Link)`
+  ${actionButtonCss}
+`;
+
+const ActionButton = styled.button`
+  ${actionButtonCss}
+  cursor: pointer;
 `;
 
 const ModalBackdrop = styled.div`
