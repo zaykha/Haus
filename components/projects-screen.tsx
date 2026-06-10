@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
-import { canCreateProject as canCreateProjectPermission, canViewProject } from "@/lib/permissions";
+import { canCreateProject as canCreateProjectPermission, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { formatProjectStage, formatRole, getProjectStatusLabel } from "@/lib/display";
 import { Project, ProjectStatus } from "@/lib/types";
 
 type FilterKey = "all" | ProjectStatus;
 type SortKey = "due_date" | "name";
+const MOBILE_BATCH_SIZE = 20;
 
 const desktopNav = [
   { label: "Home", href: "/dashboard", icon: <IconHome /> },
@@ -45,8 +46,40 @@ function formatDueDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatShortDate(value: string) {
+  if (!value) {
+    return "TBD";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
 function getClientName(project: Project, userNames: Map<string, string>) {
   return userNames.get(project.clientId) ?? "Unassigned client";
+}
+
+function getVisibleProjectProgress(project: Project, taskCount: number, doneCount: number) {
+  if (project.status === "done") {
+    return 100;
+  }
+
+  const stageWeight = {
+    intake: 20,
+    concept: 35,
+    design: 55,
+    review: 75,
+    delivery: 90,
+  }[project.stage];
+
+  if (!taskCount) {
+    return stageWeight;
+  }
+
+  const ratio = Math.round((doneCount / taskCount) * 100);
+  return Math.max(stageWeight, ratio);
 }
 
 function getStageProgress(stage: Project["stage"]) {
@@ -94,11 +127,13 @@ function getStatusTone(status: ProjectStatus) {
 export function ProjectsScreen() {
   const { state, user } = useAppState();
   const [currentPage, setCurrentPage] = useState(1);
+  const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [sort, setSort] = useState<SortKey>("due_date");
   const [showFilters, setShowFilters] = useState(false);
+  const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
 
   if (!user) {
     return null;
@@ -141,6 +176,7 @@ export function ProjectsScreen() {
     (activePage - 1) * pageSize,
     activePage * pageSize,
   );
+  const mobileProjects = filteredProjects.slice(0, mobileVisibleCount);
   const rangeStart = totalProjects ? (activePage - 1) * pageSize + 1 : 0;
   const rangeEnd = totalProjects ? Math.min(activePage * pageSize, totalProjects) : 0;
 
@@ -149,6 +185,31 @@ export function ProjectsScreen() {
     setSearch(searchDraft);
     setCurrentPage(1);
   };
+
+  useEffect(() => {
+    setMobileVisibleCount(MOBILE_BATCH_SIZE);
+  }, [search, filter, sort, visibleProjects.length]);
+
+  useEffect(() => {
+    const node = mobileLoadMoreRef.current;
+    if (!node) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) {
+          return;
+        }
+
+        setMobileVisibleCount((current) => Math.min(current + MOBILE_BATCH_SIZE, filteredProjects.length));
+      },
+      { rootMargin: "180px 0px" },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [filteredProjects.length]);
 
   return (
     <PageShell>
@@ -164,16 +225,13 @@ export function ProjectsScreen() {
         </DesktopHeader>
 
         <MobileHeader>
-          <div>
+          <MobileHeaderCopy>
             <Eyebrow>{roleLabel}</Eyebrow>
             <Title>Select a project</Title>
-            <Subtitle>
-              Choose a project workspace to manage deliverables, staff, clients, and tasks.
-            </Subtitle>
-          </div>
-          <IconButton type="button" aria-label="Notifications">
-            <IconBell />
-          </IconButton>
+          </MobileHeaderCopy>
+          <HeaderAvatarLink href="/profile" aria-label="Open profile">
+            {user.name.slice(0, 1)}
+          </HeaderAvatarLink>
         </MobileHeader>
 
         <Toolbar>
@@ -243,8 +301,8 @@ export function ProjectsScreen() {
         </Toolbar>
 
         <DesktopList>
-          {paginatedProjects.length ? (
-            paginatedProjects.map((project) => {
+          {mobileProjects.length ? (
+            mobileProjects.map((project) => {
               const tone = getStatusTone(project.status);
 
               return (
@@ -300,7 +358,7 @@ export function ProjectsScreen() {
                   <MetaColumn $narrow>
                     <MetaLabel>Open tasks</MetaLabel>
                     <MetaStrong>
-                      {project.tasks.filter((task) => task.status !== "done").length}
+                      {getVisibleTasksForUser(user, project).filter((task) => task.status !== "approved").length}
                     </MetaStrong>
                   </MetaColumn>
 
@@ -319,9 +377,18 @@ export function ProjectsScreen() {
         </DesktopList>
 
         <MobileList>
-          {paginatedProjects.length ? (
-            paginatedProjects.map((project) => {
+          {mobileProjects.length ? (
+            mobileProjects.map((project) => {
               const tone = getStatusTone(project.status);
+              const visibleTasks = getVisibleTasksForUser(user, project);
+              const progress = getVisibleProjectProgress(
+                project,
+                visibleTasks.length,
+                visibleTasks.filter(
+                  (task) =>
+                    task.status === "done" || task.status === "review" || task.status === "approved",
+                ).length,
+              );
 
               return (
                 <MobileProjectCard key={project.id} href={`/projects/${project.id}`}>
@@ -337,15 +404,17 @@ export function ProjectsScreen() {
                         {getProjectStatusLabel(project.status)}
                       </StatusPill>
                     </MobileTitleRow>
-                    <SummaryLine>{getClientName(project, userNames)}</SummaryLine>
-                    <MobileMeta>
-                      <span>{formatProjectStage(project.stage)}</span>
-                      <span>{formatDueDate(project.dueDate)}</span>
-                    </MobileMeta>
+                    <MobileInfoRow>
+                      <MobileClientName>{getClientName(project, userNames)}</MobileClientName>
+                      <MobileMetaText>Due {formatShortDate(project.dueDate)}</MobileMetaText>
+                    </MobileInfoRow>
+                    <MobileProgressGroup>
+                      <MobileProgressBar>
+                        <MobileProgressFill style={{ width: `${progress}%` }} />
+                      </MobileProgressBar>
+                      <MobileProgressText>{progress}%</MobileProgressText>
+                    </MobileProgressGroup>
                   </MobileCopy>
-                  <MobileArrow>
-                    <IconArrowRight />
-                  </MobileArrow>
                 </MobileProjectCard>
               );
             })
@@ -356,6 +425,8 @@ export function ProjectsScreen() {
             </EmptyCard>
           )}
         </MobileList>
+
+        {mobileVisibleCount < filteredProjects.length ? <LoadMoreSentinel ref={mobileLoadMoreRef} /> : null}
 
         {filteredProjects.length ? (
           <PaginationBar>
@@ -517,7 +588,7 @@ const SidebarRole = styled.p`
 const Content = styled.section`
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 14px;
 
   ${desktop} {
     flex: 1;
@@ -562,6 +633,11 @@ const MobileHeader = styled.header`
   }
 `;
 
+const MobileHeaderCopy = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
 const Eyebrow = styled.p`
   margin: 0;
   color: var(--color-text-muted);
@@ -583,6 +659,7 @@ const Subtitle = styled.p`
   color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.55;
+  width: 100%;
 
   ${desktop} {
     max-width: 720px;
@@ -590,7 +667,7 @@ const Subtitle = styled.p`
   }
 `;
 
-const IconButton = styled.button`
+const HeaderAvatarLink = styled(Link)`
   width: 40px;
   height: 40px;
   display: inline-flex;
@@ -598,13 +675,10 @@ const IconButton = styled.button`
   justify-content: center;
   border: 1px solid var(--color-border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  color: var(--color-text-muted);
-
-  svg {
-    width: 18px;
-    height: 18px;
-  }
+  background: #ded6c8;
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
 `;
 
 const Toolbar = styled.section`
@@ -997,8 +1071,10 @@ const PaginationBar = styled.section`
   padding: 10px 16px;
   border-radius: 24px;
   margin-top: 14px;
+  display: none;
 
   ${desktop} {
+    display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     padding: 10px 22px;
@@ -1043,7 +1119,7 @@ const PaginationCurrent = styled.span`
 
 const MobileList = styled.section`
   display: grid;
-  gap: 14px;
+  gap: 10px;
 
   ${desktop} {
     display: none;
@@ -1053,20 +1129,20 @@ const MobileList = styled.section`
 const MobileProjectCard = styled(Link)`
   ${cardSurface}
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) auto;
-  gap: 14px;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
-  padding: 16px;
-  border-radius: 20px;
+  padding: 10px 12px;
+  border-radius: 18px;
   text-decoration: none;
 `;
 
 const MobileProjectMark = styled.div<{ $imageUrl?: string | null }>`
   ${markSurface}
-  width: 64px;
-  height: 64px;
-  border-radius: 16px;
-  font-size: 1.3rem;
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  font-size: 1rem;
   background:
     ${({ $imageUrl }) =>
       $imageUrl
@@ -1077,39 +1153,89 @@ const MobileProjectMark = styled.div<{ $imageUrl?: string | null }>`
 
 const MobileCopy = styled.div`
   min-width: 0;
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: stretch;
+  min-height: 50px;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
 `;
 
 const MobileTitleRow = styled.div`
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
 `;
 
 const MobileTitle = styled.strong`
-  font-size: 0.98rem;
+  min-width: 0;
+  font-size: 0.78rem;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
-const MobileMeta = styled.div`
+const MobileInfoRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  color: var(--color-text-muted);
-  font-size: 13px;
+  gap: 8px;
+  min-width: 0;
 `;
 
-const MobileArrow = styled.span`
-  width: 22px;
-  height: 22px;
+const MobileClientName = styled.span`
+  min-width: 0;
   color: var(--color-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
 
-  svg {
-    width: 100%;
-    height: 100%;
+const MobileMetaText = styled.span`
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.2;
+`;
+
+const MobileProgressGroup = styled.div`
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+`;
+
+const MobileProgressBar = styled.div`
+  height: 4px;
+  border-radius: 999px;
+  background: #ece7df;
+  overflow: hidden;
+`;
+
+const MobileProgressFill = styled.div`
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #83c37d, #4f8f5e);
+`;
+
+const MobileProgressText = styled.span`
+  color: var(--color-text);
+  font-size: 0.72rem;
+  line-height: 1;
+  font-weight: 700;
+`;
+
+const LoadMoreSentinel = styled.div`
+  height: 1px;
+
+  ${desktop} {
+    display: none;
   }
 `;
 
@@ -1203,15 +1329,6 @@ function IconFilter() {
       <path d="M4 7h16" />
       <path d="M7 12h10" />
       <path d="M10 17h4" />
-    </svg>
-  );
-}
-
-function IconBell() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6.5 16.5h11l-1.4-1.6V11a4.1 4.1 0 1 0-8.2 0v3.9Z" />
-      <path d="M10 19a2 2 0 0 0 4 0" />
     </svg>
   );
 }

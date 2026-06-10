@@ -88,6 +88,18 @@ export function canViewProject(user: User, project: Project) {
   return user.role === "client" && project.clientId === user.id;
 }
 
+export function getVisibleTasksForUser(user: User, project: Project) {
+  if (canManageProjects(user.role)) {
+    return project.tasks;
+  }
+
+  if (user.role === "designer") {
+    return project.tasks.filter((task) => task.assigneeId === user.id);
+  }
+
+  return project.tasks.filter((task) => task.clientVisible);
+}
+
 export function canChangeWorkflow(role: Role) {
   return canUpdateProjectWorkflow(role);
 }
@@ -97,7 +109,12 @@ export function canUpdateTaskStatus(user: User, project: Project, task: Task) {
     return true;
   }
 
-  return user.role === "designer" && canViewProject(user, project) && task.assigneeId === user.id;
+  return (
+    user.role === "designer" &&
+    canViewProject(user, project) &&
+    task.assigneeId === user.id &&
+    (task.status === "todo" || task.status === "in_progress")
+  );
 }
 
 export function canManageTaskCrud(role: Role) {

@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { useAppState } from "@/components/app-state";
+import { ConfirmActionModal } from "@/components/confirm-action-modal";
+import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { ProjectForm, ProjectFormValues } from "@/components/project-form";
 import {
   canChangeWorkflow,
@@ -16,6 +18,7 @@ import {
   canEditTask,
   canUploadFiles,
   canViewProject,
+  getVisibleTasksForUser,
 } from "@/lib/permissions";
 import {
   FeedbackAction,
@@ -37,7 +40,7 @@ const stages: ProjectStage[] = ["intake", "concept", "design", "review", "delive
 const desktop = "@media (min-width: 1100px)";
 
 type DerivedPriority = "high" | "medium" | "low";
-type DerivedTaskStatus = "todo" | "in_progress" | "in_review" | "waiting_feedback" | "completed";
+type DerivedTaskStatus = "todo" | "in_progress" | "review" | "approved" | "completed";
 
 type ActivityItem = {
   id: string;
@@ -62,6 +65,25 @@ const timelineSteps = [
   { key: "review", label: "Review", stages: ["review"] as ProjectStage[] },
   { key: "delivery", label: "Delivery", stages: ["delivery"] as ProjectStage[] },
 ] as const;
+
+const EMPTY_PROJECT: Project = {
+  id: "",
+  name: "",
+  imageUrl: null,
+  clientId: "",
+  ownerId: "",
+  description: "",
+  category: "",
+  stage: "intake",
+  status: "active",
+  dueDate: "",
+  staffIds: [],
+  tasks: [],
+  files: [],
+  comments: [],
+  feedback: [],
+  activities: [],
+};
 
 function formatDate(value: string) {
   if (!value) {
@@ -99,16 +121,16 @@ function startOfDay(value: Date) {
 }
 
 function deriveTaskStatus(taskStatus: TaskStatus, project: Project): DerivedTaskStatus {
+  if (taskStatus === "approved") {
+    return "approved";
+  }
+
+  if (taskStatus === "review") {
+    return "review";
+  }
+
   if (taskStatus === "done") {
     return "completed";
-  }
-
-  if (project.status === "review") {
-    return "waiting_feedback";
-  }
-
-  if (project.stage === "review" || project.status === "revision") {
-    return "in_review";
   }
 
   if (taskStatus === "in_progress") {
@@ -153,12 +175,12 @@ function getTaskStatusTone(status: DerivedTaskStatus) {
   switch (status) {
     case "in_progress":
       return { bg: "#e6efff", fg: "#4770d8", label: "In Progress" };
-    case "in_review":
-      return { bg: "#efe7ff", fg: "#7f61d7", label: "In Review" };
-    case "waiting_feedback":
-      return { bg: "#fff1da", fg: "#ca8a22", label: "Waiting Feedback" };
+    case "review":
+      return { bg: "#fff1da", fg: "#ca8a22", label: "Review" };
+    case "approved":
+      return { bg: "#e5f4e8", fg: "#5ca16d", label: "Approved" };
     case "completed":
-      return { bg: "#e5f4e8", fg: "#5ca16d", label: "Completed" };
+      return { bg: "#efe7ff", fg: "#7f61d7", label: "Completed" };
     default:
       return { bg: "#f4f1ed", fg: "#8d857b", label: "To Do" };
   }
@@ -241,17 +263,21 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     updateProjectWorkflow,
     createTask,
     updateTask,
+    updateTaskStatus,
     deleteTask,
     addFile,
+    addComment,
     addFeedback,
   } = useAppState();
   const [status, setStatus] = useState<ProjectStatus>("active");
   const [stage, setStage] = useState<ProjectStage>("intake");
   const [showEditPanel, setShowEditPanel] = useState(false);
   const [showCreateTaskPanel, setShowCreateTaskPanel] = useState(false);
+  const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
   const [showVersionPanel, setShowVersionPanel] = useState(false);
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   const [showWorkspaceTools, setShowWorkspaceTools] = useState(false);
+  const [isUpdatingProject, setIsUpdatingProject] = useState(false);
   const [workflowSelect, setWorkflowSelect] = useState<"status" | "stage" | null>(null);
   const [createTaskSelect, setCreateTaskSelect] = useState<"assignee" | "status" | null>(null);
   const [editTaskSelect, setEditTaskSelect] = useState<"assignee" | "status" | null>(null);
@@ -268,11 +294,18 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [activeDesignerTaskId, setActiveDesignerTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState("");
   const [editingTaskAssigneeId, setEditingTaskAssigneeId] = useState("");
   const [editingTaskStatus, setEditingTaskStatus] = useState<TaskStatus>("todo");
   const [editingTaskDueDate, setEditingTaskDueDate] = useState("");
   const [editingTaskPriority, setEditingTaskPriority] = useState<TaskPriority>("medium");
+  const [editingTaskReviewAction, setEditingTaskReviewAction] = useState<"internal" | "submit" | "revise">(
+    "internal",
+  );
+  const [editingTaskReviewComment, setEditingTaskReviewComment] = useState("");
+  const [editingTaskError, setEditingTaskError] = useState("");
+  const [isUpdatingTask, setIsUpdatingTask] = useState(false);
   const [versionTitle, setVersionTitle] = useState("");
   const [versionName, setVersionName] = useState("v1");
   const [versionNotes, setVersionNotes] = useState("");
@@ -281,21 +314,12 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [feedbackBody, setFeedbackBody] = useState("");
   const [feedbackRating, setFeedbackRating] = useState(5);
 
-  const project = useMemo(
+  const projectRecord = useMemo(
     () => state.projects.find((candidate) => candidate.id === projectId) ?? null,
     [projectId, state.projects],
   );
-
-  if (!user || !project || !canViewProject(user, project)) {
-    return (
-      <main className="page-stack">
-        <section className="panel">
-          <p>Project not found or not accessible from this role.</p>
-          <Link href="/projects">Return to projects</Link>
-        </section>
-      </main>
-    );
-  }
+  const canAccessProject = Boolean(user && projectRecord && canViewProject(user, projectRecord));
+  const project = projectRecord ?? EMPTY_PROJECT;
 
   const userNames = new Map(state.users.map((member) => [member.id, member.name]));
   const availableClients = state.users.filter((candidate) => candidate.role === "client");
@@ -366,16 +390,18 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     return [...unique.values()];
   }, [project.staffIds, project.tasks, state.users]);
 
+  const visibleProjectTasks = useMemo(() => getVisibleTasksForUser(user, project), [project, user]);
+
   const taskRows = useMemo(
     () =>
-      project.tasks.map((task) => ({
+      visibleProjectTasks.map((task) => ({
         ...task,
         assignee: state.users.find((candidate) => candidate.id === task.assigneeId) ?? null,
         derivedStatus: deriveTaskStatus(task.status, project),
         dueDate: task.dueDate ?? project.dueDate,
         priority: task.priority ?? derivePriority(task.dueDate ?? project.dueDate, task.status),
       })),
-    [project, state.users],
+    [project, state.users, visibleProjectTasks],
   );
 
   const latestVersion = visibleFiles[0] ?? null;
@@ -385,55 +411,44 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const latestFeedback = feedbackRows[0] ?? null;
 
   const recentActivity = useMemo<ActivityItem[]>(() => {
-    const items = [
-      ...project.files.map((file) => ({
-        id: `file-${file.id}`,
-        actor: userNames.get(file.uploadedBy) ?? "Team member",
-        detail: `uploaded ${file.title}`,
-        createdAt: file.createdAt,
-      })),
-      ...project.comments.map((item) => ({
-        id: `comment-${item.id}`,
-        actor: userNames.get(item.authorId) ?? "Team member",
-        detail: item.internalOnly ? "left an internal note" : "added a comment",
+    const items = [...project.activities]
+      .map((item) => ({
+        id: item.id,
+        actor: item.actorId ? (userNames.get(item.actorId) ?? "Team member") : "System",
+        detail: item.message,
         createdAt: item.createdAt,
-      })),
-      ...project.feedback.map((item) => ({
-        id: `feedback-${item.id}`,
-        actor: userNames.get(item.authorId) ?? client?.name ?? "Client",
-        detail:
-          item.action === "approve"
-            ? "approved a deliverable"
-            : item.action === "request_revision"
-              ? "requested a revision"
-              : "left feedback",
-        createdAt: item.createdAt,
-      })),
-    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     return items.slice(0, 4);
-  }, [client?.name, project.comments, project.feedback, project.files, userNames]);
+  }, [project.activities, userNames]);
 
   const totalTasks = taskRows.length;
-  const completedTasks = taskRows.filter((task) => task.status === "done").length;
-  const openTasks = taskRows.filter((task) => task.status !== "done").length;
+  const completedTasks = taskRows.filter(
+    (task) => task.status === "done" || task.status === "review" || task.status === "approved",
+  ).length;
+  const openTasks = taskRows.filter((task) => task.status === "todo" || task.status === "in_progress").length;
   const overdueTasks = taskRows.filter(
-    (task) => task.status !== "done" && startOfDay(new Date(task.dueDate)) < startOfDay(new Date()),
+    (task) =>
+      (task.status === "todo" || task.status === "in_progress") &&
+      startOfDay(new Date(task.dueDate)) < startOfDay(new Date()),
   ).length;
   const completionPercent = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   const handleWorkflowSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    await updateProject(project.id, projectDraft);
-    await updateProjectWorkflow(project.id, status, stage);
-    setShowEditPanel(false);
+    setIsUpdatingProject(true);
+
+    try {
+      await updateProject(project.id, projectDraft);
+      await updateProjectWorkflow(project.id, status, stage);
+      setShowEditPanel(false);
+    } finally {
+      setIsUpdatingProject(false);
+    }
   };
 
   const handleProjectDelete = async () => {
-    if (!window.confirm("Delete this project? This will remove its tasks, files, comments, and feedback.")) {
-      return;
-    }
-
     await deleteProject(project.id);
     router.push("/projects");
   };
@@ -455,16 +470,118 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
   const handleFeedbackSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    const trimmedBody = feedbackBody.trim();
+
+    // Client -> server workflow transition to ensure status updates before we close the popup.
+    // This avoids the issue where UI state doesn't reflect immediately and the modal can't be reopened.
+    const transitionEndpoint = editingTask?.id
+      ? `/api/workspace/projects/${project.id}/workflow/client-approval`
+      : null;
+
+    // Decide which server workflow decision to apply.
+    if (feedbackAction !== "approve" && feedbackAction !== "request_revision") {
+      setEditingTaskError("Please approve or request revision.");
+      return;
+    }
+
+    const decision: "approve" | "request_revision" = feedbackAction;
+
+    // Rules for client review flow:
+    // - Approve requires rating (1-5)
+    // - Request revision requires rating (1-5) and revision comment
+    if (!Number.isInteger(feedbackRating) || feedbackRating < 1 || feedbackRating > 5) {
+      setFeedbackRating(5);
+      return;
+    }
+
+    // Must have the task being reviewed; server endpoint relies on it.
+    if (!editingTask?.id) {
+      return;
+    }
+
+
+    if (decision === "request_revision" && !trimmedBody) {
+      setEditingTaskError("Please explain what needs to be revised.");
+      return;
+    }
+
+    // Ensure client can only submit while the task is in review.
+    if (!editingTask || user?.role !== "client" || editingTask.status !== "review") {
+      return;
+    }
+
+
+
+
+
+    // Submit server workflow decision FIRST so workflow state updates immediately.
+    // This endpoint is client-safe and will validate task/project consistency.
+    try {
+      if (transitionEndpoint && decision) {
+        // App backend auth expects a workspace access token.
+        // Existing state actions (useAppState) include it via `apiRequest` in app-state.tsx.
+        // Here we mirror that by using the browser supabase session.
+        const { getSupabaseBrowserClient } = await import("@/lib/supabase/client");
+        const supabase = getSupabaseBrowserClient();
+        if (!supabase) {
+          throw new Error("Supabase client is not configured");
+        }
+
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          throw new Error("Missing authorization token");
+        }
+
+        const response = await fetch(transitionEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            taskId: editingTask.id,
+            decision,
+            revisionComment:
+              decision === "request_revision" ? trimmedBody : undefined,
+          }),
+        });
+
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          throw new Error(payload?.error ?? "Unable to update workflow status.");
+        }
+      }
+    } catch (error) {
+      setEditingTaskError(error instanceof Error ? error.message : "Unable to update workflow.");
+      return;
+    }
+
+    // Then store feedback (keeps existing feedback timeline).
     await addFeedback(project.id, {
       action: feedbackAction,
-      body: feedbackBody.trim(),
+      body: trimmedBody,
       rating: feedbackRating,
     });
-    setFeedbackAction("comment");
+
+    // Close the modal immediately so the user cannot click again.
+    setFeedbackAction("approve");
     setFeedbackBody("");
     setFeedbackRating(5);
     setShowFeedbackPanel(false);
+    setEditingTaskId(null);
+
+
+    // IMPORTANT: status change is driven by the manager workflow in this app.
+    // Client feedback records are stored as `project_feedback`; tasks/project workflow
+    // is updated by staff via task/project endpoints.
   };
+
+
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -495,6 +612,17 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     setEditingTaskStatus(task.status);
     setEditingTaskDueDate(task.dueDate ?? project.dueDate);
     setEditingTaskPriority(task.priority ?? derivePriority(task.dueDate ?? project.dueDate, task.status));
+    setEditingTaskReviewAction(task.clientVisible ? "submit" : "internal");
+    setEditingTaskReviewComment("");
+    setEditingTaskError("");
+
+    // Important: client deliverable review should default to approve.
+    // Otherwise the select may visually show Approve while state is still "comment".
+    if (user?.role === "client" && task.status === "review") {
+      setFeedbackAction("approve");
+      setFeedbackBody("");
+      setFeedbackRating(5);
+    }
   };
 
   const handleTaskUpdate = async (event: FormEvent<HTMLFormElement>) => {
@@ -503,22 +631,134 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
       return;
     }
 
-    await updateTask(project.id, editingTaskId, {
-      title: editingTaskTitle,
-      assigneeId: editingTaskAssigneeId,
-      status: editingTaskStatus,
-      dueDate: editingTaskDueDate,
-      priority: editingTaskPriority,
-    });
-    setEditingTaskId(null);
+    if (
+      editingTask?.completionScreenshotUrl &&
+      editingTaskReviewAction === "revise" &&
+      !editingTaskReviewComment.trim()
+    ) {
+      setEditingTaskError("Add a revision comment before sending the task back.");
+      return;
+    }
+
+    setIsUpdatingTask(true);
+    setEditingTaskError("");
+
+    try {
+      const nextStatus =
+        editingTask?.completionScreenshotUrl && editingTaskReviewAction === "revise"
+          ? "in_progress"
+          : editingTask?.completionScreenshotUrl && editingTaskReviewAction === "submit"
+            ? editingTask.status === "review"
+              ? "approved"
+              : "review"
+            : editingTask?.completionScreenshotUrl && editingTaskReviewAction === "internal"
+              ? "done"
+          : editingTaskStatus;
+
+      const nextClientVisible =
+        editingTask?.completionScreenshotUrl && editingTaskReviewAction === "submit"
+          ? true
+          : editingTask?.completionScreenshotUrl && editingTaskReviewAction === "internal"
+            ? false
+            : editingTask?.clientVisible ?? false;
+
+      const nextManagerReviewStatus =
+        editingTask?.completionScreenshotUrl && editingTaskReviewAction === "submit"
+          ? "ready_for_client"
+          : editingTask?.completionScreenshotUrl && editingTaskReviewAction === "revise"
+            ? "revision_requested"
+            : "internal";
+
+      await updateTask(project.id, editingTaskId, {
+        title: editingTaskTitle,
+        assigneeId: editingTaskAssigneeId,
+        status: nextStatus,
+        dueDate: editingTaskDueDate,
+        priority: editingTaskPriority,
+        clientVisible: nextClientVisible,
+        managerReviewStatus: nextManagerReviewStatus,
+        activityNote:
+          editingTask?.completionScreenshotUrl && editingTaskReviewAction === "revise"
+            ? editingTaskReviewComment.trim()
+            : undefined,
+      });
+
+      setEditingTaskId(null);
+      setEditingTaskReviewAction("internal");
+      setEditingTaskReviewComment("");
+    } catch (error) {
+      setEditingTaskError(error instanceof Error ? error.message : "Unable to update task.");
+    } finally {
+      setIsUpdatingTask(false);
+    }
   };
 
   const editingTask = editingTaskId
     ? taskRows.find((task) => task.id === editingTaskId) ?? null
     : null;
+  const activeDesignerTask = activeDesignerTaskId
+    ? taskRows.find((task) => task.id === activeDesignerTaskId) ?? null
+    : null;
+
+  if (!user || !projectRecord || !canAccessProject) {
+    return (
+      <main className="page-stack">
+        <section className="panel">
+          <p>Project not found or not accessible from this role.</p>
+          <Link href="/projects">Return to projects</Link>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <>
+      {isUpdatingProject || isUpdatingTask ? (
+        <TaskUpdateLoadingOverlay role="status" aria-live="polite">
+          <div className="auth-loading-card">
+            <div className="auth-loading-spinner" aria-hidden="true" />
+            <p>{isUpdatingTask ? "Updating task..." : "Updating project..."}</p>
+          </div>
+        </TaskUpdateLoadingOverlay>
+      ) : null}
+
+      <ConfirmActionModal
+        open={showDeleteProjectModal}
+        title="Delete project"
+        description="This will remove the project and all of its tasks, files, comments, and feedback."
+        confirmLabel="Delete project"
+        tone="danger"
+        onCancel={() => setShowDeleteProjectModal(false)}
+        onConfirm={async () => {
+          await handleProjectDelete();
+          setShowDeleteProjectModal(false);
+        }}
+      />
+      <DesignerTaskModal
+        open={Boolean(activeDesignerTask && user.role === "designer")}
+        task={
+          activeDesignerTask
+            ? {
+                id: activeDesignerTask.id,
+                title: activeDesignerTask.title,
+                projectId: project.id,
+                projectName: project.name,
+                dueDate: activeDesignerTask.dueDate,
+                status: activeDesignerTask.status,
+                completionScreenshotUrl: activeDesignerTask.completionScreenshotUrl ?? null,
+                managerReviewStatus: activeDesignerTask.managerReviewStatus,
+              }
+            : null
+        }
+        onClose={() => setActiveDesignerTaskId(null)}
+        onSubmit={async (payload) => {
+          await updateTaskStatus(payload.projectId, payload.taskId, {
+            status: payload.status,
+            completionScreenshotUrl: payload.completionScreenshotUrl ?? null,
+          });
+        }}
+      />
+
       {showEditPanel ? (
         <ModalBackdrop onClick={() => setShowEditPanel(false)}>
           <ModalCard onClick={(event) => event.stopPropagation()}>
@@ -619,8 +859,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                     </TaskFloatingSelect>
                   </TaskModalField>
                 </TaskModalGrid>
-                <button className="primary-button" type="submit">
-                  Update workflow
+                <button className="primary-button" type="submit" disabled={isUpdatingProject}>
+                  {isUpdatingProject ? "Updating..." : "Update workflow"}
                 </button>
               </InlineForm>
             ) : null}
@@ -712,7 +952,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                     <TaskFloatingLabel>Status</TaskFloatingLabel>
                     {createTaskSelect === "status" ? (
                       <TaskSelectMenu role="listbox" aria-label="Status">
-                        {(["todo", "in_progress", "done"] as TaskStatus[]).map((option) => (
+                        {(["todo", "in_progress", "done", "review", "approved"] as TaskStatus[]).map((option) => (
                           <TaskSelectOption
                             key={option}
                             type="button"
@@ -832,7 +1072,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
       {showFeedbackPanel && canLeaveClientFeedback ? (
         <ModalBackdrop onClick={() => setShowFeedbackPanel(false)}>
           <ModalCard onClick={(event) => event.stopPropagation()}>
-            <ModalHeader>
+              <ModalHeader>
               <div>
                 <ModalTitle>Client feedback</ModalTitle>
                 <ModalDescription>Rate the latest version and approve it or request changes.</ModalDescription>
@@ -846,13 +1086,20 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 <span>Decision</span>
                 <select
                   value={feedbackAction}
-                  onChange={(event) => setFeedbackAction(event.target.value as FeedbackAction)}
-                >
-                  <option value="comment">Leave comment</option>
+                  onChange={(event) => {
+                    const nextAction = event.target.value as "approve" | "request_revision";
+                    setFeedbackAction(nextAction);
+                    setEditingTaskError("");
+
+                    if (nextAction === "approve") {
+                      setFeedbackBody("");
+                    }
+                  }}>
                   <option value="approve">Approve</option>
                   <option value="request_revision">Request revision</option>
                 </select>
               </label>
+
               <PriorityField>
                 <MetaLabel>Rating</MetaLabel>
                 <RatingChips>
@@ -868,16 +1115,30 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   ))}
                 </RatingChips>
               </PriorityField>
-              <label className="field">
-                <span>Feedback</span>
-                <textarea
-                  value={feedbackBody}
-                  onChange={(event) => setFeedbackBody(event.target.value)}
-                  rows={4}
-                  placeholder="Share what works and what needs to change."
-                  required
-                />
-              </label>
+
+              {feedbackAction === "request_revision" ? (
+                <label className="field">
+                  <span>Revision comment</span>
+                  <textarea
+                    value={feedbackBody}
+                    onChange={(event) => setFeedbackBody(event.target.value)}
+                    rows={4}
+                    placeholder="Please explain what needs to be revised."
+                    required
+                  />
+                </label>
+              ) : (
+                <label className="field">
+                  <span>Comment</span>
+                  <textarea
+                    value={feedbackBody}
+                    onChange={(event) => setFeedbackBody(event.target.value)}
+                    rows={4}
+                    placeholder="Optional — add context for your decision."
+                  />
+                </label>
+              )}
+
               <button className="primary-button" type="submit">
                 Submit feedback
               </button>
@@ -999,6 +1260,61 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   </TaskFloatingField>
                 </TaskModalField>
               </TaskModalGrid>
+              {editingTask.completionScreenshotUrl ? (
+                <TaskDeliveryReview>
+                  <InlineFormTitle>Latest uploaded image</InlineFormTitle>
+                  <TaskDeliveryPreviewWrap>
+                    <TaskDeliveryPreview
+                      src={editingTask.completionScreenshotUrl}
+                      alt={`Latest uploaded image for ${editingTask.title}`}
+                    />
+                  </TaskDeliveryPreviewWrap>
+                  <TaskReviewActions>
+                    <TaskReviewActionButton
+                      type="button"
+                      $active={editingTaskReviewAction === "internal"}
+                      onClick={() => {
+                        setEditingTaskReviewAction("internal");
+                        setEditingTaskError("");
+                      }}
+                    >
+                      Keep internal
+                    </TaskReviewActionButton>
+                    <TaskReviewActionButton
+                      type="button"
+                      $active={editingTaskReviewAction === "submit"}
+                      onClick={() => {
+                        setEditingTaskReviewAction("submit");
+                        setEditingTaskError("");
+                      }}
+                    >
+                      {editingTask.status === "review" ? "Approve" : "Send to client"}
+                    </TaskReviewActionButton>
+                    <TaskReviewActionButton
+                      type="button"
+                      $active={editingTaskReviewAction === "revise"}
+                      onClick={() => {
+                        setEditingTaskReviewAction("revise");
+                        setEditingTaskError("");
+                      }}
+                    >
+                      Revise
+                    </TaskReviewActionButton>
+                  </TaskReviewActions>
+                  {editingTaskReviewAction === "revise" ? (
+                    <label className="field">
+                      <span>Revision comment</span>
+                      <textarea
+                        value={editingTaskReviewComment}
+                        onChange={(event) => setEditingTaskReviewComment(event.target.value)}
+                        rows={4}
+                        placeholder="Explain what needs to change before this can be submitted."
+                        required
+                      />
+                    </label>
+                  ) : null}
+                </TaskDeliveryReview>
+              ) : null}
               <PriorityField>
                 <MetaLabel>Priority</MetaLabel>
                 <PriorityChips>
@@ -1015,9 +1331,18 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   ))}
                 </PriorityChips>
               </PriorityField>
+              {editingTaskError ? <TaskInlineError>{editingTaskError}</TaskInlineError> : null}
               <CompactActions>
                 <button className="primary-button" type="submit">
-                  Save task
+                  {editingTask?.completionScreenshotUrl
+                    ? editingTaskReviewAction === "revise"
+                      ? "Send revision"
+                      : editingTaskReviewAction === "submit"
+                        ? editingTask.status === "review"
+                          ? "Approve"
+                          : "Send to client"
+                        : "Keep internal"
+                    : "Save task"}
                 </button>
                 {canDeleteTask(user.role) ? (
                   <button
@@ -1037,6 +1362,110 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
         </ModalBackdrop>
       ) : null}
 
+      {editingTask &&
+        user &&
+        user.role === "client" &&
+        editingTask.status === "review" &&
+        editingTask.clientVisible ? (
+        <ModalBackdrop onClick={() => setEditingTaskId(null)}>
+
+          <ModalCard onClick={(event) => event.stopPropagation()}>
+            <ModalHeader>
+              <div>
+                <ModalTitle>Deliverable review</ModalTitle>
+                <ModalDescription>View the latest screenshot, rate it, and approve or request revision.</ModalDescription>
+              </div>
+              <ModalClose type="button" onClick={() => setEditingTaskId(null)} aria-label="Close">
+                <IconClose />
+              </ModalClose>
+            </ModalHeader>
+
+            {editingTask.completionScreenshotUrl ? (
+              <TaskDeliveryPreviewWrap>
+                <TaskDeliveryPreview
+                  src={editingTask.completionScreenshotUrl}
+                  alt={`Task completion screenshot for ${editingTask.title}`}
+                />
+              </TaskDeliveryPreviewWrap>
+            ) : null}
+
+            <InlineForm
+              onSubmit={(event) => {
+                const formEvent = event as FormEvent<HTMLFormElement>;
+                return handleFeedbackSubmit(formEvent);
+              }}
+            >
+              <label className="field">
+                <span>Decision</span>
+                <select
+                  value={feedbackAction === "request_revision" ? "request_revision" : "approve"}
+                  onChange={(event) => {
+                    const nextAction = event.target.value as "approve" | "request_revision";
+                    setFeedbackAction(nextAction);
+                    setEditingTaskError("");
+
+                    if (nextAction === "approve") {
+                      setFeedbackBody("");
+                    }
+                  }}
+                >
+                  <option value="approve">Approve</option>
+                  <option value="request_revision">Request revision</option>
+                </select>
+              </label>
+
+              <PriorityField>
+                <MetaLabel>Rating</MetaLabel>
+                <RatingChips>
+                  {[1, 2, 3, 4, 5].map((rating) => (
+                    <RatingChip
+                      key={rating}
+                      type="button"
+                      $active={feedbackRating === rating}
+                      onClick={() => setFeedbackRating(rating)}
+                    >
+                      {rating} Star{rating === 1 ? "" : "s"}
+                    </RatingChip>
+                  ))}
+                </RatingChips>
+              </PriorityField>
+
+              {feedbackAction === "request_revision" ? (
+                <label className="field">
+                  <span>Revision comment</span>
+                  <textarea
+                    value={feedbackBody}
+                    onChange={(event) => setFeedbackBody(event.target.value)}
+                    rows={4}
+                    placeholder="Please explain what needs to be revised."
+                    required
+                  />
+                </label>
+              ) : null}
+
+              {feedbackAction === "approve" ? (
+                <label className="field">
+                  <span>Comment (optional)</span>
+                  <textarea
+                    value={feedbackBody}
+                    onChange={(event) => setFeedbackBody(event.target.value)}
+                    rows={3}
+                    placeholder="Optional — add context for your decision."
+                  />
+                </label>
+              ) : null}
+
+              {editingTaskError ? <TaskInlineError>{editingTaskError}</TaskInlineError> : null}
+
+              <button className="primary-button" type="submit">
+                Submit review
+              </button>
+            </InlineForm>
+          </ModalCard>
+        </ModalBackdrop>
+      ) : null}
+
+
       <Shell>
         <AppSidebar user={user} activeLabel="Projects" />
 
@@ -1048,13 +1477,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
             <IconChevronLeft />
           </BackIconButton>
           <MobileTitle>{project.name}</MobileTitle>
-          <BackIconButton
-            type="button"
-            aria-label="More actions"
-            onClick={() => setShowWorkspaceTools((current) => !current)}
-          >
-            <IconDots />
-          </BackIconButton>
+          <MobileNavSpacer />
         </MobileNavRow>
 
         <DesktopHeaderRow>
@@ -1071,7 +1494,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               </ActionButton>
             ) : null}
             {canRemoveProject ? (
-              <DangerActionButton type="button" onClick={handleProjectDelete}>
+              <DangerActionButton type="button" onClick={() => setShowDeleteProjectModal(true)}>
                 <IconTrash />
                 Delete
               </DangerActionButton>
@@ -1155,6 +1578,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               </MetaBlock>
             </DesktopMetaGrid>
 
+          
+          </HeroCopy>
             <MobileInfoGrid>
               <CompactInfo>
                 <CompactIconWrap>
@@ -1193,7 +1618,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 </div>
               </CompactInfo>
             </MobileInfoGrid>
-          </HeroCopy>
         </HeroTop>
 
         <BriefAndTimeline>
@@ -1231,7 +1655,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           </ActionButton>
         ) : null}
         {canRemoveProject ? (
-          <DangerActionButton type="button" onClick={handleProjectDelete}>
+          <DangerActionButton type="button" onClick={() => setShowDeleteProjectModal(true)}>
             <IconTrash />
             Delete
           </DangerActionButton>
@@ -1269,10 +1693,27 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   const statusTone = getTaskStatusTone(task.derivedStatus);
                   const priorityTone = getPriorityTone(task.priority);
                   const isDone = task.status === "done";
+                  const canManageThisTask = canEditTask(user.role);
+                  const canOpenDesignerTask = user.role === "designer" && task.assignee?.id === user.id;
 
                   return (
                     <TaskRowBlock key={task.id}>
-                      <TaskTableRow>
+                      <TaskTableRow
+                        $interactive={canManageThisTask || canOpenDesignerTask || (user.role === "client" && task.status === "review")}
+                        onClick={() => {
+                          if (user.role === "client" && task.status === "review") {
+                            // open client review modal (uses editingTaskId)
+                            startEditingTask(task.id);
+                            return;
+                          }
+
+                          if (canManageThisTask) {
+                            startEditingTask(task.id);
+                          } else if (canOpenDesignerTask) {
+                            setActiveDesignerTaskId(task.id);
+                          }
+                        }}
+                      >
                         <TaskCheckButton type="button" $checked={isDone} disabled>
                           {isDone ? <IconCheckTiny /> : null}
                         </TaskCheckButton>
@@ -1312,10 +1753,24 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   const statusTone = getTaskStatusTone(task.derivedStatus);
                   const priorityTone = getPriorityTone(task.priority);
                   const canManageThisTask = canEditTask(user.role);
+                  const canOpenDesignerTask = user.role === "designer" && task.assignee?.id === user.id;
                   const isDone = task.status === "done";
 
                   return (
-                    <MobileTaskCard key={task.id}>
+                  <MobileTaskCard
+                      key={task.id}
+                      $interactive={canManageThisTask || canOpenDesignerTask || (user.role === "client" && task.status === "review")}
+                      onClick={() => {
+                        if (user.role === "client" && task.status === "review") {
+                          startEditingTask(task.id);
+                          return;
+                        }
+
+                        if (canOpenDesignerTask) {
+                          setActiveDesignerTaskId(task.id);
+                        }
+                      }}
+                    >
                       <MobileTaskTop>
                         <TaskCheckButton type="button" $checked={isDone} disabled>
                           {isDone ? <IconCheckTiny /> : null}
@@ -1414,11 +1869,11 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
             <WorkspaceCard className="panel">
               <PanelHeader>
                 <h2>Client Feedback</h2>
-                {canLeaveClientFeedback ? (
+                {/* {canLeaveClientFeedback ? (
                   <InlineActionButton type="button" onClick={() => setShowFeedbackPanel(true)}>
                     Rate latest
                   </InlineActionButton>
-                ) : null}
+                ) : null} */}
               </PanelHeader>
               {latestFeedback ? (
                 <>
@@ -1675,6 +2130,16 @@ const MobileTitle = styled.h1`
   }
 `;
 
+const MobileNavSpacer = styled.span`
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+
+  ${desktop} {
+    display: none;
+  }
+`;
+
 const DesktopTitle = styled.h1`
   display: none;
 
@@ -1714,10 +2179,14 @@ const HeroCard = styled.section`
 `;
 
 const HeroTop = styled.div`
-  display: grid;
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
 
   ${desktop} {
+    display: grid;
     grid-template-columns: 88px minmax(0, 1fr);
     align-items: start;
     gap: 18px;
@@ -1917,7 +2386,8 @@ const CompactIconWrap = styled.span`
 const BriefAndTimeline = styled.div`
   display: grid;
   gap: 14px;
-
+  margin-top: 18px;
+  
   ${desktop} {
     grid-template-columns: minmax(0, 1fr) minmax(580px, 1.2fr);
     gap: 18px;
@@ -2297,12 +2767,22 @@ const TaskRowBlock = styled.div`
   border-top: 1px solid rgba(235, 229, 221, 0.95);
 `;
 
-const TaskTableRow = styled.div`
+const TaskTableRow = styled.div<{ $interactive?: boolean }>`
   display: grid;
   grid-template-columns: 24px minmax(0, 1.75fr) minmax(0, 1.15fr) 118px 96px 116px;
   gap: 10px;
   align-items: center;
   padding: 12px 0;
+  cursor: ${({ $interactive }) => ($interactive ? "pointer" : "default")};
+
+  ${({ $interactive }) =>
+    $interactive
+      ? css`
+          &:hover {
+            background: rgba(244, 241, 237, 0.46);
+          }
+        `
+      : ""}
 `;
 
 const TaskCheckButton = styled.button<{ $checked?: boolean }>`
@@ -2425,6 +2905,58 @@ const InlineEditCard = styled.div`
   padding: 0 0 16px;
 `;
 
+const TaskDeliveryReview = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const TaskDeliveryPreviewWrap = styled.div`
+  ${cardSurface}
+  padding: 10px;
+  border-radius: 18px;
+`;
+
+const TaskDeliveryPreview = styled.img`
+  width: 100%;
+  max-height: 260px;
+  display: block;
+  object-fit: cover;
+  border-radius: 14px;
+`;
+
+const TaskReviewActions = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+
+const TaskReviewActionButton = styled.button<{ $active?: boolean }>`
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid ${({ $active }) => ($active ? "transparent" : "rgba(230, 224, 215, 0.95)")};
+  background: ${({ $active }) => ($active ? "#214f39" : "rgba(255, 255, 255, 0.92)")};
+  color: ${({ $active }) => ($active ? "#fff" : "#214f39")};
+  font-size: 0.84rem;
+  font-weight: 700;
+`;
+
+const TaskInlineError = styled.p`
+  margin: 0;
+  color: #c04f42;
+  font-size: 0.84rem;
+  line-height: 1.45;
+`;
+
+const TaskUpdateLoadingOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: grid;
+  place-items: center;
+`;
+
 const CompactActions = styled.div`
   display: flex;
   flex-wrap: wrap;
@@ -2440,13 +2972,23 @@ const MobileTaskList = styled.div`
   }
 `;
 
-const MobileTaskCard = styled.article`
+const MobileTaskCard = styled.article<{ $interactive?: boolean }>`
   border: 1px solid rgba(235, 229, 221, 0.95);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
   padding: 12px;
   display: grid;
   gap: 10px;
+  cursor: ${({ $interactive }) => ($interactive ? "pointer" : "default")};
+
+  ${({ $interactive }) =>
+    $interactive
+      ? css`
+          &:hover {
+            background: rgba(244, 241, 237, 0.5);
+          }
+        `
+      : ""}
 `;
 
 const MobileTaskTop = styled.div`
@@ -2851,16 +3393,6 @@ function IconChevronDown() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
-}
-
-function IconDots() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <circle cx="5" cy="12" r="1.8" />
-      <circle cx="12" cy="12" r="1.8" />
-      <circle cx="19" cy="12" r="1.8" />
     </svg>
   );
 }

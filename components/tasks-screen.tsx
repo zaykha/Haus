@@ -1,20 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
-import { canCreateTask, canViewProject } from "@/lib/permissions";
-import { formatRole } from "@/lib/display";
-import { Project, TaskStatus } from "@/lib/types";
+import { DesignerTaskModal } from "@/components/designer-task-modal";
+import { canCreateTask, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
+import { formatLabel, formatRole } from "@/lib/display";
+import { Project, TaskManagerReviewStatus, TaskPriority, TaskStatus } from "@/lib/types";
 
 type FilterKey =
   | "all"
   | "todo"
   | "in_progress"
-  | "in_review"
-  | "waiting_feedback"
+  | "review"
+  | "approved"
   | "completed";
 
 type SortKey = "due_date" | "priority" | "name";
@@ -22,8 +23,8 @@ type DerivedPriority = "high" | "medium" | "low";
 type DerivedTaskStatus =
   | "todo"
   | "in_progress"
-  | "in_review"
-  | "waiting_feedback"
+  | "review"
+  | "approved"
   | "completed";
 
 type TaskRow = {
@@ -37,6 +38,9 @@ type TaskRow = {
   dueDate: string;
   status: DerivedTaskStatus;
   priority: DerivedPriority;
+  completionScreenshotUrl?: string | null;
+  rawStatus: TaskStatus;
+  managerReviewStatus?: TaskManagerReviewStatus;
 };
 
 const desktop = "@media (min-width: 768px)";
@@ -56,8 +60,8 @@ const filterOptions: { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "todo", label: "To Do" },
   { key: "in_progress", label: "In Progress" },
-  { key: "in_review", label: "In Review" },
-  { key: "waiting_feedback", label: "Waiting Feedback" },
+  { key: "review", label: "Review" },
+  { key: "approved", label: "Approved" },
   { key: "completed", label: "Completed" },
 ] as const;
 
@@ -90,16 +94,16 @@ function startOfDay(value: Date) {
 }
 
 function deriveTaskStatus(taskStatus: TaskStatus, project: Project): DerivedTaskStatus {
+  if (taskStatus === "approved") {
+    return "approved";
+  }
+
+  if (taskStatus === "review") {
+    return "review";
+  }
+
   if (taskStatus === "done") {
     return "completed";
-  }
-
-  if (project.status === "review") {
-    return "waiting_feedback";
-  }
-
-  if (project.stage === "review" || project.status === "revision") {
-    return "in_review";
   }
 
   if (taskStatus === "in_progress") {
@@ -133,12 +137,12 @@ function getStatusTone(status: DerivedTaskStatus) {
   switch (status) {
     case "in_progress":
       return { bg: "#e6efff", fg: "#4770d8", label: "In Progress" };
-    case "in_review":
-      return { bg: "#efe7ff", fg: "#7f61d7", label: "In Review" };
-    case "waiting_feedback":
-      return { bg: "#fff1da", fg: "#ca8a22", label: "Waiting Feedback" };
+    case "review":
+      return { bg: "#fff1da", fg: "#ca8a22", label: "Review" };
+    case "approved":
+      return { bg: "#e5f4e8", fg: "#5ca16d", label: "Approved" };
     case "completed":
-      return { bg: "#e5f4e8", fg: "#5ca16d", label: "Completed" };
+      return { bg: "#efe7ff", fg: "#7f61d7", label: "Completed" };
     default:
       return { bg: "#f4f1ed", fg: "#8d857b", label: "To Do" };
   }
@@ -156,19 +160,33 @@ function getPriorityTone(priority: DerivedPriority) {
 }
 
 export function TasksScreen() {
-  const { state, user } = useAppState();
+  const { state, user, createTask, updateTaskStatus } = useAppState();
   const [currentPage, setCurrentPage] = useState(1);
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [sort, setSort] = useState<SortKey>("due_date");
   const [showFilters, setShowFilters] = useState(false);
+  const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [activeDesignerTaskId, setActiveDesignerTaskId] = useState<string | null>(null);
+  const [taskSelect, setTaskSelect] = useState<"project" | "assignee" | "status" | null>(null);
+  const [newTaskProjectId, setNewTaskProjectId] = useState("");
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskAssigneeId, setNewTaskAssigneeId] = useState("");
+  const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus>("todo");
+  const [newTaskDueDate, setNewTaskDueDate] = useState("");
+  const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
 
   if (!user) {
     return null;
   }
 
   const visibleProjects = state.projects.filter((project) => canViewProject(user, project));
+  const availableProjects = visibleProjects;
+  const availableStaff = state.users.filter((candidate) => candidate.role !== "client");
+  const selectedProject =
+    availableProjects.find((project) => project.id === newTaskProjectId) ?? availableProjects[0] ?? null;
   const userNames = new Map(state.users.map((member) => [member.id, member.name]));
   const roleLabel = formatRole(user.role).toUpperCase();
   const canManage = canCreateTask(user.role);
@@ -177,20 +195,25 @@ export function TasksScreen() {
   const allTasks = useMemo<TaskRow[]>(
     () =>
       visibleProjects.flatMap((project) =>
-        project.tasks.map((task) => ({
-          id: task.id,
-          title: task.title,
-          assigneeId: task.assigneeId,
-          assigneeName: userNames.get(task.assigneeId) ?? "Unassigned",
-          projectId: project.id,
-          projectName: project.name,
-          projectMark: getProjectMark(project),
-          dueDate: task.dueDate ?? project.dueDate,
-          status: deriveTaskStatus(task.status, project),
-          priority: task.priority ?? derivePriority(task.dueDate ?? project.dueDate, task.status),
-        })),
+        getVisibleTasksForUser(user, project)
+          .filter((task) => !isDesigner || task.assigneeId === user.id)
+          .map((task) => ({
+            id: task.id,
+            title: task.title,
+            assigneeId: task.assigneeId,
+            assigneeName: userNames.get(task.assigneeId) ?? "Unassigned",
+            projectId: project.id,
+            projectName: project.name,
+            projectMark: getProjectMark(project),
+            dueDate: task.dueDate ?? project.dueDate,
+            status: deriveTaskStatus(task.status, project),
+            priority: task.priority ?? derivePriority(task.dueDate ?? project.dueDate, task.status),
+            completionScreenshotUrl: task.completionScreenshotUrl ?? null,
+            rawStatus: task.status,
+            managerReviewStatus: task.managerReviewStatus,
+          })),
       ),
-    [userNames, visibleProjects],
+    [isDesigner, user.id, userNames, visibleProjects],
   );
 
   const filteredTasks = useMemo(() => {
@@ -221,17 +244,19 @@ export function TasksScreen() {
   }, [allTasks, filter, search, sort]);
 
   const today = startOfDay(new Date());
-  const openCount = allTasks.filter((task) => task.status !== "completed").length;
+  const openCount = allTasks.filter((task) => task.status !== "approved").length;
   const dueTodayCount = allTasks.filter(
-    (task) => task.status !== "completed" && startOfDay(new Date(task.dueDate)) === today,
+    (task) => task.status !== "approved" && startOfDay(new Date(task.dueDate)) === today,
   ).length;
   const overdueCount = allTasks.filter(
-    (task) => task.status !== "completed" && startOfDay(new Date(task.dueDate)) < today,
+    (task) => task.status !== "approved" && startOfDay(new Date(task.dueDate)) < today,
   ).length;
-  const completedCount = allTasks.filter((task) => task.status === "completed").length;
+  const completedCount = allTasks.filter(
+    (task) => task.status === "completed" || task.status === "approved",
+  ).length;
 
-  const focusTasks = filteredTasks.filter((task) => task.status !== "completed").slice(0, 3);
-  const upcomingTasks = [...filteredTasks].slice(0, 3);
+  const focusTasks = filteredTasks.filter((task) => task.status !== "approved").slice(0, 3);
+  const upcomingTasks = [...filteredTasks].filter((task) => task.status !== "approved").slice(0, 3);
   const pageSize = 3;
   const totalTasks = filteredTasks.length;
   const totalPages = Math.max(1, Math.ceil(totalTasks / pageSize));
@@ -239,6 +264,9 @@ export function TasksScreen() {
   const paginatedTasks = filteredTasks.slice((activePage - 1) * pageSize, activePage * pageSize);
   const rangeStart = totalTasks ? (activePage - 1) * pageSize + 1 : 0;
   const rangeEnd = totalTasks ? Math.min(activePage * pageSize, totalTasks) : 0;
+  const activeDesignerTask = activeDesignerTaskId
+    ? allTasks.find((task) => task.id === activeDesignerTaskId) ?? null
+    : null;
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -246,8 +274,257 @@ export function TasksScreen() {
     setCurrentPage(1);
   };
 
+  const openDesignerTaskModal = (task: TaskRow) => {
+    setActiveDesignerTaskId(task.id);
+  };
+
+  const closeDesignerTaskModal = () => {
+    setActiveDesignerTaskId(null);
+  };
+
+  const openCreateTaskModal = () => {
+    const firstProject = availableProjects[0] ?? null;
+    setNewTaskProjectId(firstProject?.id ?? "");
+    setNewTaskTitle("");
+    setNewTaskAssigneeId("");
+    setNewTaskStatus("todo");
+    setNewTaskDueDate(firstProject?.dueDate ?? "");
+    setNewTaskPriority("medium");
+    setTaskSelect(null);
+    setShowCreateTaskModal(true);
+  };
+
+  const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedProject) {
+      return;
+    }
+
+    setIsCreatingTask(true);
+
+    try {
+      await createTask(selectedProject.id, {
+        title: newTaskTitle,
+        assigneeId: newTaskAssigneeId,
+        status: newTaskStatus,
+        dueDate: newTaskDueDate,
+        priority: newTaskPriority,
+      });
+      setShowCreateTaskModal(false);
+    } finally {
+      setIsCreatingTask(false);
+    }
+  };
+
   return (
     <Shell>
+      {isCreatingTask ? (
+        <PopupLoadingOverlay role="status" aria-live="polite">
+          <div className="auth-loading-card">
+            <div className="auth-loading-spinner" aria-hidden="true" />
+            <p>Creating task...</p>
+          </div>
+        </PopupLoadingOverlay>
+      ) : null}
+      <DesignerTaskModal
+        open={Boolean(activeDesignerTask && isDesigner)}
+        task={
+          activeDesignerTask
+            ? {
+                id: activeDesignerTask.id,
+                title: activeDesignerTask.title,
+                projectId: activeDesignerTask.projectId,
+                projectName: activeDesignerTask.projectName,
+                dueDate: activeDesignerTask.dueDate,
+                status: activeDesignerTask.rawStatus,
+                completionScreenshotUrl: activeDesignerTask.completionScreenshotUrl ?? null,
+                managerReviewStatus: activeDesignerTask.managerReviewStatus,
+              }
+            : null
+        }
+        onClose={closeDesignerTaskModal}
+        onSubmit={async (payload) => {
+          await updateTaskStatus(payload.projectId, payload.taskId, {
+            status: payload.status,
+            completionScreenshotUrl: payload.completionScreenshotUrl ?? null,
+          });
+        }}
+      />
+
+      {showCreateTaskModal && canManage ? (
+        <ModalBackdrop onClick={() => setShowCreateTaskModal(false)}>
+          <ModalCard onClick={(event) => event.stopPropagation()}>
+            <ModalHeader>
+              <div>
+                <ModalTitle>Create task</ModalTitle>
+                <ModalDescription>Add a task from the general tasks page.</ModalDescription>
+              </div>
+              <ModalClose type="button" onClick={() => setShowCreateTaskModal(false)} aria-label="Close">
+                <IconClose />
+              </ModalClose>
+            </ModalHeader>
+            <InlineForm onSubmit={handleCreateTask}>
+              <TaskModalGrid>
+                <TaskModalField>
+                  <TaskFloatingSelect $filled={Boolean(selectedProject)} $open={taskSelect === "project"}>
+                    <TaskSelectTrigger
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={taskSelect === "project"}
+                      onClick={() => setTaskSelect((current) => (current === "project" ? null : "project"))}
+                    >
+                      <TaskSelectValue>{selectedProject?.name ?? "Select project"}</TaskSelectValue>
+                      <TaskSelectChevron $open={taskSelect === "project"}>
+                        <IconChevronDown />
+                      </TaskSelectChevron>
+                    </TaskSelectTrigger>
+                    <TaskFloatingLabel>Project</TaskFloatingLabel>
+                    {taskSelect === "project" ? (
+                      <TaskSelectMenu role="listbox" aria-label="Project">
+                        {availableProjects.map((project) => (
+                          <TaskSelectOption
+                            key={project.id}
+                            type="button"
+                            role="option"
+                            aria-selected={newTaskProjectId === project.id}
+                            $active={newTaskProjectId === project.id}
+                            onClick={() => {
+                              setNewTaskProjectId(project.id);
+                              setNewTaskDueDate(project.dueDate);
+                              setTaskSelect(null);
+                            }}
+                          >
+                            {project.name}
+                          </TaskSelectOption>
+                        ))}
+                      </TaskSelectMenu>
+                    ) : null}
+                  </TaskFloatingSelect>
+                </TaskModalField>
+
+                <TaskModalField $wide>
+                  <TaskFloatingField className={newTaskTitle ? "auth-field is-filled" : "auth-field"}>
+                    <TaskTextInput
+                      value={newTaskTitle}
+                      onChange={(event) => setNewTaskTitle(event.target.value)}
+                      placeholder=" "
+                      required
+                    />
+                    <span>Task title</span>
+                  </TaskFloatingField>
+                </TaskModalField>
+
+                <TaskModalField>
+                  <TaskFloatingSelect $filled={Boolean(newTaskAssigneeId)} $open={taskSelect === "assignee"}>
+                    <TaskSelectTrigger
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={taskSelect === "assignee"}
+                      onClick={() => setTaskSelect((current) => (current === "assignee" ? null : "assignee"))}
+                    >
+                      <TaskSelectValue>
+                        {availableStaff.find((member) => member.id === newTaskAssigneeId)?.name ?? "Select staff"}
+                      </TaskSelectValue>
+                      <TaskSelectChevron $open={taskSelect === "assignee"}>
+                        <IconChevronDown />
+                      </TaskSelectChevron>
+                    </TaskSelectTrigger>
+                    <TaskFloatingLabel>Assignee</TaskFloatingLabel>
+                    {taskSelect === "assignee" ? (
+                      <TaskSelectMenu role="listbox" aria-label="Assignee">
+                        {availableStaff.map((member) => (
+                          <TaskSelectOption
+                            key={member.id}
+                            type="button"
+                            role="option"
+                            aria-selected={newTaskAssigneeId === member.id}
+                            $active={newTaskAssigneeId === member.id}
+                            onClick={() => {
+                              setNewTaskAssigneeId(member.id);
+                              setTaskSelect(null);
+                            }}
+                          >
+                            {member.name}
+                          </TaskSelectOption>
+                        ))}
+                      </TaskSelectMenu>
+                    ) : null}
+                  </TaskFloatingSelect>
+                </TaskModalField>
+
+                <TaskModalField>
+                  <TaskFloatingSelect $filled $open={taskSelect === "status"}>
+                    <TaskSelectTrigger
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={taskSelect === "status"}
+                      onClick={() => setTaskSelect((current) => (current === "status" ? null : "status"))}
+                    >
+                      <TaskSelectValue>{formatLabel(newTaskStatus)}</TaskSelectValue>
+                      <TaskSelectChevron $open={taskSelect === "status"}>
+                        <IconChevronDown />
+                      </TaskSelectChevron>
+                    </TaskSelectTrigger>
+                    <TaskFloatingLabel>Status</TaskFloatingLabel>
+                    {taskSelect === "status" ? (
+                      <TaskSelectMenu role="listbox" aria-label="Status">
+                        {(["todo", "in_progress", "done"] as TaskStatus[]).map((option) => (
+                          <TaskSelectOption
+                            key={option}
+                            type="button"
+                            role="option"
+                            aria-selected={newTaskStatus === option}
+                            $active={newTaskStatus === option}
+                            onClick={() => {
+                              setNewTaskStatus(option);
+                              setTaskSelect(null);
+                            }}
+                          >
+                            {formatLabel(option)}
+                          </TaskSelectOption>
+                        ))}
+                      </TaskSelectMenu>
+                    ) : null}
+                  </TaskFloatingSelect>
+                </TaskModalField>
+
+                <TaskModalField>
+                  <TaskFloatingField className={newTaskDueDate ? "auth-field is-filled" : "auth-field"}>
+                    <TaskTextInput
+                      type="date"
+                      value={newTaskDueDate}
+                      onChange={(event) => setNewTaskDueDate(event.target.value)}
+                      placeholder=" "
+                      required
+                    />
+                    <span>Due date</span>
+                  </TaskFloatingField>
+                </TaskModalField>
+              </TaskModalGrid>
+              <PriorityField>
+                <MetaLabel>Priority</MetaLabel>
+                <PriorityChips>
+                  {(["high", "medium", "low"] as TaskPriority[]).map((priority) => (
+                    <PriorityChip
+                      key={priority}
+                      type="button"
+                      $tone={priority}
+                      $active={newTaskPriority === priority}
+                      onClick={() => setNewTaskPriority(priority)}
+                    >
+                      {formatLabel(priority)}
+                    </PriorityChip>
+                  ))}
+                </PriorityChips>
+              </PriorityField>
+              <button className="primary-button" type="submit" disabled={isCreatingTask}>
+                {isCreatingTask ? "Creating..." : "Add task"}
+              </button>
+            </InlineForm>
+          </ModalCard>
+        </ModalBackdrop>
+      ) : null}
+
       <AppSidebar user={user} activeLabel="Tasks" />
 
       <Content>
@@ -261,10 +538,9 @@ export function TasksScreen() {
                 : "Manage deliverables, assign staff, and track project work across all active projects."}
             </Subtitle>
           </div>
-          <BellButton type="button" aria-label="Notifications">
-            <IconBell />
-            <BellBadge>1</BellBadge>
-          </BellButton>
+          <HeaderAvatarLink href="/profile" aria-label="Open profile">
+            {user.name.slice(0, 1)}
+          </HeaderAvatarLink>
         </Header>
 
         <Toolbar>
@@ -325,11 +601,11 @@ export function TasksScreen() {
           </SearchControls>
 
           {canManage ? (
-            <CreateButton type="button">
+            <CreateButton type="button" onClick={openCreateTaskModal}>
               <ActionIcon>
                 <IconPlus />
               </ActionIcon>
-              <span>Create Task</span>
+              <span>+ Task</span>
             </CreateButton>
           ) : null}
         </Toolbar>
@@ -343,7 +619,10 @@ export function TasksScreen() {
                 </StatIcon>
               </StatLeft>
               <StatCopy>
-                <StatLabel>Open Tasks</StatLabel>
+                <StatLabel>
+                  <MobileLabel>Open</MobileLabel>
+                  <DesktopLabel>Open Tasks</DesktopLabel>
+                </StatLabel>
                 <StatValue>{openCount}</StatValue>
                 <StatNote $tone="positive">+6 from last week</StatNote>
               </StatCopy>
@@ -356,7 +635,10 @@ export function TasksScreen() {
                 </StatIcon>
               </StatLeft>
               <StatCopy>
-                <StatLabel>Due Today</StatLabel>
+                <StatLabel>
+                  <MobileLabel>Due Today</MobileLabel>
+                  <DesktopLabel>Due Today</DesktopLabel>
+                </StatLabel>
                 <StatValue>{dueTodayCount}</StatValue>
                 <StatNote $tone="positive">+2 from yesterday</StatNote>
               </StatCopy>
@@ -369,7 +651,10 @@ export function TasksScreen() {
                 </StatIcon>
               </StatLeft>
               <StatCopy>
-                <StatLabel>Overdue</StatLabel>
+                <StatLabel>
+                  <MobileLabel>Overdue</MobileLabel>
+                  <DesktopLabel>Overdue</DesktopLabel>
+                </StatLabel>
                 <StatValue>{overdueCount}</StatValue>
                 <StatNote $tone="warning">-1 from yesterday</StatNote>
               </StatCopy>
@@ -407,40 +692,54 @@ export function TasksScreen() {
               paginatedTasks.map((task) => {
                 const statusTone = getStatusTone(task.status);
                 const priorityTone = getPriorityTone(task.priority);
+                const isTaskClickable = isDesigner && task.assigneeId === user.id;
+                const RowComponent = isTaskClickable ? DesktopTaskButtonRow : DesktopTaskLinkRow;
                 return (
-                  <DesktopTaskRow href={`/projects/${task.projectId}`} key={task.id}>
-                    <CheckCell>
-                      <CheckboxStub />
-                    </CheckCell>
-                    <TaskCell>
-                      <TaskTitle>{task.title}</TaskTitle>
-                      <TaskMeta>{task.projectName}</TaskMeta>
-                    </TaskCell>
-                    <ProjectCell>
-                      <ProjectMark>{task.projectMark}</ProjectMark>
-                      <TaskMeta>{task.projectName}</TaskMeta>
-                    </ProjectCell>
-                    <AssigneeCell>
-                      <Avatar>{task.assigneeName.slice(0, 1)}</Avatar>
-                      <TaskMeta>{task.assigneeName}</TaskMeta>
-                    </AssigneeCell>
-                    <PillCell>
-                      <Pill style={{ background: statusTone.bg, color: statusTone.fg }}>
-                        {statusTone.label}
-                      </Pill>
-                    </PillCell>
-                    <PillCell>
-                      <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
-                        {priorityTone.label}
-                      </Pill>
-                    </PillCell>
-                    <DueCell>{formatDueDate(task.dueDate)}</DueCell>
-                    <ArrowCell>
-                      <ArrowButton>
-                        <IconArrowRight />
-                      </ArrowButton>
-                    </ArrowCell>
-                  </DesktopTaskRow>
+                  <RowComponent
+                    {...(isTaskClickable
+                      ? {
+                          type: "button" as const,
+                          onClick: () => openDesignerTaskModal(task),
+                        }
+                      : {
+                          href: `/projects/${task.projectId}`,
+                        })}
+                    key={task.id}
+                  >
+                    <DesktopTaskRowContent>
+                      <CheckCell>
+                        <CheckboxStub />
+                      </CheckCell>
+                      <TaskCell>
+                        <TaskTitle>{task.title}</TaskTitle>
+                        <TaskMeta>{task.projectName}</TaskMeta>
+                      </TaskCell>
+                      <ProjectCell>
+                        <ProjectMark>{task.projectMark}</ProjectMark>
+                        <TaskMeta>{task.projectName}</TaskMeta>
+                      </ProjectCell>
+                      <AssigneeCell>
+                        <Avatar>{task.assigneeName.slice(0, 1)}</Avatar>
+                        <TaskMeta>{task.assigneeName}</TaskMeta>
+                      </AssigneeCell>
+                      <PillCell>
+                        <Pill style={{ background: statusTone.bg, color: statusTone.fg }}>
+                          {statusTone.label}
+                        </Pill>
+                      </PillCell>
+                      <PillCell>
+                        <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
+                          {priorityTone.label}
+                        </Pill>
+                      </PillCell>
+                      <DueCell>{formatDueDate(task.dueDate)}</DueCell>
+                      <ArrowCell>
+                        <ArrowButton>
+                          <IconArrowRight />
+                        </ArrowButton>
+                      </ArrowCell>
+                    </DesktopTaskRowContent>
+                  </RowComponent>
                 );
               })
             ) : (
@@ -482,35 +781,49 @@ export function TasksScreen() {
             paginatedTasks.map((task) => {
               const statusTone = getStatusTone(task.status);
               const priorityTone = getPriorityTone(task.priority);
+              const isTaskClickable = isDesigner && task.assigneeId === user.id;
+              const RowComponent = isTaskClickable ? MobileTaskButtonCard : MobileTaskLinkCard;
               return (
-                <MobileTaskCard href={`/projects/${task.projectId}`} key={task.id}>
-                  <MobileTaskTop>
-                    <CheckboxStub />
-                    <MobileTopCopy>
-                      <TaskTitle>{task.title}</TaskTitle>
-                      <TaskMeta>{task.projectName}</TaskMeta>
-                    </MobileTopCopy>
-                    <Pill style={{ background: statusTone.bg, color: statusTone.fg }}>
-                      {statusTone.label}
-                    </Pill>
-                  </MobileTaskTop>
+                <RowComponent
+                  {...(isTaskClickable
+                    ? {
+                        type: "button" as const,
+                        onClick: () => openDesignerTaskModal(task),
+                      }
+                    : {
+                        href: `/projects/${task.projectId}`,
+                    })}
+                  key={task.id}
+                >
+                  <MobileTaskCardContent>
+                    <MobileTaskTop>
+                      <CheckboxStub />
+                      <MobileTopCopy>
+                        <TaskTitle>{task.title}</TaskTitle>
+                        <TaskMeta>{task.projectName}</TaskMeta>
+                      </MobileTopCopy>
+                      <Pill style={{ background: statusTone.bg, color: statusTone.fg }}>
+                        {statusTone.label}
+                      </Pill>
+                    </MobileTaskTop>
 
-                  <MobileTaskBottom>
-                    <AssigneeRow>
-                      <Avatar>{task.assigneeName.slice(0, 1)}</Avatar>
-                      <TaskMeta>{task.assigneeName}</TaskMeta>
-                    </AssigneeRow>
-                    <DateRow>
-                      <MiniIcon>
-                        <IconCalendar />
-                      </MiniIcon>
-                      <TaskMeta>{formatDueDate(task.dueDate)}</TaskMeta>
-                    </DateRow>
-                    <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
-                      {priorityTone.label}
-                    </Pill>
-                  </MobileTaskBottom>
-                </MobileTaskCard>
+                    <MobileTaskBottom>
+                      <AssigneeRow>
+                        <Avatar>{task.assigneeName.slice(0, 1)}</Avatar>
+                        <TaskMeta>{task.assigneeName}</TaskMeta>
+                      </AssigneeRow>
+                      <DateRow>
+                        <MiniIcon>
+                          <IconCalendar />
+                        </MiniIcon>
+                        <TaskMeta>{formatDueDate(task.dueDate)}</TaskMeta>
+                      </DateRow>
+                      <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
+                        {priorityTone.label}
+                      </Pill>
+                    </MobileTaskBottom>
+                  </MobileTaskCardContent>
+                </RowComponent>
               );
             })
           ) : (
@@ -787,12 +1100,15 @@ const Subtitle = styled.p`
   font-size: 12px;
   line-height: 1.45;
 
+  display: none;
+
   ${desktop} {
+    display: block;
     font-size: 0.86rem;
   }
 `;
 
-const BellButton = styled.button`
+const HeaderAvatarLink = styled(Link)`
   position: relative;
   width: 42px;
   height: 42px;
@@ -802,29 +1118,10 @@ const BellButton = styled.button`
   justify-content: center;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--color-text-muted);
-
-  svg {
-    width: 20px;
-    height: 20px;
-  }
-`;
-
-const BellBadge = styled.span`
-  position: absolute;
-  right: -2px;
-  top: -2px;
-  min-width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: #7d2f2a;
+  background: #ded6c8;
   color: #fff;
-  font-size: 10px;
   font-weight: 700;
+  text-decoration: none;
 `;
 
 const Toolbar = styled.section`
@@ -1035,6 +1332,20 @@ const StatLabel = styled.span`
   }
 `;
 
+const MobileLabel = styled.span`
+  ${desktop} {
+    display: none;
+  }
+`;
+
+const DesktopLabel = styled.span`
+  display: none;
+
+  ${desktop} {
+    display: inline;
+  }
+`;
+
 const StatValue = styled.strong`
   font-size: 1.65rem;
   line-height: 1;
@@ -1046,10 +1357,11 @@ const StatValue = styled.strong`
 
 const StatNote = styled.span<{ $tone: "positive" | "warning" }>`
   color: ${({ $tone }) => ($tone === "positive" ? "#5ca16d" : "#e06457")};
-  font-size: 0.7rem;
+  display: none;
   font-weight: 600;
 
   ${desktop} {
+    display: inline;
     font-size: 0.76rem;
   }
 `;
@@ -1168,14 +1480,40 @@ const TaskTable = styled.div`
   flex-direction: column;
 `;
 
-const DesktopTaskRow = styled(Link)`
+const taskRowSurfaceCss = css`
+  display: block;
+  border-top: 1px solid rgba(230, 224, 215, 0.8);
+  text-decoration: none;
+  transition: background 140ms ease;
+
+  &:hover {
+    background: rgba(244, 241, 237, 0.5);
+  }
+`;
+
+const DesktopTaskLinkRow = styled(Link)`
+  ${taskRowSurfaceCss}
+  cursor: pointer;
+`;
+
+const DesktopTaskButtonRow = styled.button`
+  ${taskRowSurfaceCss}
+  width: 100%;
+  padding: 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+`;
+
+const DesktopTaskRowContent = styled.div`
   display: grid;
   grid-template-columns: 40px 1.6fr 1.4fr 1.2fr 1fr 1fr 1fr 60px;
   align-items: center;
   gap: 16px;
   padding: 16px 20px;
-  border-top: 1px solid rgba(230, 224, 215, 0.8);
-  text-decoration: none;
 `;
 
 const CheckCell = styled.div`
@@ -1230,6 +1568,7 @@ const ArrowButton = styled.span`
   place-items: center;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
   color: var(--color-text-muted);
 
   svg {
@@ -1249,12 +1588,13 @@ const MobileTaskList = styled.div`
 
 const PaginationBar = styled.section`
   ${cardSurface}
-  display: grid;
+  display: none;
   gap: 14px;
   padding: 10px;
   border-radius: 24px;
 
   ${desktop} {
+    display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     padding: 10px 22px;
@@ -1322,13 +1662,37 @@ const PaginationCurrent = styled.span`
   font-weight: 700;
 `;
 
-const MobileTaskCard = styled(Link)`
+const mobileTaskCardCss = css`
   ${cardSurface}
+  display: block;
+  border-radius: 20px;
+  text-decoration: none;
+  transition: background 140ms ease;
+
+  &:hover {
+    background: rgba(244, 241, 237, 0.5);
+  }
+`;
+
+const MobileTaskLinkCard = styled(Link)`
+  ${mobileTaskCardCss}
+  cursor: pointer;
+`;
+
+const MobileTaskButtonCard = styled.button`
+  ${mobileTaskCardCss}
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  text-align: left;
+`;
+
+const MobileTaskCardContent = styled.div`
   display: grid;
   gap: 14px;
   padding: 16px;
-  border-radius: 20px;
-  text-decoration: none;
 `;
 
 const MobileTaskTop = styled.div`
@@ -1545,6 +1909,299 @@ const EmptyState = styled.div`
   }
 `;
 
+const ModalBackdrop = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(28, 29, 28, 0.36);
+  backdrop-filter: blur(8px);
+`;
+
+const PopupLoadingOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: grid;
+  place-items: center;
+`;
+
+const ModalCard = styled.section`
+  ${cardSurface}
+  width: min(100%, 620px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 26px;
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+`;
+
+const ModalTitle = styled.h2`
+  margin: 0;
+  font-size: 1.08rem;
+`;
+
+const ModalDescription = styled.p`
+  margin: 6px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+`;
+
+const ModalClose = styled.button`
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--color-text);
+  flex: 0 0 40px;
+`;
+
+const InlineForm = styled.form`
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+`;
+
+const TaskModalGrid = styled.div`
+  display: grid;
+  gap: 12px;
+
+  ${desktop} {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+`;
+
+const TaskModalField = styled.div<{ $wide?: boolean }>`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  ${({ $wide }) =>
+    $wide
+      ? css`
+          ${desktop} {
+            grid-column: 1 / -1;
+          }
+        `
+      : ""}
+`;
+
+const TaskFloatingField = styled.label`
+  width: 100%;
+`;
+
+const TaskTextInput = styled.input`
+  width: 100%;
+  min-height: 58px;
+  padding: 0 16px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+  font-size: 16px;
+`;
+
+const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean }>`
+  position: relative;
+  display: block;
+  width: 100%;
+  z-index: ${({ $open }) => ($open ? 8 : 2)};
+`;
+
+const TaskSelectTrigger = styled.button`
+  width: 100%;
+  min-height: 58px;
+  padding: 18px 16px 12px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 16px;
+  text-align: left;
+`;
+
+const TaskFloatingLabel = styled.span`
+  position: absolute;
+  left: 16px;
+  top: 1px;
+  transform: translateY(-50%);
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #29463e;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 3;
+  pointer-events: none;
+`;
+
+const TaskSelectValue = styled.span`
+  color: var(--color-text);
+  font-size: 16px;
+  line-height: 1.2;
+`;
+
+const TaskSelectChevron = styled.span<{ $open?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  transform: rotate(${({ $open }) => ($open ? "180deg" : "0deg")});
+  transition: transform 140ms ease;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+`;
+
+const TaskSelectMenu = styled.div`
+  ${cardSurface}
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 18px;
+  max-height: 240px;
+  overflow-y: auto;
+`;
+
+const TaskSelectOption = styled.button<{ $active?: boolean }>`
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: ${({ $active }) => ($active ? "rgba(31, 67, 57, 0.1)" : "transparent")};
+  color: ${({ $active }) => ($active ? "#1f4339" : "var(--color-text)")};
+  font-size: 0.94rem;
+  font-weight: ${({ $active }) => ($active ? 600 : 500)};
+  text-align: left;
+`;
+
+const PriorityField = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const MetaLabel = styled.span`
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+`;
+
+const PriorityChips = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+
+const PriorityChip = styled.button<{ $active?: boolean; $tone: TaskPriority }>`
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid
+    ${({ $active }) => ($active ? "transparent" : "rgba(230, 224, 215, 0.95)")};
+  background: ${({ $active, $tone }) =>
+    $active
+      ? $tone === "high"
+        ? "#ffe7e5"
+        : $tone === "medium"
+          ? "#fff1da"
+          : "#e5f4e8"
+      : "rgba(255, 255, 255, 0.9)"};
+  color: ${({ $tone }) =>
+    $tone === "high" ? "#e06457" : $tone === "medium" ? "#ca8a22" : "#5ca16d"};
+  font-size: 0.8rem;
+  font-weight: 700;
+`;
+
+const UploadField = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`;
+
+const UploadHint = styled.p`
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+`;
+
+const UploadButton = styled.button`
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 16px;
+  border: 1px dashed rgba(33, 79, 57, 0.28);
+  border-radius: 16px;
+  background: rgba(244, 248, 246, 0.92);
+  color: #214f39;
+  font-weight: 600;
+  cursor: pointer;
+
+  input {
+    display: none;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+`;
+
+const ScreenshotPreviewWrap = styled.div`
+  ${cardSurface}
+  padding: 10px;
+  border-radius: 18px;
+`;
+
+const ScreenshotPreview = styled.img`
+  width: 100%;
+  max-height: 220px;
+  display: block;
+  object-fit: cover;
+  border-radius: 14px;
+`;
+
+const InlineError = styled.p`
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 0.84rem;
+  line-height: 1.45;
+`;
+
 function IconHome() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1620,15 +2277,6 @@ function IconFile() {
   );
 }
 
-function IconBell() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6.5 16.5h11l-1.4-1.6V11a4.1 4.1 0 1 0-8.2 0v3.9Z" />
-      <path d="M10 19a2 2 0 0 0 4 0" />
-    </svg>
-  );
-}
-
 function IconSearch() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
@@ -1662,6 +2310,32 @@ function IconFilter() {
       <path d="M4 6h16" />
       <path d="M7 12h10" />
       <path d="M10 18h4" />
+    </svg>
+  );
+}
+
+function IconChevronDown() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
+function IconUpload() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 16V5" />
+      <path d="m7.5 9.5 4.5-4.5 4.5 4.5" />
+      <path d="M4.5 18.5h15" />
     </svg>
   );
 }

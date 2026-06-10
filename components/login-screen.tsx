@@ -1,12 +1,12 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/app-state";
 
 export function LoginScreen() {
   const router = useRouter();
-  const { login, mode, ready } = useAppState();
+  const { login, mode, ready, user } = useAppState();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -14,8 +14,27 @@ export function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (ready && user) {
+      router.replace("/dashboard");
+    }
+  }, [ready, router, user]);
+
   if (!ready) {
     return null;
+  }
+
+  if (user) {
+    return (
+      <main className="auth-screen">
+        <div className="auth-loading-overlay" role="status" aria-live="polite">
+          <div className="auth-loading-card">
+            <div className="auth-loading-spinner" aria-hidden="true" />
+            <p>Opening dashboard...</p>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -26,11 +45,10 @@ export function LoginScreen() {
 
     try {
       await login(email, password);
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : "Unable to sign in.");
       setShowErrorPopup(true);
-    } finally {
       setSubmitting(false);
     }
   };
@@ -101,7 +119,7 @@ export function LoginScreen() {
                   </div>
                 </label>
 
-                <button className="primary-button mobile-full-button auth-submit" type="submit">
+                <button className="primary-button mobile-full-button auth-submit" type="submit" disabled={submitting}>
                   <span>Continue</span>
                   <span aria-hidden="true">→</span>
                 </button>

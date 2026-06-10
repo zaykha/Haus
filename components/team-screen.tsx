@@ -1,19 +1,40 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { useAppState } from "@/components/app-state";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
-import { canInviteUsers } from "@/lib/permissions";
-import { Role } from "@/lib/types";
+import { canDeleteTeamMember, canInviteUsers, canUpdateTeamRole } from "@/lib/permissions";
+import { Role, TaskPriority, TaskStatus } from "@/lib/types";
 import { formatRole } from "@/lib/display";
 
 const desktop = "@media (min-width: 768px)";
 const PAGE_SIZE = 6;
+const MEMBER_TASKS_PAGE_SIZE = 5;
 
 type RoleFilter = "all" | Role;
+type InternalRole = Exclude<Role, "client">;
+type MemberTaskRow = {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate: string;
+  projectId: string;
+  projectName: string;
+};
+type MemberRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  company?: string;
+  projectCount: number;
+  openTasks: MemberTaskRow[];
+};
 
 function getRoleTone(role: Role) {
   switch (role) {
@@ -44,8 +65,34 @@ function invitationPill(status: string) {
   return { bg: "#fff1da", fg: "#ca8a22", label: "Pending" };
 }
 
+function formatShortDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
+function formatTaskStatus(status: TaskStatus) {
+  switch (status) {
+    case "in_progress":
+      return "In progress";
+    case "review":
+      return "Review";
+    case "approved":
+      return "Approved";
+    case "done":
+      return "Completed";
+    default:
+      return "To do";
+  }
+}
+
+function formatPriority(priority: TaskPriority) {
+  return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
 export function TeamScreen() {
-  const { state, user, revokeInvitation } = useAppState();
+  const { state, user, revokeInvitation, updateTeamMemberRole, deleteTeamMember } = useAppState();
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
@@ -54,13 +101,19 @@ export function TeamScreen() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
   const [isRevoking, setIsRevoking] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<MemberRow | null>(null);
+  const [selectedTaskPage, setSelectedTaskPage] = useState(1);
+  const [showUpdateRoleModal, setShowUpdateRoleModal] = useState(false);
+  const [nextRole, setNextRole] = useState<InternalRole>("designer");
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+  const [showDeleteMemberModal, setShowDeleteMemberModal] = useState(false);
+  const [isDeletingMember, setIsDeletingMember] = useState(false);
 
-  if (!user) {
-    return null;
-  }
-
-  const canManageInvites = canInviteUsers(user.role);
-  const members = useMemo(() => {
+  const viewerRole = user?.role ?? "client";
+  const canManageInvites = canInviteUsers(viewerRole);
+  const canManageRoles = canUpdateTeamRole(viewerRole);
+  const canManageDelete = canDeleteTeamMember(viewerRole);
+  const members = useMemo<MemberRow[]>(() => {
     const existingMembers = state.users.filter((member) => member.role !== "client");
     const knownEmails = new Set(
       existingMembers.map((member) => `${member.email.toLowerCase()}::${member.role}`),
@@ -81,18 +134,39 @@ export function TeamScreen() {
       }));
 
     return [...existingMembers, ...acceptedInviteMembers].map((member) => {
-        const projectCount = state.projects.filter(
-          (project) =>
-            project.ownerId === member.id ||
-            project.staffIds.includes(member.id) ||
-            project.tasks.some((task) => task.assigneeId === member.id),
-        ).length;
+      const memberProjects = state.projects.filter(
+        (project) =>
+          project.ownerId === member.id ||
+          project.staffIds.includes(member.id) ||
+          project.tasks.some((task) => task.assigneeId === member.id),
+      );
 
-        return {
-          ...member,
-          projectCount,
-        };
-      });
+      const openTasks = memberProjects
+        .flatMap((project) =>
+          project.tasks
+            .filter(
+              (task) =>
+                task.assigneeId === member.id &&
+                (task.status === "todo" || task.status === "in_progress"),
+            )
+            .map((task) => ({
+              id: task.id,
+              title: task.title,
+              status: task.status,
+              priority: task.priority,
+              dueDate: task.dueDate,
+              projectId: project.id,
+              projectName: project.name,
+            })),
+        )
+        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
+      return {
+        ...member,
+        projectCount: memberProjects.length,
+        openTasks,
+      };
+    });
   }, [state.invitations, state.projects, state.users]);
 
   const filteredMembers = useMemo(() => {
@@ -155,8 +229,55 @@ export function TeamScreen() {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
 
+  useEffect(() => {
+    setSelectedTaskPage(1);
+    if (selectedMember && selectedMember.role !== "client") {
+      setNextRole(selectedMember.role);
+    }
+  }, [selectedMember?.id, selectedMember?.role]);
+
+  const selectedTaskPages = Math.max(
+    1,
+    Math.ceil((selectedMember?.openTasks.length ?? 0) / MEMBER_TASKS_PAGE_SIZE),
+  );
+  const selectedMemberTasks = (selectedMember?.openTasks ?? []).slice(
+    (selectedTaskPage - 1) * MEMBER_TASKS_PAGE_SIZE,
+    selectedTaskPage * MEMBER_TASKS_PAGE_SIZE,
+  );
+
+  if (!user) {
+    return null;
+  }
+
   return (
     <Shell>
+      <ConfirmActionModal
+        open={showDeleteMemberModal && Boolean(selectedMember)}
+        title="Delete member"
+        description={`This will remove ${selectedMember?.name ?? "this member"} from the workspace and delete their assigned tasks, uploads, comments, and feedback.`}
+        confirmLabel="Delete member"
+        tone="danger"
+        busy={isDeletingMember}
+        onCancel={() => {
+          if (!isDeletingMember) {
+            setShowDeleteMemberModal(false);
+          }
+        }}
+        onConfirm={async () => {
+          if (!selectedMember) {
+            return;
+          }
+
+          setIsDeletingMember(true);
+          try {
+            await deleteTeamMember(selectedMember.id);
+            setShowDeleteMemberModal(false);
+            setSelectedMember(null);
+          } finally {
+            setIsDeletingMember(false);
+          }
+        }}
+      />
       <ConfirmActionModal
         open={Boolean(revokeTarget)}
         title="Revoke invitation"
@@ -183,6 +304,156 @@ export function TeamScreen() {
           }
         }}
       />
+      {selectedMember ? (
+        <MemberDetailsOverlay onClick={() => setSelectedMember(null)}>
+          <MemberDetailsCard onClick={(event) => event.stopPropagation()}>
+            <DialogHeader>
+              <MemberHeader>
+                <Avatar>{selectedMember.name.slice(0, 1)}</Avatar>
+                <MemberCopy>
+                  <MemberName>{selectedMember.name}</MemberName>
+                  <MemberEmail>{selectedMember.email}</MemberEmail>
+                  <Pill
+                    style={{
+                      background: getRoleTone(selectedMember.role).bg,
+                      color: getRoleTone(selectedMember.role).fg,
+                    }}
+                  >
+                    {formatRole(selectedMember.role)}
+                  </Pill>
+                </MemberCopy>
+              </MemberHeader>
+              <DialogCloseButton type="button" onClick={() => setSelectedMember(null)} aria-label="Close">
+                <IconClose />
+              </DialogCloseButton>
+            </DialogHeader>
+
+            <DialogSection>
+              <DialogStats>
+                <DialogStatCard>
+                  <DialogStatValue>{selectedMember.projectCount}</DialogStatValue>
+                  <DialogStatLabel>Projects</DialogStatLabel>
+                </DialogStatCard>
+                <DialogStatCard>
+                  <DialogStatValue>{selectedMember.openTasks.length}</DialogStatValue>
+                  <DialogStatLabel>Open tasks</DialogStatLabel>
+                </DialogStatCard>
+              </DialogStats>
+            </DialogSection>
+
+            <DialogSection>
+              <DialogLabel>Assigned tasks</DialogLabel>
+              {selectedMember.openTasks.length ? (
+                <>
+                  <DialogList>
+                    {selectedMemberTasks.map((task) => (
+                      <DialogRow key={task.id}>
+                        <div>
+                          <DialogRowTitle>{task.title}</DialogRowTitle>
+                          <DialogRowMeta>
+                            {task.projectName} · {formatTaskStatus(task.status)} · {formatPriority(task.priority)} ·{" "}
+                            {formatShortDate(task.dueDate)}
+                          </DialogRowMeta>
+                        </div>
+                        <DialogLink href={`/projects/${task.projectId}`}>Open project</DialogLink>
+                      </DialogRow>
+                    ))}
+                  </DialogList>
+                  <DialogFooter>
+                    <span>
+                      Showing {(selectedTaskPage - 1) * MEMBER_TASKS_PAGE_SIZE + 1} to{" "}
+                      {Math.min(selectedTaskPage * MEMBER_TASKS_PAGE_SIZE, selectedMember.openTasks.length)} of{" "}
+                      {selectedMember.openTasks.length} tasks
+                    </span>
+                    <Pagination>
+                      <PageButton
+                        type="button"
+                        onClick={() => setSelectedTaskPage((page) => Math.max(1, page - 1))}
+                        disabled={selectedTaskPage === 1}
+                      >
+                        Last
+                      </PageButton>
+                      <PageButton $active type="button">
+                        {selectedTaskPage}
+                      </PageButton>
+                      <PageButton
+                        type="button"
+                        onClick={() => setSelectedTaskPage((page) => Math.min(selectedTaskPages, page + 1))}
+                        disabled={selectedTaskPage === selectedTaskPages}
+                      >
+                        Next
+                      </PageButton>
+                    </Pagination>
+                  </DialogFooter>
+                </>
+              ) : (
+                <EmptyText>No open tasks for this member.</EmptyText>
+              )}
+            </DialogSection>
+
+            {(canManageRoles || canManageDelete) && !selectedMember.id.startsWith("accepted-invite:") ? (
+              <DialogSection>
+                <DialogActions>
+                  {canManageRoles ? (
+                    <GhostButton type="button" onClick={() => setShowUpdateRoleModal(true)}>
+                      Update role
+                    </GhostButton>
+                  ) : null}
+                  {canManageDelete ? (
+                    <DangerButton type="button" onClick={() => setShowDeleteMemberModal(true)}>
+                      Delete member
+                    </DangerButton>
+                  ) : null}
+                </DialogActions>
+              </DialogSection>
+            ) : null}
+          </MemberDetailsCard>
+        </MemberDetailsOverlay>
+      ) : null}
+      {showUpdateRoleModal && selectedMember ? (
+        <NestedModalOverlay onClick={() => setShowUpdateRoleModal(false)}>
+          <NestedModalCard onClick={(event) => event.stopPropagation()}>
+            <NestedModalHeader>
+              <div>
+                <PanelTitle>Update role</PanelTitle>
+                <NestedModalCopy>Change this member’s team role.</NestedModalCopy>
+              </div>
+              <DialogCloseButton type="button" onClick={() => setShowUpdateRoleModal(false)} aria-label="Close">
+                <IconClose />
+              </DialogCloseButton>
+            </NestedModalHeader>
+            <NestedModalBody>
+              <FieldLabel>Role</FieldLabel>
+              <TextSelect value={nextRole} onChange={(event) => setNextRole(event.target.value as InternalRole)}>
+                <option value="creative_manager">Creative Manager</option>
+                <option value="communication_manager">Communication Manager</option>
+                <option value="designer">Designer</option>
+              </TextSelect>
+            </NestedModalBody>
+            <NestedModalActions>
+              <GhostButton type="button" onClick={() => setShowUpdateRoleModal(false)} disabled={isUpdatingRole}>
+                Cancel
+              </GhostButton>
+              <InviteButton
+                type="button"
+                onClick={async () => {
+                  setIsUpdatingRole(true);
+                  try {
+                    await updateTeamMemberRole(selectedMember.id, nextRole);
+                    setSelectedMember((current) => (current ? { ...current, role: nextRole } : current));
+                    setShowUpdateRoleModal(false);
+                  } finally {
+                    setIsUpdatingRole(false);
+                  }
+                }}
+                disabled={isUpdatingRole}
+              >
+                <span>{isUpdatingRole ? "Updating..." : "Save role"}</span>
+              </InviteButton>
+            </NestedModalActions>
+          </NestedModalCard>
+        </NestedModalOverlay>
+      ) : null}
       <InviteWorkspaceModal
         open={showInviteModal}
         onClose={() => setShowInviteModal(false)}
@@ -257,7 +528,10 @@ export function TeamScreen() {
             </StatIcon>
             <StatCopy>
               <StatValue>{totalMembers}</StatValue>
-              <StatLabel>Total Members</StatLabel>
+              <StatLabel>
+                <MobileLabel>Members</MobileLabel>
+                <DesktopLabel>Total Members</DesktopLabel>
+              </StatLabel>
             </StatCopy>
           </StatCard>
           <StatCard>
@@ -266,7 +540,10 @@ export function TeamScreen() {
             </StatIcon>
             <StatCopy>
               <StatValue>{designerCount}</StatValue>
-              <StatLabel>Designers</StatLabel>
+              <StatLabel>
+                <MobileLabel>Designers</MobileLabel>
+                <DesktopLabel>Designers</DesktopLabel>
+              </StatLabel>
             </StatCopy>
           </StatCard>
           <StatCard>
@@ -275,7 +552,10 @@ export function TeamScreen() {
             </StatIcon>
             <StatCopy>
               <StatValue>{managerCount}</StatValue>
-              <StatLabel>Managers</StatLabel>
+              <StatLabel>
+                <MobileLabel>Managers</MobileLabel>
+                <DesktopLabel>Managers</DesktopLabel>
+              </StatLabel>
             </StatCopy>
           </StatCard>
           <StatCard>
@@ -284,7 +564,10 @@ export function TeamScreen() {
             </StatIcon>
             <StatCopy>
               <StatValue>{othersCount}</StatValue>
-              <StatLabel>Others</StatLabel>
+              <StatLabel>
+                <MobileLabel>Others</MobileLabel>
+                <DesktopLabel>Others</DesktopLabel>
+              </StatLabel>
             </StatCopy>
           </StatCard>
         </StatsRow>
@@ -303,7 +586,7 @@ export function TeamScreen() {
                 const roleTone = getRoleTone(member.role);
 
                 return (
-                  <TableRow key={member.id}>
+                  <TableRow key={member.id} onClick={() => setSelectedMember(member)}>
                     <MemberCell>
                       <Avatar>{member.name.slice(0, 1)}</Avatar>
                       <MemberCopy>
@@ -360,7 +643,7 @@ export function TeamScreen() {
             paginatedMembers.map((member) => {
               const roleTone = getRoleTone(member.role);
               return (
-                <MobileCard key={member.id}>
+                <MobileCard key={member.id} onClick={() => setSelectedMember(member)}>
                   <MobileCardRow>
                     <Avatar>{member.name.slice(0, 1)}</Avatar>
                     <MemberCopy>
@@ -507,6 +790,12 @@ const Subtitle = styled.p`
   color: var(--color-text-muted);
   font-size: 0.92rem;
   line-height: 1.45;
+
+  display: none;
+
+  ${desktop} {
+    display: block;
+  }
 `;
 
 const StatsRow = styled.section`
@@ -527,10 +816,8 @@ const StatsRow = styled.section`
 
 const StatCard = styled.article`
   ${cardSurface}
-  min-width: 132px;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   padding: 14px;
   border-radius: 18px;
 
@@ -588,6 +875,20 @@ const StatLabel = styled.span`
   color: var(--color-text-muted);
   font-size: 0.86rem;
   font-weight: 600;
+`;
+
+const MobileLabel = styled.span`
+  ${desktop} {
+    display: none;
+  }
+`;
+
+const DesktopLabel = styled.span`
+  display: none;
+
+  ${desktop} {
+    display: inline;
+  }
 `;
 
 const InvitePanel = styled.section`
@@ -760,6 +1061,12 @@ const TableRow = styled.article`
   gap: 16px;
   padding: 16px 18px;
   border-top: 1px solid rgba(230, 224, 215, 0.8);
+  cursor: pointer;
+  transition: background 160ms ease, box-shadow 160ms ease;
+
+  &:hover {
+    background: rgba(244, 239, 232, 0.72);
+  }
 `;
 
 const MemberCell = styled.div`
@@ -854,6 +1161,7 @@ const MobileCard = styled.article`
   flex-direction: column;
   padding: 16px;
   border-radius: 20px;
+  cursor: pointer;
 `;
 
 const MobileCardRow = styled.div`
@@ -921,6 +1229,215 @@ const InvitationActions = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
+`;
+
+const MemberDetailsOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(21, 18, 13, 0.4);
+`;
+
+const MemberDetailsCard = styled.div`
+  ${cardSurface}
+  width: min(560px, calc(100vw - 32px));
+  border-radius: 24px;
+`;
+
+const DialogHeader = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 20px 0;
+`;
+
+const MemberHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const DialogCloseButton = styled.button`
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-text);
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+`;
+
+const DialogSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+
+  & + & {
+    padding-top: 0;
+  }
+`;
+
+const DialogLabel = styled.strong`
+  font-size: 0.9rem;
+  color: var(--color-text);
+`;
+
+const DialogStats = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+`;
+
+const DialogStatCard = styled.div`
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 14px;
+`;
+
+const DialogStatValue = styled.strong`
+  display: block;
+  font-size: 1.2rem;
+  line-height: 1;
+  margin-bottom: 6px;
+`;
+
+const DialogStatLabel = styled.span`
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+`;
+
+const DialogList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const DialogRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+`;
+
+const DialogRowTitle = styled.strong`
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.9rem;
+`;
+
+const DialogRowMeta = styled.p`
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+`;
+
+const DialogLink = styled(Link)`
+  color: var(--color-text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-decoration: none;
+`;
+
+const DialogFooter = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+
+  ${desktop} {
+    gap: 16px;
+  }
+`;
+
+const EmptyText = styled.p`
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+`;
+
+const DialogActions = styled.div`
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+`;
+
+const DangerButton = styled.button`
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(226, 100, 87, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 236, 233, 0.8);
+  color: #d65c4c;
+  font-size: 0.86rem;
+  font-weight: 700;
+`;
+
+const NestedModalOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 96;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(28, 29, 28, 0.36);
+  backdrop-filter: blur(8px);
+`;
+
+const NestedModalCard = styled.section`
+  ${cardSurface}
+  width: min(100%, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 24px;
+`;
+
+const NestedModalHeader = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+`;
+
+const NestedModalCopy = styled.p`
+  margin: 6px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.86rem;
+`;
+
+const NestedModalBody = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const NestedModalActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 `;
 
 const Pill = styled.span`
@@ -1122,6 +1639,14 @@ function IconSliders() {
       <circle cx="8" cy="6" r="1.5" fill="currentColor" stroke="none" />
       <circle cx="14" cy="12" r="1.5" fill="currentColor" stroke="none" />
       <circle cx="12" cy="18" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M6 6l12 12M18 6 6 18" />
     </svg>
   );
 }

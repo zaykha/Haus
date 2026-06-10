@@ -12,6 +12,7 @@ const categoryOptions = [
   "Campaign",
   "Custom",
 ] as const;
+const DESCRIPTION_WORD_LIMIT = 60;
 
 export type ProjectFormValues = {
   name: string;
@@ -33,6 +34,19 @@ type ProjectFormProps = {
 
 function getProjectInitial(name: string) {
   return name.trim().charAt(0).toUpperCase() || "P";
+}
+
+function limitWords(value: string, limit: number) {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= limit) {
+    return value;
+  }
+
+  return words.slice(0, limit).join(" ");
+}
+
+function countWords(value: string) {
+  return value.trim().split(/\s+/).filter(Boolean).length;
 }
 
 export function ProjectForm({
@@ -181,7 +195,10 @@ export function ProjectForm({
               <TextArea
                 value={values.description}
                 onChange={(event) =>
-                  setValues((current) => ({ ...current, description: event.target.value }))
+                  setValues((current) => ({
+                    ...current,
+                    description: limitWords(event.target.value, DESCRIPTION_WORD_LIMIT),
+                  }))
                 }
                 rows={4}
                 placeholder=" "
@@ -189,6 +206,9 @@ export function ProjectForm({
               />
               <FloatingLabel>Description</FloatingLabel>
             </FloatingTextAreaField>
+            <FieldMeta>
+              {countWords(values.description)} / {DESCRIPTION_WORD_LIMIT} words
+            </FieldMeta>
           </Field>
 
           <Field>
@@ -369,6 +389,12 @@ const SectionLabel = styled.span`
   letter-spacing: 0.04em;
 `;
 
+const FieldMeta = styled.span`
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.2;
+`;
+
 const FloatingField = styled.label`
   width: 100%;
 `;
@@ -442,8 +468,9 @@ const SelectTrigger = styled.button`
 const TextArea = styled.textarea`
   ${controlCss}
   min-height: 132px;
+  height: 132px;
   padding: 24px 16px 16px;
-  resize: vertical;
+  resize: none;
   font-size: 16px;
 `;
 
@@ -535,6 +562,12 @@ const PrimaryButton = styled.button`
   color: #fff;
   font-size: 0.84rem;
   font-weight: 700;
+`;
+
+const InlineError = styled.p`
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 0.82rem;
 `;
 
 function IconChevronDown() {

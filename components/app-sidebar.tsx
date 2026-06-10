@@ -3,7 +3,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import styled, { css } from "styled-components";
-import { formatRole } from "@/lib/display";
 import { AppNavLabel, getPrimaryNavItems } from "@/lib/navigation";
 import { User } from "@/lib/types";
 
@@ -51,14 +50,6 @@ export function AppSidebar({
           ))}
         </SidebarNav>
       </div>
-
-      <SidebarProfile>
-        <SidebarAvatar>{user.name.slice(0, 1)}</SidebarAvatar>
-        <div>
-          <SidebarName>{user.name}</SidebarName>
-          <SidebarRole>{formatRole(user.role)}</SidebarRole>
-        </div>
-      </SidebarProfile>
     </Sidebar>
   );
 }
@@ -129,35 +120,6 @@ const SidebarIcon = styled.span`
     width: 100%;
     height: 100%;
   }
-`;
-
-const SidebarProfile = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 8px 8px;
-`;
-
-const SidebarAvatar = styled.div`
-  width: 42px;
-  height: 42px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: #ded6c8;
-  color: #fff;
-  font-weight: 600;
-`;
-
-const SidebarName = styled.strong`
-  display: block;
-`;
-
-const SidebarRole = styled.p`
-  margin: 2px 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-  text-transform: capitalize;
 `;
 
 function IconHome() {

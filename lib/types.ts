@@ -15,9 +15,10 @@ export type ProjectStage =
 
 export type FileVisibility = "internal" | "client";
 export type FeedbackAction = "approve" | "request_revision" | "comment";
-export type TaskStatus = "todo" | "in_progress" | "done";
+export type TaskStatus = "todo" | "in_progress" | "done" | "review" | "approved";
 export type TaskPriority = "high" | "medium" | "low";
 export type InvitationStatus = "pending" | "accepted" | "expired" | "revoked";
+export type TaskManagerReviewStatus = "internal" | "ready_for_client" | "revision_requested";
 
 export interface User {
   id: string;
@@ -34,6 +35,9 @@ export interface Task {
   status: TaskStatus;
   dueDate: string;
   priority: TaskPriority;
+  completionScreenshotUrl?: string | null;
+  clientVisible?: boolean;
+  managerReviewStatus?: TaskManagerReviewStatus;
 }
 
 export interface Comment {
@@ -63,6 +67,26 @@ export interface Feedback {
   createdAt: string;
 }
 
+export type ProjectActivityAction =
+  | "workflow_updated"
+  | "task_created"
+  | "task_status_changed"
+  | "task_submitted"
+  | "task_revision_requested"
+  | "task_approved"
+  | "file_uploaded"
+  | "comment_added"
+  | "internal_note_added"
+  | "feedback_added";
+
+export interface ProjectActivity {
+  id: string;
+  actorId?: string | null;
+  action: ProjectActivityAction;
+  message: string;
+  createdAt: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -79,6 +103,7 @@ export interface Project {
   files: FileVersion[];
   comments: Comment[];
   feedback: Feedback[];
+  activities: ProjectActivity[];
 }
 
 export interface Session {

@@ -1,6 +1,7 @@
 import { Role } from "@/lib/types";
 
-export type AppNavLabel = "Home" | "Projects" | "Tasks" | "Clients" | "Team" | "Profile";
+export type AppNavLabel = "Home" | "Projects" | "Tasks" | "Clients" | "Team";
+
 
 export type AppNavItem = {
   label: AppNavLabel;
@@ -12,7 +13,13 @@ export function getPrimaryNavItems(role?: Role): AppNavItem[] {
     return [
       { label: "Home", href: "/dashboard" },
       { label: "Tasks", href: "/tasks" },
-      { label: "Profile", href: "/profile" },
+    ];
+  }
+
+  if (role === "client") {
+    return [
+      { label: "Home", href: "/dashboard" },
+      { label: "Projects", href: "/projects" },
     ];
   }
 
@@ -22,6 +29,6 @@ export function getPrimaryNavItems(role?: Role): AppNavItem[] {
     { label: "Tasks", href: "/tasks" },
     { label: "Clients", href: "/clients" },
     { label: "Team", href: "/team" },
-    { label: "Profile", href: "/profile" },
   ];
 }
+

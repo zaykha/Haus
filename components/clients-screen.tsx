@@ -4,13 +4,15 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
 import { formatRole } from "@/lib/display";
-import { canCreateClient } from "@/lib/permissions";
+import { canCreateClient, canDeleteClient } from "@/lib/permissions";
 
 type ClientFilter = "all" | "active" | "feedback" | "approvals" | "inactive";
 const PAGE_SIZE = 6;
+const POPUP_TASKS_PAGE_SIZE = 5;
 
 type ClientRow = {
   id: string;
@@ -26,6 +28,16 @@ type ClientRow = {
     name: string;
     status: "review" | "revision";
     dueDate: string;
+  }>;
+  openTasks: Array<{
+    id: string;
+    title: string;
+    status: string;
+    dueDate: string;
+    priority: string;
+    projectId: string;
+    projectName: string;
+    assigneeName: string;
   }>;
   latestFeedback: Array<{
     id: string;
@@ -77,8 +89,27 @@ function getProjectMark(name: string) {
   return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
 }
 
+function formatTaskStatus(status: string) {
+  switch (status) {
+    case "in_progress":
+      return "In progress";
+    case "review":
+      return "Review";
+    case "approved":
+      return "Approved";
+    case "done":
+      return "Completed";
+    default:
+      return "To do";
+  }
+}
+
+function formatPriority(priority: string) {
+  return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
 export function ClientsScreen() {
-  const { state, user } = useAppState();
+  const { state, user, deleteClient } = useAppState();
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ClientFilter>("all");
@@ -86,13 +117,14 @@ export function ClientsScreen() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<ClientRow | null>(null);
+  const [selectedTasksPage, setSelectedTasksPage] = useState(1);
+  const [showDeleteClientModal, setShowDeleteClientModal] = useState(false);
+  const [isDeletingClient, setIsDeletingClient] = useState(false);
 
-  if (!user) {
-    return null;
-  }
-
-  const roleLabel = formatRole(user.role).toUpperCase();
-  const canManage = canCreateClient(user.role);
+  const viewerRole = user?.role ?? "client";
+  const roleLabel = formatRole(viewerRole).toUpperCase();
+  const canManage = canCreateClient(viewerRole);
+  const canDelete = canDeleteClient(viewerRole);
 
   const clients = useMemo<ClientRow[]>(() => {
     const existingClients = state.users.filter((member) => member.role === "client");
@@ -115,6 +147,7 @@ export function ClientsScreen() {
     return [...existingClients, ...acceptedInviteClients]
       .map((client) => {
         const clientProjects = state.projects.filter((project) => project.clientId === client.id);
+        const staffById = new Map(state.users.map((member) => [member.id, member.name]));
 
         const latestProject = [...clientProjects].sort(
           (a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime(),
@@ -143,6 +176,23 @@ export function ClientsScreen() {
             dueDate: project.dueDate,
           }));
 
+        const openTasks = clientProjects
+          .flatMap((project) =>
+            project.tasks
+              .filter((task) => task.clientVisible && task.status === "review")
+              .map((task) => ({
+                id: task.id,
+                title: task.title,
+                status: task.status,
+                dueDate: task.dueDate,
+                priority: task.priority,
+                projectId: project.id,
+                projectName: project.name,
+                assigneeName: staffById.get(task.assigneeId) ?? "Unassigned",
+              })),
+          )
+          .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
         return {
           id: client.id,
           name: client.name,
@@ -160,6 +210,7 @@ export function ClientsScreen() {
                   : "No recent activity",
           pendingCount: pendingProjects.length,
           pendingProjects,
+          openTasks,
           latestFeedback,
         };
       });
@@ -216,8 +267,52 @@ export function ClientsScreen() {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
 
+  useEffect(() => {
+    setSelectedTasksPage(1);
+  }, [selectedClient?.id]);
+
+  const selectedClientTaskPages = Math.max(
+    1,
+    Math.ceil((selectedClient?.openTasks.length ?? 0) / POPUP_TASKS_PAGE_SIZE),
+  );
+  const selectedClientTasks = (selectedClient?.openTasks ?? []).slice(
+    (selectedTasksPage - 1) * POPUP_TASKS_PAGE_SIZE,
+    selectedTasksPage * POPUP_TASKS_PAGE_SIZE,
+  );
+
+  if (!user) {
+    return null;
+  }
+
   return (
     <Shell>
+      <ConfirmActionModal
+        open={showDeleteClientModal && Boolean(selectedClient)}
+        title="Delete client"
+        description={`This will remove ${selectedClient?.name ?? "this client"} from the workspace and unlink them from any existing projects.`}
+        confirmLabel="Delete client"
+        tone="danger"
+        busy={isDeletingClient}
+        onCancel={() => {
+          if (!isDeletingClient) {
+            setShowDeleteClientModal(false);
+          }
+        }}
+        onConfirm={async () => {
+          if (!selectedClient) {
+            return;
+          }
+
+          setIsDeletingClient(true);
+          try {
+            await deleteClient(selectedClient.id);
+            setShowDeleteClientModal(false);
+            setSelectedClient(null);
+          } finally {
+            setIsDeletingClient(false);
+          }
+        }}
+      />
       {selectedClient ? (
         <ClientDetailsOverlay onClick={() => setSelectedClient(null)}>
           <ClientDetailsCard onClick={(event) => event.stopPropagation()}>
@@ -230,8 +325,8 @@ export function ClientsScreen() {
               </div>
               <DialogHeaderActions>
                 <DatePill>{formatDate(selectedClient.lastActivityDate)}</DatePill>
-                <DialogCloseButton type="button" onClick={() => setSelectedClient(null)}>
-                  Close
+                <DialogCloseButton type="button" onClick={() => setSelectedClient(null)} aria-label="Close">
+                  <IconClose />
                 </DialogCloseButton>
               </DialogHeaderActions>
             </DialogHeader>
@@ -256,6 +351,64 @@ export function ClientsScreen() {
                 <ClientMeta>No pending items for this client.</ClientMeta>
               )}
             </DialogSection>
+            <DialogSection>
+              <DialogLabel>Open tasks</DialogLabel>
+              {selectedClient.openTasks.length ? (
+                <>
+                  <DialogList>
+                    {selectedClientTasks.map((task) => (
+                      <DialogRow key={task.id}>
+                        <div>
+                          <DialogProjectName>{task.title}</DialogProjectName>
+                          <ClientMeta>
+                            {task.projectName} · {task.assigneeName} · {formatTaskStatus(task.status)} ·{" "}
+                            {formatPriority(task.priority)} · {formatShortDate(task.dueDate)}
+                          </ClientMeta>
+                        </div>
+                        <DialogLink href={`/projects/${task.projectId}`}>Open project</DialogLink>
+                      </DialogRow>
+                    ))}
+                  </DialogList>
+                  <DialogFooter>
+                    <span>
+                      Showing {(selectedTasksPage - 1) * POPUP_TASKS_PAGE_SIZE + 1} to{" "}
+                      {Math.min(selectedTasksPage * POPUP_TASKS_PAGE_SIZE, selectedClient.openTasks.length)} of{" "}
+                      {selectedClient.openTasks.length} tasks
+                    </span>
+                    <Pagination>
+                      <PageButton
+                        type="button"
+                        onClick={() => setSelectedTasksPage((page) => Math.max(1, page - 1))}
+                        disabled={selectedTasksPage === 1}
+                      >
+                        Last
+                      </PageButton>
+                      <PageButton $active type="button">
+                        {selectedTasksPage}
+                      </PageButton>
+                      <PageButton
+                        type="button"
+                        onClick={() =>
+                          setSelectedTasksPage((page) => Math.min(selectedClientTaskPages, page + 1))
+                        }
+                        disabled={selectedTasksPage === selectedClientTaskPages}
+                      >
+                        Next
+                      </PageButton>
+                    </Pagination>
+                  </DialogFooter>
+                </>
+              ) : (
+                <ClientMeta>No open tasks for this client.</ClientMeta>
+              )}
+            </DialogSection>
+            {canDelete && !selectedClient.id.startsWith("accepted-invite:") ? (
+              <DialogSection>
+                <DialogDangerButton type="button" onClick={() => setShowDeleteClientModal(true)}>
+                  Delete client
+                </DialogDangerButton>
+              </DialogSection>
+            ) : null}
           </ClientDetailsCard>
         </ClientDetailsOverlay>
       ) : null}
@@ -276,10 +429,9 @@ export function ClientsScreen() {
               client activity.
             </Subtitle>
           </div>
-          <BellButton type="button" aria-label="Notifications">
-            <IconBell />
-            <BellBadge>3</BellBadge>
-          </BellButton>
+          <HeaderAvatarLink href="/profile" aria-label="Open profile">
+            {user.name.slice(0, 1)}
+          </HeaderAvatarLink>
         </Header>
 
         <Toolbar>
@@ -342,7 +494,10 @@ export function ClientsScreen() {
             </StatIcon>
             <StatCopy>
               <StatValue>{totalCount}</StatValue>
-              <StatLabel>Total Clients</StatLabel>
+              <StatLabel>
+                <MobileLabel>Clients</MobileLabel>
+                <DesktopLabel>Total Clients</DesktopLabel>
+              </StatLabel>
             </StatCopy>
           </StatCard>
           <StatCard>
@@ -351,7 +506,10 @@ export function ClientsScreen() {
             </StatIcon>
             <StatCopy>
               <StatValue>{pendingFeedbackCount}</StatValue>
-              <StatLabel>Awaiting Feedback</StatLabel>
+              <StatLabel>
+                <MobileLabel>Feedback</MobileLabel>
+                <DesktopLabel>Awaiting Feedback</DesktopLabel>
+              </StatLabel>
             </StatCopy>
           </StatCard>
           <StatCard>
@@ -360,7 +518,10 @@ export function ClientsScreen() {
             </StatIcon>
             <StatCopy>
               <StatValue>{approvalsCount}</StatValue>
-              <StatLabel>Approvals</StatLabel>
+              <StatLabel>
+                <MobileLabel>Approvals</MobileLabel>
+                <DesktopLabel>Approvals</DesktopLabel>
+              </StatLabel>
             </StatCopy>
           </StatCard>
           <StatCard>
@@ -369,7 +530,10 @@ export function ClientsScreen() {
             </StatIcon>
             <StatCopy>
               <StatValue>{activeCount}</StatValue>
-              <StatLabel>Active Clients</StatLabel>
+              <StatLabel>
+                <MobileLabel>Active</MobileLabel>
+                <DesktopLabel>Active Clients</DesktopLabel>
+              </StatLabel>
             </StatCopy>
           </StatCard>
         </StatsRow>
@@ -544,12 +708,15 @@ const Subtitle = styled.p`
   font-size: 12px;
   line-height: 1.45;
 
+  display: none;
+
   ${desktop} {
+    display: block;
     font-size: 0.86rem;
   }
 `;
 
-const BellButton = styled.button`
+const HeaderAvatarLink = styled(Link)`
   position: relative;
   width: 42px;
   height: 42px;
@@ -559,29 +726,10 @@ const BellButton = styled.button`
   justify-content: center;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--color-text-muted);
-
-  svg {
-    width: 20px;
-    height: 20px;
-  }
-`;
-
-const BellBadge = styled.span`
-  position: absolute;
-  right: -2px;
-  top: -2px;
-  min-width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: #7d2f2a;
+  background: #ded6c8;
   color: #fff;
-  font-size: 10px;
   font-weight: 700;
+  text-decoration: none;
 `;
 
 const Toolbar = styled.section`
@@ -716,9 +864,8 @@ const StatsRow = styled.section`
 
 const StatCard = styled.article`
   ${cardSurface}
-  min-width: 120px;
+  
   display: flex;
-  flex-direction: column;
   gap: 10px;
   padding: 12px;
   border-radius: 18px;
@@ -778,6 +925,20 @@ const StatLabel = styled.span`
   color: var(--color-text-muted);
   font-size: 0.82rem;
   font-weight: 600;
+`;
+
+const MobileLabel = styled.span`
+  ${desktop} {
+    display: none;
+  }
+`;
+
+const DesktopLabel = styled.span`
+  display: none;
+
+  ${desktop} {
+    display: inline;
+  }
 `;
 
 const DesktopPanel = styled.section`
@@ -860,6 +1021,11 @@ const DesktopRow = styled.article`
   padding: 16px 18px;
   border-top: 1px solid rgba(230, 224, 215, 0.8);
   cursor: pointer;
+  transition: background 160ms ease, box-shadow 160ms ease;
+
+  &:hover {
+    background: rgba(244, 239, 232, 0.72);
+  }
 `;
 
 const ClientCell = styled.div`
@@ -1024,6 +1190,10 @@ const DialogSection = styled.div`
   flex-direction: column;
   gap: 12px;
   padding: 20px;
+
+  & + & {
+    padding-top: 0;
+  }
 `;
 
 const DialogLabel = styled.strong`
@@ -1062,13 +1232,43 @@ const DialogLink = styled(Link)`
 `;
 
 const DialogCloseButton = styled.button`
-  min-height: 34px;
-  padding: 0 12px;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 999px;
   background: #fff;
   color: var(--color-text);
-  font-size: 0.82rem;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+`;
+
+const DialogFooter = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+
+  ${desktop} {
+    gap: 16px;
+  }
+`;
+
+const DialogDangerButton = styled.button`
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(226, 100, 87, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 236, 233, 0.8);
+  color: #d65c4c;
+  font-size: 0.86rem;
   font-weight: 700;
 `;
 
@@ -1105,15 +1305,6 @@ const EmptyState = styled.div`
     line-height: 1.45;
   }
 `;
-
-function IconBell() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6.5 16.5h11l-1.4-1.6V11a4.1 4.1 0 1 0-8.2 0v3.9Z" />
-      <path d="M10 19a2 2 0 0 0 4 0" />
-    </svg>
-  );
-}
 
 function IconSearch() {
   return (
@@ -1179,6 +1370,14 @@ function IconSpark() {
       <path d="m15.6 15.6 2.8 2.8" />
       <path d="m18.4 5.6-2.8 2.8" />
       <path d="m8.4 15.6-2.8 2.8" />
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M6 6l12 12M18 6 6 18" />
     </svg>
   );
 }

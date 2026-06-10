@@ -18,9 +18,12 @@ import {
   Invitation,
   InvitationStatus,
   Project,
+  ProjectActivity,
+  ProjectActivityAction,
   ProjectStage,
   ProjectStatus,
   TaskPriority,
+  TaskManagerReviewStatus,
   Role,
   TaskStatus,
   User,
@@ -30,11 +33,14 @@ import {
   canAssignTask,
   canCreateProject,
   canCreateTask,
+  canDeleteClient,
   canDeleteProject,
   canDeleteTask,
+  canDeleteTeamMember,
   canEditProject,
   canEditTask,
   canInviteUsers,
+  canUpdateTeamRole,
   canUpdateTaskStatus as canUserUpdateTaskStatus,
   canUpdateProjectWorkflow,
 } from "@/lib/permissions";
@@ -65,6 +71,9 @@ interface AppStateContextValue {
       clientId: string;
     },
   ) => Promise<void>;
+  deleteClient: (clientId: string) => Promise<void>;
+  updateTeamMemberRole: (memberId: string, role: Exclude<Role, "client">) => Promise<void>;
+  deleteTeamMember: (memberId: string) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
   updateProjectWorkflow: (
     projectId: string,
@@ -73,12 +82,29 @@ interface AppStateContextValue {
   ) => Promise<void>;
   createTask: (
     projectId: string,
-    task: { title: string; assigneeId: string; status?: TaskStatus; dueDate: string; priority: TaskPriority },
+    task: {
+      title: string;
+      assigneeId: string;
+      status?: TaskStatus;
+      dueDate: string;
+      priority: TaskPriority;
+      clientVisible?: boolean;
+      managerReviewStatus?: TaskManagerReviewStatus;
+    },
   ) => Promise<void>;
   updateTask: (
     projectId: string,
     taskId: string,
-    task: { title: string; assigneeId: string; status: TaskStatus; dueDate: string; priority: TaskPriority },
+    task: {
+      title: string;
+      assigneeId: string;
+      status: TaskStatus;
+      dueDate: string;
+      priority: TaskPriority;
+      clientVisible?: boolean;
+      managerReviewStatus?: TaskManagerReviewStatus;
+      activityNote?: string;
+    },
   ) => Promise<void>;
   deleteTask: (projectId: string, taskId: string) => Promise<void>;
   addFile: (
@@ -93,7 +119,10 @@ interface AppStateContextValue {
   updateTaskStatus: (
     projectId: string,
     taskId: string,
-    status: "todo" | "in_progress" | "done",
+    payload: {
+      status: "todo" | "in_progress" | "done" | "review" | "approved";
+      completionScreenshotUrl?: string | null;
+    },
   ) => Promise<void>;
   createInvitation: (payload: {
     name?: string;
@@ -149,6 +178,9 @@ type TaskRecord = {
   status: TaskStatus;
   due_date: string;
   priority: TaskPriority;
+  completion_screenshot_url: string | null;
+  client_visible: boolean;
+  manager_review_status: TaskManagerReviewStatus;
   created_at: string;
 };
 
@@ -180,6 +212,15 @@ type ProjectFeedbackRecord = {
   action: FeedbackAction;
   body: string;
   rating: number | null;
+  created_at: string;
+};
+
+type ProjectActivityRecord = {
+  id: string;
+  project_id: string;
+  actor_id: string | null;
+  action: ProjectActivityAction;
+  message: string;
   created_at: string;
 };
 
@@ -229,6 +270,10 @@ function ensureClientUser(users: User[], clientId: string) {
   }
 
   return users.some((candidate) => candidate.id === clientId && candidate.role === "client");
+}
+
+function isMissingRelationError(message: string | undefined) {
+  return Boolean(message && message.includes('relation "project_activity" does not exist'));
 }
 
 function normalizeProjectStage(stage: string | null | undefined): ProjectStage {
@@ -308,6 +353,36 @@ async function fetchRemoteInvitations(currentUser: User) {
   return payload.invitations ?? [];
 }
 
+async function getAccessToken() {
+  const supabase = getSupabaseBrowserClient();
+  const { data } = await supabase!.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) {
+    throw new Error("Missing authenticated session");
+  }
+
+  return token;
+}
+
+async function apiRequest<T>(input: string, init?: RequestInit): Promise<T> {
+  const token = await getAccessToken();
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(errorPayload?.error ?? "Request failed");
+  }
+
+  return (await response.json()) as T;
+}
+
 async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
   const supabase = getSupabaseBrowserClient();
   if (!supabase) {
@@ -345,6 +420,7 @@ async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
     filesResult,
     commentsResult,
     feedbackResult,
+    activityResult,
   ] = projectIds.length
     ? await Promise.all([
         supabase
@@ -353,7 +429,7 @@ async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
           .in("project_id", projectIds),
         supabase
           .from("tasks")
-          .select("id, project_id, title, assignee_id, status, due_date, priority, created_at")
+          .select("id, project_id, title, assignee_id, status, due_date, priority, completion_screenshot_url, client_visible, manager_review_status, created_at")
           .in("project_id", projectIds)
           .order("created_at", { ascending: false }),
         supabase
@@ -371,8 +447,14 @@ async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
           .select("id, project_id, author_id, action, body, rating, created_at")
           .in("project_id", projectIds)
           .order("created_at", { ascending: false }),
+        supabase
+          .from("project_activity")
+          .select("id, project_id, actor_id, action, message, created_at")
+          .in("project_id", projectIds)
+          .order("created_at", { ascending: false }),
       ])
     : [
+        { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
@@ -400,17 +482,25 @@ async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
     throw new Error(feedbackResult.error.message);
   }
 
+  if (activityResult.error && !isMissingRelationError(activityResult.error.message)) {
+    throw new Error(activityResult.error.message);
+  }
+
   const members = (membersResult.data ?? []) as ProjectMemberRecord[];
   const tasks = (tasksResult.data ?? []) as TaskRecord[];
   const files = (filesResult.data ?? []) as ProjectFileRecord[];
   const comments = (commentsResult.data ?? []) as ProjectCommentRecord[];
   const feedback = (feedbackResult.data ?? []) as ProjectFeedbackRecord[];
+  const activities = isMissingRelationError(activityResult.error?.message)
+    ? []
+    : ((activityResult.data ?? []) as ProjectActivityRecord[]);
 
   const staffIdsByProject = new Map<string, string[]>();
   const tasksByProject = new Map<string, Project["tasks"]>();
   const filesByProject = new Map<string, Project["files"]>();
   const commentsByProject = new Map<string, Project["comments"]>();
   const feedbackByProject = new Map<string, Project["feedback"]>();
+  const activityByProject = new Map<string, Project["activities"]>();
 
   for (const membership of members) {
     if (membership.role === "client") {
@@ -424,14 +514,17 @@ async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
 
   for (const task of tasks) {
     const current = tasksByProject.get(task.project_id) ?? [];
-    current.push({
-      id: task.id,
-      title: task.title,
-      assigneeId: task.assignee_id,
-      status: task.status,
-      dueDate: task.due_date,
-      priority: task.priority,
-    });
+      current.push({
+        id: task.id,
+        title: task.title,
+        assigneeId: task.assignee_id,
+        status: task.status,
+        dueDate: task.due_date,
+        priority: task.priority,
+        completionScreenshotUrl: task.completion_screenshot_url,
+        clientVisible: task.client_visible,
+        managerReviewStatus: task.manager_review_status,
+      });
     tasksByProject.set(task.project_id, current);
   }
 
@@ -474,6 +567,18 @@ async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
     feedbackByProject.set(item.project_id, current);
   }
 
+  for (const item of activities) {
+    const current = activityByProject.get(item.project_id) ?? [];
+    current.push({
+      id: item.id,
+      actorId: item.actor_id,
+      action: item.action,
+      message: item.message,
+      createdAt: item.created_at,
+    } satisfies ProjectActivity);
+    activityByProject.set(item.project_id, current);
+  }
+
   return {
     users: profiles.map(toAppUser),
     invitations,
@@ -493,8 +598,32 @@ async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
       files: filesByProject.get(project.id) ?? [],
       comments: commentsByProject.get(project.id) ?? [],
       feedback: feedbackByProject.get(project.id) ?? [],
+      activities: activityByProject.get(project.id) ?? [],
     })),
   };
+}
+
+async function insertProjectActivity(
+  projectId: string,
+  actorId: string,
+  action: ProjectActivityAction,
+  message: string,
+) {
+  const supabase = getSupabaseBrowserClient();
+  const { error } = await supabase!.from("project_activity").insert({
+    project_id: projectId,
+    actor_id: actorId,
+    action,
+    message,
+  });
+
+  if (error) {
+    if (isMissingRelationError(error.message)) {
+      return;
+    }
+
+    throw new Error(error.message);
+  }
 }
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
@@ -641,43 +770,28 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
-    const { data, error } = await supabase!
-      .from("projects")
-      .insert({
-        name: project.name,
-        image_url: project.imageUrl?.trim() ? project.imageUrl.trim() : null,
-        client_id: project.clientId || null,
-        owner_id: user.id,
-        description: project.description,
-        category: project.category,
-        stage: "intake",
-        status: "active",
-        due_date: project.dueDate,
-      })
-      .select("id, name, image_url, client_id, owner_id, description, category, stage, status, due_date, created_at")
-      .single();
-
-    if (error || !data) {
-      throw new Error(error?.message ?? "Unable to create project");
-    }
+    const data = await apiRequest<{ id: string }>("/api/workspace/projects", {
+      method: "POST",
+      body: JSON.stringify(project),
+    });
 
     const createdProject: Project = {
       id: data.id,
-      name: data.name,
-      imageUrl: data.image_url ?? null,
-      clientId: data.client_id ?? "",
-      ownerId: data.owner_id ?? user.id,
-      description: data.description ?? "",
-      category: data.category ?? "",
-      stage: normalizeProjectStage(data.stage),
-      status: normalizeProjectStatus(data.status),
-      dueDate: data.due_date ?? "",
+      name: project.name,
+      imageUrl: project.imageUrl?.trim() ? project.imageUrl.trim() : null,
+      clientId: project.clientId,
+      ownerId: user.id,
+      description: project.description,
+      category: project.category,
+      stage: "intake",
+      status: "active",
+      dueDate: project.dueDate,
       staffIds: [],
       tasks: [],
       files: [],
       comments: [],
       feedback: [],
+      activities: [],
     };
 
     await refreshWorkspace(user);
@@ -696,22 +810,65 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase!
-      .from("projects")
-      .update({
-        name: project.name,
-        image_url: project.imageUrl?.trim() ? project.imageUrl.trim() : null,
-        description: project.description,
-        category: project.category,
-        due_date: project.dueDate,
-        client_id: project.clientId || null,
-      })
-      .eq("id", projectId);
+    await apiRequest<{ ok: true }>(`/api/workspace/projects/${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify(project),
+    });
 
-    if (error) {
-      throw new Error(error.message);
+    await refreshWorkspace(user);
+  };
+
+  const deleteClient: AppStateContextValue["deleteClient"] = async (clientId) => {
+    if (!user) {
+      throw new Error("Unauthorized");
     }
+
+    ensureAuthorized(canDeleteClient(user.role), "Only managers can delete clients");
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    await apiRequest<{ ok: true }>(`/api/workspace/clients/${clientId}`, {
+      method: "DELETE",
+    });
+
+    await refreshWorkspace(user);
+  };
+
+  const updateTeamMemberRole: AppStateContextValue["updateTeamMemberRole"] = async (memberId, role) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    ensureAuthorized(canUpdateTeamRole(user.role), "Only managers can update team roles");
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    await apiRequest<{ ok: true }>(`/api/workspace/team/${memberId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    });
+
+    await refreshWorkspace(user);
+  };
+
+  const deleteTeamMember: AppStateContextValue["deleteTeamMember"] = async (memberId) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    ensureAuthorized(canDeleteTeamMember(user.role), "Only managers can delete team members");
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    await apiRequest<{ ok: true }>(`/api/workspace/team/${memberId}`, {
+      method: "DELETE",
+    });
 
     await refreshWorkspace(user);
   };
@@ -727,11 +884,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase!.from("projects").delete().eq("id", projectId);
-    if (error) {
-      throw new Error(error.message);
-    }
+    await apiRequest<{ ok: true }>(`/api/workspace/projects/${projectId}`, {
+      method: "DELETE",
+    });
 
     await refreshWorkspace(user);
   };
@@ -754,11 +909,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase!.from("projects").update({ status, stage }).eq("id", projectId);
-    if (error) {
-      throw new Error(error.message);
-    }
+    await apiRequest<{ ok: true }>(`/api/workspace/projects/${projectId}/workflow`, {
+      method: "POST",
+      body: JSON.stringify({ status, stage }),
+    });
 
     await refreshWorkspace(user);
   };
@@ -779,19 +933,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase!.from("tasks").insert({
-      project_id: projectId,
-      title: task.title,
-      assignee_id: task.assigneeId,
-      status: task.status ?? "todo",
-      due_date: task.dueDate,
-      priority: task.priority,
+    await apiRequest<{ ok: true }>(`/api/workspace/projects/${projectId}/tasks`, {
+      method: "POST",
+      body: JSON.stringify(task),
     });
-
-    if (error) {
-      throw new Error(error.message);
-    }
 
     await refreshWorkspace(user);
   };
@@ -812,22 +957,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase!
-      .from("tasks")
-      .update({
-        title: task.title,
-        assignee_id: task.assigneeId,
-        status: task.status,
-        due_date: task.dueDate,
-        priority: task.priority,
-      })
-      .eq("id", taskId)
-      .eq("project_id", projectId);
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    await apiRequest<{ ok: true }>(`/api/workspace/projects/${projectId}/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify(task),
+    });
 
     await refreshWorkspace(user);
   };
@@ -843,11 +976,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase!.from("tasks").delete().eq("id", taskId).eq("project_id", projectId);
-    if (error) {
-      throw new Error(error.message);
-    }
+    await apiRequest<{ ok: true }>(`/api/workspace/projects/${projectId}/tasks/${taskId}`, {
+      method: "DELETE",
+    });
 
     await refreshWorkspace(user);
   };
@@ -876,6 +1007,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error(error.message);
     }
 
+    await insertProjectActivity(projectId, user.id, "file_uploaded", `uploaded ${payload.title}`);
+
     await refreshWorkspace(user);
   };
 
@@ -899,6 +1032,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (error) {
       throw new Error(error.message);
     }
+
+    await insertProjectActivity(
+      projectId,
+      user.id,
+      payload.internalOnly ? "internal_note_added" : "comment_added",
+      payload.internalOnly ? "left an internal note" : "added a comment",
+    );
 
     await refreshWorkspace(user);
   };
@@ -925,10 +1065,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error(error.message);
     }
 
+    await insertProjectActivity(
+      projectId,
+      user.id,
+      "feedback_added",
+      payload.action === "approve"
+        ? "approved a deliverable"
+        : payload.action === "request_revision"
+          ? "requested a revision"
+          : "left feedback",
+    );
+
     await refreshWorkspace(user);
   };
 
-  const updateTaskStatus: AppStateContextValue["updateTaskStatus"] = async (projectId, taskId, status) => {
+  const updateTaskStatus: AppStateContextValue["updateTaskStatus"] = async (projectId, taskId, payload) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
@@ -949,16 +1100,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Mock mode is not enabled.");
     }
 
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase!
-      .from("tasks")
-      .update({ status })
-      .eq("id", taskId)
-      .eq("project_id", projectId);
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    await apiRequest<{ ok: true }>(`/api/workspace/projects/${projectId}/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: payload.status,
+        completionScreenshotUrl: payload.completionScreenshotUrl ?? null,
+      }),
+    });
 
     await refreshWorkspace(user);
   };
@@ -1105,6 +1253,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         logout,
         createProject,
         updateProject,
+        deleteClient,
+        updateTeamMemberRole,
+        deleteTeamMember,
         deleteProject,
         updateProjectWorkflow,
         createTask,

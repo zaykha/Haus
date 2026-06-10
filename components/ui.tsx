@@ -32,13 +32,15 @@ export function BottomNav() {
         <IconList />
       ) : item.label === "Team" || item.label === "Clients" ? (
         <IconUsers />
-      ) : (
-        <IconProfile />
-      ),
+      ) : null,
   }));
 
   return (
-    <nav className="bottom-nav" aria-label="Primary">
+    <nav
+      className="bottom-nav"
+      aria-label="Primary"
+      style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+    >
       {items.map((item) => (
         <Link
           key={item.href}
@@ -92,15 +94,6 @@ function IconUsers() {
       <circle cx="17" cy="10" r="2.5" />
       <path d="M4.5 18a5.5 5.5 0 0 1 9 0" />
       <path d="M14.5 18a4.5 4.5 0 0 1 5-3.7" />
-    </svg>
-  );
-}
-
-function IconProfile() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="8" r="3.5" />
-      <path d="M5.5 19a6.5 6.5 0 0 1 13 0" />
     </svg>
   );
 }

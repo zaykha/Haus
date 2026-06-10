@@ -121,7 +121,8 @@ textarea:focus {
   width: min(100%, 430px);
   min-height: 100vh;
   background: transparent;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 .app-shell-gradient {
@@ -140,6 +141,7 @@ textarea:focus {
 .app-content {
   position: relative;
   z-index: 1;
+  min-height: 100vh;
 }
 
 .auth-screen,
@@ -358,7 +360,7 @@ textarea:focus {
 .auth-popup-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 120;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -928,28 +930,32 @@ textarea:focus {
 }
 
 @media (max-width: 767px) {
+  .app-layout {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+
   html,
   body {
-    height: 100dvh;
-    overflow: hidden;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .shell,
   .mobile-frame {
-    height: 100dvh;
     min-height: 100dvh;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
   }
 
   .auth-screen {
-    height: 100dvh;
     min-height: 100dvh;
     padding: 18px 20px max(18px, env(safe-area-inset-bottom));
     background:
       radial-gradient(circle at top center, rgba(200, 169, 106, 0.14), transparent 24%),
       linear-gradient(180deg, #fbf9f5 0%, #f6f2ec 100%);
     align-content: stretch;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .auth-card {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -21,6 +22,7 @@ const initialValues: ProjectFormValues = {
 export function ProjectCreateScreen() {
   const { state, user, createProject } = useAppState();
   const router = useRouter();
+  const [isRouting, setIsRouting] = useState(false);
 
   if (!user) {
     return null;
@@ -38,11 +40,21 @@ export function ProjectCreateScreen() {
       clientId: values.clientId,
     });
 
+    setIsRouting(true);
     router.push(`/projects/${project.id}`);
   };
 
   return (
     <Shell>
+      {isRouting ? (
+        <div className="auth-loading-overlay" role="status" aria-live="polite">
+          <div className="auth-loading-card">
+            <div className="auth-loading-spinner" aria-hidden="true" />
+            <p>Opening project...</p>
+          </div>
+        </div>
+      ) : null}
+
       <AppSidebar user={user} activeLabel="Projects" />
 
       <Content>
