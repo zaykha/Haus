@@ -162,27 +162,24 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
 
           <InlineForm onSubmit={handleSubmit}>
             <TaskModalGrid>
-              <TaskModalField $wide>
-                <TaskFloatingField className="auth-field is-filled">
-                  <TaskTextInput value={task.title} readOnly placeholder=" " />
-                  <span>Task title</span>
-                </TaskFloatingField>
-              </TaskModalField>
+             <TaskSummaryCard>
+              <TaskSummaryHeader>
+                  <TaskSummaryEyebrow>Task</TaskSummaryEyebrow>
+                  <TaskSummaryTitle>{task.title}</TaskSummaryTitle>
+                </TaskSummaryHeader>
 
-              <TaskModalField>
-                <TaskFloatingField className="auth-field is-filled">
-                  <TaskTextInput value={task.projectName} readOnly placeholder=" " />
-                  <span>Project</span>
-                </TaskFloatingField>
-              </TaskModalField>
+                <TaskSummaryGrid>
+                  <TaskSummaryItem>
+                    <TaskSummaryLabel>Project</TaskSummaryLabel>
+                    <TaskSummaryValue>{task.projectName}</TaskSummaryValue>
+                  </TaskSummaryItem>
 
-              <TaskModalField>
-                <TaskFloatingField className="auth-field is-filled">
-                  <TaskTextInput value={formatDueDate(task.dueDate)} readOnly placeholder=" " />
-                  <span>Due date</span>
-                </TaskFloatingField>
-              </TaskModalField>
-
+                  <TaskSummaryItem>
+                    <TaskSummaryLabel>Due date</TaskSummaryLabel>
+                    <TaskSummaryValue>{formatDueDate(task.dueDate)}</TaskSummaryValue>
+                  </TaskSummaryItem>
+                </TaskSummaryGrid>
+              </TaskSummaryCard>
               <TaskModalField $wide>
                 {isLocked ? (
                   <TaskFloatingField className="auth-field is-filled">
@@ -228,7 +225,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
               </TaskModalField>
             </TaskModalGrid>
 
-            {screenshotPreview ? (
+            {/* {screenshotPreview ? (
               <ScreenshotPreviewWrap>
                 <ScreenshotPreview src={screenshotPreview} alt="Task completion screenshot preview" />
               </ScreenshotPreviewWrap>
@@ -248,8 +245,42 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
                   <span>{screenshotFile ? "Replace screenshot" : "Upload screenshot"}</span>
                 </UploadButton>
               </UploadField>
-            ) : null}
+            ) : null} */}
+          {!isLocked && status === "done" ? (<UploadCompactArea>
+            <UploadLabel>Completion screenshot</UploadLabel>
 
+            {screenshotPreview ? (
+              <ImageReplaceLabel>
+                <ScreenshotPreview src={screenshotPreview} alt="Task completion preview" />
+                {!isLocked ? <ReplaceImageOverlay>Tap to replace image</ReplaceImageOverlay> : null}
+
+                {!isLocked ? (
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    hidden
+                  />
+                ) : null}
+              </ImageReplaceLabel>
+            ) : (
+              <>
+                <UploadEmptyState>No screenshot uploaded yet.</UploadEmptyState>
+
+                {!isLocked ? (
+                  <UploadButtonLabel>
+                    Choose image
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      hidden
+                    />
+                  </UploadButtonLabel>
+                ) : null}
+              </>
+            )}
+          </UploadCompactArea>): null} 
             {error ? <InlineError>{error}</InlineError> : null}
 
             <button className="primary-button" type="submit" disabled={isSubmitting}>
@@ -385,7 +416,6 @@ const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean }>`
 
 const TaskSelectTrigger = styled.button`
   width: 100%;
-  min-height: 58px;
   padding: 18px 16px 12px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 16px;
@@ -514,19 +544,190 @@ const ScreenshotPreviewWrap = styled.div`
   border-radius: 18px;
 `;
 
-const ScreenshotPreview = styled.img`
-  width: 100%;
-  max-height: 220px;
-  display: block;
-  object-fit: cover;
-  border-radius: 14px;
-`;
-
 const InlineError = styled.p`
   margin: 0;
   color: var(--color-danger);
   font-size: 0.84rem;
   line-height: 1.45;
+`;
+
+const TaskSummaryCard = styled.div`
+  border-radius: 18px;
+  background: rgba(251, 250, 247, 0.96);
+  border: 1px solid rgba(230, 224, 215, 0.9);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+
+  @media (min-width: 768px) {
+    padding: 16px;
+  }
+`;
+
+const TaskSummaryHeader = styled.div`
+  display: grid;
+  gap: 4px;
+`;
+
+const TaskSummaryEyebrow = styled.span`
+  color: #7f7468;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+`;
+
+const TaskSummaryTitle = styled.h3`
+  margin: 0;
+  color: #1f1f1f;
+  font-size: 1rem;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+`;
+
+const TaskSummaryGrid = styled.div`
+  display: grid;
+  gap: 10px;
+
+  @media (min-width: 520px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+`;
+
+const TaskSummaryItem = styled.div`
+  display: grid;
+  gap: 3px;
+`;
+
+const TaskSummaryLabel = styled.span`
+  color: #8b8277;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+`;
+
+const TaskSummaryValue = styled.strong`
+  color: #2e2a27;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+`;
+
+const CompactFieldGroup = styled.label`
+  display: grid;
+  gap: 8px;
+`;
+
+const CompactFieldLabel = styled.span`
+  color: #7f7468;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+`;
+
+const StatusSelect = styled.select`
+  width: 100%;
+  min-height: 46px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(47, 93, 80, 0.28);
+  background: #fff;
+  color: #1f1f1f;
+  padding: 0 14px;
+  font-size: 0.95rem;
+  font-weight: 700;
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+`;
+
+const UploadCompactArea = styled.div`
+  display: grid;
+  gap: 10px;
+  border-radius: 18px;
+  border: 1px dashed rgba(47, 93, 80, 0.22);
+  background: rgba(251, 250, 247, 0.8);
+  padding: 12px;
+`;
+
+const UploadLabel = styled.span`
+  color: #7f7468;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+`;
+
+const ScreenshotPreview = styled.img`
+  width: 100%;
+  max-height: 170px;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+
+  @media (min-width: 768px) {
+    max-height: 220px;
+  }
+`;
+
+const UploadEmptyState = styled.p`
+  margin: 0;
+  color: #8b8277;
+  font-size: 0.86rem;
+  line-height: 1.45;
+`;
+
+const UploadButtonLabel = styled.label`
+  min-height: 42px;
+  border-radius: 14px;
+  background: #214f39;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+`;
+
+const ImageReplaceLabel = styled.label`
+  position: relative;
+  display: block;
+  cursor: pointer;
+  border-radius: 14px;
+  overflow: hidden;
+
+  &:hover span {
+    opacity: 1;
+  }
+`;
+
+const ReplaceImageOverlay = styled.span`
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(31, 31, 31, 0.42);
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 800;
+  opacity: 0;
+  transition: opacity 160ms ease;
+
+  @media (max-width: 767px) {
+    opacity: 1;
+    align-items: end;
+    padding-bottom: 12px;
+    background: linear-gradient(
+      180deg,
+      rgba(31, 31, 31, 0) 35%,
+      rgba(31, 31, 31, 0.58) 100%
+    );
+  }
 `;
 
 function IconChevronDown() {

@@ -6,12 +6,14 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "scripts": {
+ "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm run lint && pnpm run typecheck",
+    "check:build": "pnpm run lint && pnpm run typecheck && pnpm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",
