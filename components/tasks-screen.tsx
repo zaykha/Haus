@@ -178,43 +178,55 @@ export function TasksScreen() {
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
 
-  if (!user) {
-    return null;
-  }
+  const visibleProjects = useMemo(
+    () => (user ? state.projects.filter((project) => canViewProject(user, project)) : []),
+    [state.projects, user],
+  );
 
-  const visibleProjects = state.projects.filter((project) => canViewProject(user, project));
   const availableProjects = visibleProjects;
-  const availableStaff = state.users.filter((candidate) => candidate.role !== "client");
+
+  const availableStaff = useMemo(
+    () => state.users.filter((candidate) => candidate.role !== "client"),
+    [state.users],
+  );
+
   const selectedProject =
     availableProjects.find((project) => project.id === newTaskProjectId) ?? availableProjects[0] ?? null;
-  const userNames = new Map(state.users.map((member) => [member.id, member.name]));
-  const roleLabel = formatRole(user.role).toUpperCase();
-  const canManage = canCreateTask(user.role);
-  const isDesigner = user.role === "designer";
 
-  const allTasks = useMemo<TaskRow[]>(
-    () =>
-      visibleProjects.flatMap((project) =>
-        getVisibleTasksForUser(user, project)
-          .filter((task) => !isDesigner || task.assigneeId === user.id)
-          .map((task) => ({
-            id: task.id,
-            title: task.title,
-            assigneeId: task.assigneeId,
-            assigneeName: userNames.get(task.assigneeId) ?? "Unassigned",
-            projectId: project.id,
-            projectName: project.name,
-            projectMark: getProjectMark(project),
-            dueDate: task.dueDate ?? project.dueDate,
-            status: deriveTaskStatus(task.status, project),
-            priority: task.priority ?? derivePriority(task.dueDate ?? project.dueDate, task.status),
-            completionScreenshotUrl: task.completionScreenshotUrl ?? null,
-            rawStatus: task.status,
-            managerReviewStatus: task.managerReviewStatus,
-          })),
-      ),
-    [isDesigner, user.id, userNames, visibleProjects],
+  const userNames = useMemo(
+    () => new Map(state.users.map((member) => [member.id, member.name])),
+    [state.users],
   );
+
+  const roleLabel = user ? formatRole(user.role).toUpperCase() : "";
+  const canManage = user ? canCreateTask(user.role) : false;
+  const isDesigner = user?.role === "designer";
+
+  const allTasks = useMemo<TaskRow[]>(() => {
+    if (!user) {
+      return [];
+    }
+
+    return visibleProjects.flatMap((project) =>
+      getVisibleTasksForUser(user, project)
+        .filter((task) => !isDesigner || task.assigneeId === user.id)
+        .map((task) => ({
+          id: task.id,
+          title: task.title,
+          assigneeId: task.assigneeId,
+          assigneeName: userNames.get(task.assigneeId) ?? "Unassigned",
+          projectId: project.id,
+          projectName: project.name,
+          projectMark: getProjectMark(project),
+          dueDate: task.dueDate ?? project.dueDate,
+          status: deriveTaskStatus(task.status, project),
+          priority: task.priority ?? derivePriority(task.dueDate ?? project.dueDate, task.status),
+          completionScreenshotUrl: task.completionScreenshotUrl ?? null,
+          rawStatus: task.status,
+          managerReviewStatus: task.managerReviewStatus,
+        })),
+    );
+  }, [isDesigner, user, userNames, visibleProjects]);
 
   const filteredTasks = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -267,7 +279,9 @@ export function TasksScreen() {
   const activeDesignerTask = activeDesignerTaskId
     ? allTasks.find((task) => task.id === activeDesignerTaskId) ?? null
     : null;
-
+  if (!user) {
+      return [];
+    }
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSearch(searchDraft);
@@ -693,53 +707,55 @@ export function TasksScreen() {
                 const statusTone = getStatusTone(task.status);
                 const priorityTone = getPriorityTone(task.priority);
                 const isTaskClickable = isDesigner && task.assigneeId === user.id;
-                const RowComponent = isTaskClickable ? DesktopTaskButtonRow : DesktopTaskLinkRow;
-                return (
-                  <RowComponent
-                    {...(isTaskClickable
-                      ? {
-                          type: "button" as const,
-                          onClick: () => openDesignerTaskModal(task),
-                        }
-                      : {
-                          href: `/projects/${task.projectId}`,
-                        })}
+
+                const rowContent = (
+                  <DesktopTaskRowContent>
+                    <CheckCell>
+                      <CheckboxStub />
+                    </CheckCell>
+                    <TaskCell>
+                      <TaskTitle>{task.title}</TaskTitle>
+                      <TaskMeta>{task.projectName}</TaskMeta>
+                    </TaskCell>
+                    <ProjectCell>
+                      <ProjectMark>{task.projectMark}</ProjectMark>
+                      <TaskMeta>{task.projectName}</TaskMeta>
+                    </ProjectCell>
+                    <AssigneeCell>
+                      <Avatar>{task.assigneeName.slice(0, 1)}</Avatar>
+                      <TaskMeta>{task.assigneeName}</TaskMeta>
+                    </AssigneeCell>
+                    <PillCell>
+                      <Pill style={{ background: statusTone.bg, color: statusTone.fg }}>
+                        {statusTone.label}
+                      </Pill>
+                    </PillCell>
+                    <PillCell>
+                      <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
+                        {priorityTone.label}
+                      </Pill>
+                    </PillCell>
+                    <DueCell>{formatDueDate(task.dueDate)}</DueCell>
+                    <ArrowCell>
+                      <ArrowButton>
+                        <IconArrowRight />
+                      </ArrowButton>
+                    </ArrowCell>
+                  </DesktopTaskRowContent>
+                );
+
+                return isTaskClickable ? (
+                  <DesktopTaskButtonRow
                     key={task.id}
+                    type="button"
+                    onClick={() => openDesignerTaskModal(task)}
                   >
-                    <DesktopTaskRowContent>
-                      <CheckCell>
-                        <CheckboxStub />
-                      </CheckCell>
-                      <TaskCell>
-                        <TaskTitle>{task.title}</TaskTitle>
-                        <TaskMeta>{task.projectName}</TaskMeta>
-                      </TaskCell>
-                      <ProjectCell>
-                        <ProjectMark>{task.projectMark}</ProjectMark>
-                        <TaskMeta>{task.projectName}</TaskMeta>
-                      </ProjectCell>
-                      <AssigneeCell>
-                        <Avatar>{task.assigneeName.slice(0, 1)}</Avatar>
-                        <TaskMeta>{task.assigneeName}</TaskMeta>
-                      </AssigneeCell>
-                      <PillCell>
-                        <Pill style={{ background: statusTone.bg, color: statusTone.fg }}>
-                          {statusTone.label}
-                        </Pill>
-                      </PillCell>
-                      <PillCell>
-                        <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
-                          {priorityTone.label}
-                        </Pill>
-                      </PillCell>
-                      <DueCell>{formatDueDate(task.dueDate)}</DueCell>
-                      <ArrowCell>
-                        <ArrowButton>
-                          <IconArrowRight />
-                        </ArrowButton>
-                      </ArrowCell>
-                    </DesktopTaskRowContent>
-                  </RowComponent>
+                    {rowContent}
+                  </DesktopTaskButtonRow>
+                ) : (
+                  <DesktopTaskLinkRow key={task.id} href={`/projects/${task.projectId}`}>
+                    {rowContent}
+                  </DesktopTaskLinkRow>
                 );
               })
             ) : (
@@ -782,48 +798,49 @@ export function TasksScreen() {
               const statusTone = getStatusTone(task.status);
               const priorityTone = getPriorityTone(task.priority);
               const isTaskClickable = isDesigner && task.assigneeId === user.id;
-              const RowComponent = isTaskClickable ? MobileTaskButtonCard : MobileTaskLinkCard;
-              return (
-                <RowComponent
-                  {...(isTaskClickable
-                    ? {
-                        type: "button" as const,
-                        onClick: () => openDesignerTaskModal(task),
-                      }
-                    : {
-                        href: `/projects/${task.projectId}`,
-                    })}
-                  key={task.id}
-                >
-                  <MobileTaskCardContent>
-                    <MobileTaskTop>
-                      <CheckboxStub />
-                      <MobileTopCopy>
-                        <TaskTitle>{task.title}</TaskTitle>
-                        <TaskMeta>{task.projectName}</TaskMeta>
-                      </MobileTopCopy>
-                      <Pill style={{ background: statusTone.bg, color: statusTone.fg }}>
-                        {statusTone.label}
-                      </Pill>
-                    </MobileTaskTop>
+              const taskCardContent = (
+                <MobileTaskCardContent>
+                  <MobileTaskTop>
+                    <CheckboxStub />
+                    <MobileTopCopy>
+                      <TaskTitle>{task.title}</TaskTitle>
+                      <TaskMeta>{task.projectName}</TaskMeta>
+                    </MobileTopCopy>
+                    <Pill style={{ background: statusTone.bg, color: statusTone.fg }}>
+                      {statusTone.label}
+                    </Pill>
+                  </MobileTaskTop>
 
-                    <MobileTaskBottom>
-                      <AssigneeRow>
-                        <Avatar>{task.assigneeName.slice(0, 1)}</Avatar>
-                        <TaskMeta>{task.assigneeName}</TaskMeta>
-                      </AssigneeRow>
-                      <DateRow>
-                        <MiniIcon>
-                          <IconCalendar />
-                        </MiniIcon>
-                        <TaskMeta>{formatDueDate(task.dueDate)}</TaskMeta>
-                      </DateRow>
-                      <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
-                        {priorityTone.label}
-                      </Pill>
-                    </MobileTaskBottom>
-                  </MobileTaskCardContent>
-                </RowComponent>
+                  <MobileTaskBottom>
+                    <AssigneeRow>
+                      <Avatar>{task.assigneeName.slice(0, 1)}</Avatar>
+                      <TaskMeta>{task.assigneeName}</TaskMeta>
+                    </AssigneeRow>
+                    <DateRow>
+                      <MiniIcon>
+                        <IconCalendar />
+                      </MiniIcon>
+                      <TaskMeta>{formatDueDate(task.dueDate)}</TaskMeta>
+                    </DateRow>
+                    <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
+                      {priorityTone.label}
+                    </Pill>
+                  </MobileTaskBottom>
+                </MobileTaskCardContent>
+              );
+
+              return isTaskClickable ? (
+                <MobileTaskButtonCard
+                  key={task.id}
+                  type="button"
+                  onClick={() => openDesignerTaskModal(task)}
+                >
+                  {taskCardContent}
+                </MobileTaskButtonCard>
+              ) : (
+                <MobileTaskLinkCard key={task.id} href={`/projects/${task.projectId}`}>
+                  {taskCardContent}
+                </MobileTaskLinkCard>
               );
             })
           ) : (
@@ -1005,10 +1022,6 @@ const sideItemCss = css<{ $active?: boolean }>`
 `;
 
 const SideLink = styled(Link)<{ $active?: boolean }>`
-  ${sideItemCss}
-`;
-
-const SideButton = styled.button`
   ${sideItemCss}
 `;
 

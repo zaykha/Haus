@@ -135,14 +135,14 @@ export function ProjectsScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
 
-  if (!user) {
-    return null;
-  }
-
-  const visibleProjects = state.projects.filter((project) => canViewProject(user, project));
-  const canManage = canCreateProjectPermission(user.role);
-  const userNames = new Map(state.users.map((member) => [member.id, member.name]));
-  const roleLabel = formatRole(user.role).toUpperCase();
+  // Keep hooks unconditionally called: ESLint rules-of-hooks
+  const visibleProjects = state.projects.filter((project) => (user ? canViewProject(user, project) : false));
+  const canManage = user ? canCreateProjectPermission(user.role) : false;
+  const userNames = useMemo(
+    () => new Map(state.users.map((member) => [member.id, member.name])),
+    [state.users],
+  );
+  const roleLabel = user ? formatRole(user.role).toUpperCase() : "";
 
   const filteredProjects = useMemo(() => {
     const loweredSearch = search.trim().toLowerCase();
@@ -187,10 +187,13 @@ export function ProjectsScreen() {
   };
 
   useEffect(() => {
+    if (!user) return;
     setMobileVisibleCount(MOBILE_BATCH_SIZE);
-  }, [search, filter, sort, visibleProjects.length]);
+  }, [user, search, filter, sort, visibleProjects.length]);
 
   useEffect(() => {
+    if (!user) return;
+
     const node = mobileLoadMoreRef.current;
     if (!node) {
       return;
@@ -202,18 +205,20 @@ export function ProjectsScreen() {
           return;
         }
 
-        setMobileVisibleCount((current) => Math.min(current + MOBILE_BATCH_SIZE, filteredProjects.length));
+        setMobileVisibleCount((current) =>
+          Math.min(current + MOBILE_BATCH_SIZE, filteredProjects.length),
+        );
       },
       { rootMargin: "180px 0px" },
     );
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [filteredProjects.length]);
+  }, [user, filteredProjects.length]);
 
   return (
     <PageShell>
-      <AppSidebar user={user} activeLabel="Projects" />
+      {user ? <AppSidebar user={user} activeLabel="Projects" /> : null}
 
       <Content>
         <DesktopHeader>
@@ -230,7 +235,7 @@ export function ProjectsScreen() {
             <Title>Select a project</Title>
           </MobileHeaderCopy>
           <HeaderAvatarLink href="/profile" aria-label="Open profile">
-            {user.name.slice(0, 1)}
+            {user?.name?.slice(0, 1)}
           </HeaderAvatarLink>
         </MobileHeader>
 
@@ -358,7 +363,9 @@ export function ProjectsScreen() {
                   <MetaColumn $narrow>
                     <MetaLabel>Open tasks</MetaLabel>
                     <MetaStrong>
-                      {getVisibleTasksForUser(user, project).filter((task) => task.status !== "approved").length}
+                      {user
+                        ? getVisibleTasksForUser(user, project).filter((task) => task.status !== "approved").length
+                        : 0}
                     </MetaStrong>
                   </MetaColumn>
 
@@ -380,7 +387,7 @@ export function ProjectsScreen() {
           {mobileProjects.length ? (
             mobileProjects.map((project) => {
               const tone = getStatusTone(project.status);
-              const visibleTasks = getVisibleTasksForUser(user, project);
+              const visibleTasks = user ? getVisibleTasksForUser(user, project) : [];
               const progress = getVisibleProjectProgress(
                 project,
                 visibleTasks.length,
@@ -482,107 +489,6 @@ const PageShell = styled.main`
     padding: 8px;
     background: rgba(255, 255, 255, 0.58);
   }
-`;
-
-const Sidebar = styled.aside`
-  display: none;
-
-  ${desktop} {
-    width: 260px;
-    flex: 0 0 260px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 22px 16px;
-    border-right: 1px solid rgba(230, 224, 215, 0.95);
-    border-radius: 26px 0 0 26px;
-    background: rgba(255, 255, 255, 0.62);
-  }
-`;
-
-const Brand = styled.div`
-  padding: 10px 8px 24px;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 2.6rem;
-  line-height: 1;
-  font-weight: 600;
-  text-transform: lowercase;
-`;
-
-const SidebarNav = styled.nav`
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin-top: 28px;
-`;
-
-const sidebarItemCss = css<{ $active?: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 40px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 10px;
-  color: ${({ $active }) => ($active ? "var(--color-text)" : "var(--color-text-muted)")};
-  background: ${({ $active }) => ($active ? "#f5efe5" : "transparent")};
-  box-shadow: ${({ $active }) =>
-    $active ? "inset 0 0 0 1px rgba(230, 224, 215, 0.9)" : "none"};
-  text-align: left;
-  text-decoration: none;
-  font-size: 0.96rem;
-`;
-
-const SidebarLink = styled(Link)<{ $active?: boolean }>`
-  ${sidebarItemCss}
-`;
-
-const SidebarButton = styled.button`
-  ${sidebarItemCss}
-`;
-
-const SidebarIcon = styled.span`
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: inherit;
-  opacity: 0.72;
-
-  svg {
-    width: 100%;
-    height: 100%;
-  }
-`;
-
-const SidebarProfile = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 8px 8px;
-`;
-
-const SidebarAvatar = styled.div`
-  width: 42px;
-  height: 42px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: #ded6c8;
-  color: #fff;
-  font-weight: 600;
-`;
-
-const SidebarName = styled.strong`
-  display: block;
-`;
-
-const SidebarRole = styled.p`
-  margin: 2px 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-  text-transform: capitalize;
 `;
 
 const Content = styled.section`

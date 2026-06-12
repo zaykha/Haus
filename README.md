@@ -1,45 +1,66 @@
 # Haus
 
-Haus is a mobile-first MVP for a design project tracking portal built with Next.js App Router and prepared for invitation-based onboarding with optional Supabase-backed services.
+Haus is a mobile-first MVP for a design project management and client portal for creative/design teams.
 
-## Stack
+## Tech stack
 
-- Next.js App Router
+- Next.js (App Router)
 - React
+- Supabase
+- styled-components
 - TypeScript
-- Supabase client helpers
 - `pnpm`
 
-## Run
+## Local setup
 
-1. Install Node.js 20+ and `pnpm`.
-2. Install dependencies:
+### 1) Install
 
 ```bash
 pnpm install
 ```
 
-3. Start the app:
+### 2) Run (development)
 
 ```bash
 pnpm dev
 ```
 
-## Environment
-
-Optional `.env.local` keys:
+### 3) Build
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+pnpm build
 ```
 
-Without these values, the app uses local persisted state in the browser with no preloaded users or project data.
+## Environment variables
 
-## Invitations
+Copy `.env.example` to `.env.local`.
 
-- Managers create manual invite links from `/team`.
-- Invite links open `/accept-invite?token=...`.
-- Supabase auth user creation happens only through server routes under `app/api/invitations/*`.
-- The service role key is server-only and must never be exposed to the client.
+```bash
+cp .env.example .env.local
+```
+
+Populate Supabase values (no real secrets should be committed):
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (**server-only**)
+
+Optional:
+
+- `NEXT_PUBLIC_SUPABASE_PROJECT_IMAGES_BUCKET` (defaults to `project-images`)
+
+## Development commands
+
+- Install: `pnpm install`
+- Dev: `pnpm dev`
+- Build: `pnpm build`
+
+## Deployment target: Vercel
+
+This project is prepared for Vercel deployment.
+
+See:
+- `docs/DEPLOYMENT.md`
+- `docs/SUPABASE_SETUP.md`
+- `docs/ENVIRONMENT_VARIABLES.md`
+

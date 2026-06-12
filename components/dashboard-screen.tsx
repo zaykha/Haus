@@ -194,11 +194,6 @@ export function DashboardScreen() {
       });
   }, [safeUser, userNames, visibleProjects]);
 
-
-  if (!user) {
-    return null;
-  }
-
   const availableProjects = visibleProjects;
   const availableStaff = state.users.filter((candidate) => candidate.role !== "client");
   const selectedProject =
@@ -207,8 +202,10 @@ export function DashboardScreen() {
     null;
 
   const openTasks = useMemo<EnrichedTask[]>(
-    () =>
-      projectRows.flatMap((project) =>
+    () => {
+      if (!user) return [];
+
+      return projectRows.flatMap((project) =>
         getVisibleTasksForUser(user, project)
           .filter(
             (task) =>
@@ -222,7 +219,8 @@ export function DashboardScreen() {
             projectName: project.name,
             projectDueDate: project.dueDate,
           })),
-      ),
+      );
+    },
     [isDesigner, projectRows, user],
   );
 
@@ -523,7 +521,7 @@ export function DashboardScreen() {
         </ModalBackdrop>
       ) : null}
 
-      <AppSidebar user={user} activeLabel="Home" />
+      {safeUser ? <AppSidebar user={safeUser} activeLabel="Home" /> : null}
 
       <Content>
         <Header>
@@ -537,12 +535,12 @@ export function DashboardScreen() {
             </Subtitle>
           </div>
           <MobileProfileLink href="/profile" aria-label="Open profile">
-            <HeaderAvatar>{user.name.slice(0, 1)}</HeaderAvatar>
+            <HeaderAvatar>{safeUser?.name.slice(0, 1) ?? ""}</HeaderAvatar>
           </MobileProfileLink>
           <HeaderUser href="/profile" aria-label="Open profile">
-            <HeaderAvatar>{user.name.slice(0, 1)}</HeaderAvatar>
+            <HeaderAvatar>{safeUser?.name.slice(0, 1) ?? ""}</HeaderAvatar>
             <div>
-              <HeaderUserName>{user.name}</HeaderUserName>
+              <HeaderUserName>{safeUser?.name ?? ""}</HeaderUserName>
             </div>
           </HeaderUser>
         </Header>
