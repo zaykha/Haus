@@ -1,7 +1,15 @@
 import React, { useState } from 'react';
-import { usePermissions } from '../utils/permissions'; // Assuming this utility exists
+import { useAppState } from "@/components/app-state";
+import {
+  canManageWorkspace,
+  canEditProject,
+  canDeleteProject,
+  canCreateTask,
+} from "@/lib/permissions";
 import EditProjectModal from './EditProjectModal';
 import TaskDetailModal from './TaskDetailModal';
+
+
 
 // Mock data types for demonstration
 interface Project {
@@ -43,7 +51,15 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
   onUpdateTask,
   onDeleteTask,
 }) => {
-  const { isManager } = usePermissions();
+  const { user } = useAppState();
+
+  const isManager = user ? canManageWorkspace(user.role) : false;
+
+  const canEditDetails = user ? canEditProject(user.role) : false;
+  const canRemoveProject = user ? canDeleteProject(user.role) : false;
+  const canManageTasks = user ? canCreateTask(user.role) : false;
+
+
   const [showEditModal, setShowEditModal] = useState(false);
   const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);

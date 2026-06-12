@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { usePermissions } from '../utils/permissions'; // Assuming this utility exists
+import { useAppState } from "@/components/app-state";
+import { canManageWorkspace } from "@/lib/permissions";
+
 
 interface Project {
   id: string;
@@ -19,7 +21,11 @@ interface EditProjectModalProps {
 }
 
 const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onClose, onSave }) => {
-  const { isManager } = usePermissions();
+  const { user } = useAppState();
+
+  const isManager = user ? canManageWorkspace(user.role) : false;
+
+
   const [formData, setFormData] = useState<Project>(project);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {

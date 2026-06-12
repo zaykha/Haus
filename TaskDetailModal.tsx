@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { usePermissions } from '../utils/permissions'; // Assuming this utility exists
+import { useAppState } from "@/components/app-state";
+import { canManageWorkspace } from "@/lib/permissions";
+
 
 interface Task {
   id: string;
@@ -18,7 +20,10 @@ interface TaskDetailModalProps {
 }
 
 const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose, onUpdateTask, onDeleteTask }) => {
-  const { isManager } = usePermissions();
+  const { user } = useAppState();
+
+  const isManager = user ? canManageWorkspace(user.role) : false;
+
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Task>(task);
 
