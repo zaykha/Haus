@@ -321,7 +321,10 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const canAccessProject = Boolean(user && projectRecord && canViewProject(user, projectRecord));
   const project = projectRecord ?? EMPTY_PROJECT;
 
-  const userNames = new Map(state.users.map((member) => [member.id, member.name]));
+  const userNames = useMemo(
+    () => new Map(state.users.map((member) => [member.id, member.name])),
+    [state.users],
+  );
   const availableClients = state.users.filter((candidate) => candidate.role === "client");
   const availableStaff = state.users.filter((candidate) => candidate.role !== "client");
   const client = state.users.find((candidate) => candidate.id === project.clientId);

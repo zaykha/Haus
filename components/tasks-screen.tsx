@@ -202,6 +202,7 @@ export function TasksScreen() {
   const canManage = user ? canCreateTask(user.role) : false;
   const isDesigner = user?.role === "designer";
 
+
   const allTasks = useMemo<TaskRow[]>(() => {
     if (!user) {
       return [];
@@ -220,13 +221,15 @@ export function TasksScreen() {
           projectMark: getProjectMark(project),
           dueDate: task.dueDate ?? project.dueDate,
           status: deriveTaskStatus(task.status, project),
-          priority: task.priority ?? derivePriority(task.dueDate ?? project.dueDate, task.status),
+          priority: task.priority ??
+            derivePriority(task.dueDate ?? project.dueDate, task.status),
           completionScreenshotUrl: task.completionScreenshotUrl ?? null,
           rawStatus: task.status,
           managerReviewStatus: task.managerReviewStatus,
         })),
     );
   }, [isDesigner, user, userNames, visibleProjects]);
+
 
   const filteredTasks = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -255,6 +258,7 @@ export function TasksScreen() {
     });
   }, [allTasks, filter, search, sort]);
 
+
   const today = startOfDay(new Date());
   const openCount = allTasks.filter((task) => task.status !== "approved").length;
   const dueTodayCount = allTasks.filter(
@@ -279,9 +283,11 @@ export function TasksScreen() {
   const activeDesignerTask = activeDesignerTaskId
     ? allTasks.find((task) => task.id === activeDesignerTaskId) ?? null
     : null;
+
   if (!user) {
-      return [];
-    }
+    return null;
+  }
+
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSearch(searchDraft);
@@ -882,7 +888,7 @@ export function TasksScreen() {
           <DesktopBottomGrid>
             <Panel>
               <PanelHeader>
-                <PanelTitle>Today's Focus</PanelTitle>
+                <PanelTitle>{"Today's Focus"}</PanelTitle>
               </PanelHeader>
               <FocusList>
                 {focusTasks.length ? (

@@ -229,12 +229,16 @@ export function TeamScreen() {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
 
+  const selectedMemberId = selectedMember?.id;
+  const selectedMemberRole = selectedMember?.role;
+
   useEffect(() => {
     setSelectedTaskPage(1);
-    if (selectedMember && selectedMember.role !== "client") {
-      setNextRole(selectedMember.role);
+
+    if (selectedMemberRole && selectedMemberRole !== "client") {
+      setNextRole(selectedMemberRole);
     }
-  }, [selectedMember?.id, selectedMember?.role]);
+  }, [selectedMemberId, selectedMemberRole]);
 
   const selectedTaskPages = Math.max(
     1,
