@@ -26,6 +26,7 @@ export interface User {
   email: string;
   role: Role;
   company?: string;
+  createdAt?: string;
 }
 
 export interface Task {

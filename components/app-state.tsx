@@ -148,6 +148,7 @@ type ProfileRecord = {
   name: string;
   role: Role;
   company: string | null;
+  created_at: string;
 };
 
 type ProjectRecord = {
@@ -315,6 +316,7 @@ function toAppUser(profile: ProfileRecord): User {
     name: profile.name,
     role: profile.role,
     company: profile.company ?? undefined,
+    createdAt: profile.created_at,
   };
 }
 
@@ -323,7 +325,7 @@ async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, name, role, company")
+    .select("id, email, name, role, company, created_at")
     .eq("id", authUser.id)
     .maybeSingle();
 
@@ -343,6 +345,7 @@ async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
         "User"),
     role: profile?.role ?? ((authUser.user_metadata.role as Role | undefined) ?? "client"),
     company: profile?.company ?? undefined,
+    createdAt: profile?.created_at,
   };
 }
 
@@ -404,7 +407,7 @@ async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
     projectsResult,
     invitations,
   ] = await Promise.all([
-    supabase.from("profiles").select("id, email, name, role, company").order("created_at", { ascending: true }),
+    supabase.from("profiles").select("id, email, name, role, company, created_at").order("created_at", { ascending: true }),
     supabase
       .from("projects")
       .select("id, name, image_url, client_id, owner_id, description, category, stage, status, due_date, created_at")

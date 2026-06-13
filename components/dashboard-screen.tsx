@@ -5,6 +5,7 @@ import { FormEvent, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
+import { CustomDatePicker } from "@/components/custom-date-picker";
 import { canManageWorkspace, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { formatLabel, formatProjectStage, formatRole, getProjectStatusLabel } from "@/lib/display";
 import { FeedbackAction, Project, ProjectStatus, TaskPriority, TaskStatus } from "@/lib/types";
@@ -36,7 +37,9 @@ type ActivityRow = {
   createdAt: string;
 };
 
-const desktop = "@media (min-width: 768px)";
+const tablet = "@media (min-width: 768px) and (max-width: 1099px)";
+const tabletUp = "@media (min-width: 768px)";
+const desktop = "@media (min-width: 1100px)";
 
 const sideNavItems = [
   { label: "Home", href: "/dashboard", icon: <IconHome /> },
@@ -485,16 +488,11 @@ export function DashboardScreen() {
                 </TaskModalField>
 
                 <TaskModalField>
-                  <TaskFloatingField className={newTaskDueDate ? "auth-field is-filled" : "auth-field"}>
-                    <TaskTextInput
-                      type="date"
-                      value={newTaskDueDate}
-                      onChange={(event) => setNewTaskDueDate(event.target.value)}
-                      placeholder=" "
-                      required
-                    />
-                    <span>Due date</span>
-                  </TaskFloatingField>
+                  <CustomDatePicker
+                    label="Due date"
+                    value={newTaskDueDate}
+                    onChange={setNewTaskDueDate}
+                  />
                 </TaskModalField>
               </TaskModalGrid>
               <PriorityField>
@@ -521,7 +519,11 @@ export function DashboardScreen() {
         </ModalBackdrop>
       ) : null}
 
-      {safeUser ? <AppSidebar user={safeUser} activeLabel="Home" /> : null}
+      {safeUser ? (
+        <DesktopSidebarSlot>
+          <AppSidebar user={safeUser} activeLabel="Home" />
+        </DesktopSidebarSlot>
+      ) : null}
 
       <Content>
         <Header>
@@ -665,14 +667,21 @@ export function DashboardScreen() {
 
           <Panel>
             <PanelHeader>
-              <PanelTitle>{isDesigner ? "Tasks" : "Tasks Due Today"}</PanelTitle>
+              <PanelTitle>Tasks</PanelTitle>
               <PanelLink href="/tasks">View all</PanelLink>
             </PanelHeader>
             <TaskList>
               {openTasks.slice(0, 3).length ? (
                 openTasks.slice(0, 3).map((task) => (
                   <TaskRow key={task.id} href={`/projects/${task.projectId}`}>
-                    <TaskCircle $urgent={task.status === "todo"} />
+                    <TaskCircle
+                      $urgent={task.status === "todo"}
+                      $done={task.status === "done" || task.status === "review" || task.status === "approved"}
+                    >
+                      {task.status === "done" || task.status === "review" || task.status === "approved" ? (
+                        <IconCheckTiny />
+                      ) : null}
+                    </TaskCircle>
                     <TaskCopy>
                       <TaskTitle>{task.title}</TaskTitle>
                       <TaskSub>{task.projectName}</TaskSub>
@@ -918,7 +927,14 @@ export function DashboardScreen() {
               {dashboardTasks.length ? (
                 dashboardTasks.map((task) => (
                   <TaskRow key={task.id} href={`/projects/${task.projectId}`}>
-                    <TaskCircle $urgent={task.status === "todo"} />
+                    <TaskCircle
+                      $urgent={task.status === "todo"}
+                      $done={task.status === "done" || task.status === "review" || task.status === "approved"}
+                    >
+                      {task.status === "done" || task.status === "review" || task.status === "approved" ? (
+                        <IconCheckTiny />
+                      ) : null}
+                    </TaskCircle>
                     <TaskCopy>
                       <TaskTitle>{task.title}</TaskTitle>
                       <TaskSub>{task.projectName}</TaskSub>
@@ -1146,7 +1162,11 @@ const cardSurface = css`
 const Shell = styled.main`
   display: block;
   min-height: 100vh;
-  padding: 16px 14px calc(env(safe-area-inset-bottom));
+  padding: 16px 14px calc(env(safe-area-inset-bottom) + 16px);
+
+  ${tablet} {
+    padding: 22px 28px calc(env(safe-area-inset-bottom) + 24px);
+  }
 
   ${desktop} {
     display: flex;
@@ -1259,9 +1279,17 @@ const Content = styled.section`
   flex-direction: column;
   gap: 14px;
 
+  ${tablet} {
+    max-width: 860px;
+    margin: 0 auto;
+    gap: 16px;
+  }
+
   ${desktop} {
     flex: 1;
     min-width: 0;
+    max-width: none;
+    margin: 0;
     padding: 24px 28px 24px;
     border-radius: 0 26px 26px 0;
     background:
@@ -1371,8 +1399,13 @@ const HeaderUserName = styled.strong`
 
 const StatsGrid = styled.section`
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+
+  ${tabletUp} {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
 
   ${desktop} {
     gap: 16px;
@@ -1387,12 +1420,18 @@ const StatCard = styled.article`
   padding: 12px 10px 10px;
   border-radius: 18px;
 
+  ${tabletUp} {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    align-items: start;
+    min-height: 96px;
+    padding: 12px 14px;
+    border-radius: 20px;
+  }
+
   ${desktop} {
     grid-template-columns: minmax(0, 1fr) 52px;
-    align-items: start;
     min-height: 100px;
     padding: 10px 20px;
-    border-radius: 20px;
   }
 `;
 
@@ -1474,10 +1513,20 @@ const StatIcon = styled.div<{ $tone: "dark" | "soft-green" | "soft-gold" }>`
     height: 15px;
   }
 
+  ${tabletUp} {
+    width: 44px;
+    height: 44px;
+    border-radius: 16px;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
   ${desktop} {
     width: 52px;
     height: 52px;
-    border-radius: 16px;
 
     svg {
       width: 20px;
@@ -1489,6 +1538,16 @@ const StatIcon = styled.div<{ $tone: "dark" | "soft-green" | "soft-gold" }>`
 const MobileDashboardStack = styled.section`
   display: grid;
   gap: 14px;
+
+  ${tablet} {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 16px;
+
+    > section:first-child {
+      grid-column: 1 / -1;
+    }
+  }
 
   ${desktop} {
     display: none;
@@ -1527,7 +1586,8 @@ const BottomGrid = styled.section`
 
 const Panel = styled.section`
   ${cardSurface}
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   padding: 14px;
   border-radius: 20px;
@@ -1548,7 +1608,8 @@ const DesktopOnlyPanel = styled(Panel)`
   display: none;
 
   ${desktop} {
-    display: grid;
+    display: flex;
+    flex-direction: column;
   }
 `;
 
@@ -1768,12 +1829,18 @@ const TaskRow = styled(Link)`
   padding: 2px 0;
 `;
 
-const TaskCircle = styled.span<{ $urgent: boolean }>`
+const TaskCircle = styled.span<{ $urgent: boolean; $done?: boolean }>`
   width: 18px;
   height: 18px;
   margin-top: 2px;
   border-radius: 999px;
-  border: 2px solid ${({ $urgent }) => ($urgent ? "#df7a6b" : "#ded6c8")};
+  border: 2px solid
+    ${({ $done, $urgent }) => ($done ? "#2c6b43" : $urgent ? "#df7a6b" : "#ded6c8")};
+  background: ${({ $done }) => ($done ? "#2c6b43" : "transparent")};
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
 `;
 
 const TaskCopy = styled.div`
@@ -1900,6 +1967,7 @@ const FeedbackRowCard = styled.article`
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) auto;
   gap: 10px;
+  margin-top: 20px;
   align-items: center;
 `;
 
@@ -1935,6 +2003,7 @@ const FeedbackProject = styled.p`
 const ActivityList = styled.div`
   display: grid;
   gap: 12px;
+  margin-top: 20px;
 `;
 
 const ActivityRowCard = styled.article`
@@ -1953,6 +2022,19 @@ const ActivityTime = styled.span`
 const ActionList = styled.div`
   display: grid;
   gap: 8px;
+  margin-top: 20px;
+  ${tablet} {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+`;
+
+const DesktopSidebarSlot = styled.div`
+  display: none;
+
+  ${desktop} {
+    display: block;
+    flex: 0 0 auto;
+  }
 `;
 
 const actionButtonCss = css`
@@ -2056,6 +2138,7 @@ const TaskModalGrid = styled.div`
 `;
 
 const TaskModalField = styled.div<{ $wide?: boolean }>`
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2071,11 +2154,15 @@ const TaskModalField = styled.div<{ $wide?: boolean }>`
 `;
 
 const TaskFloatingField = styled.label`
+  min-width: 0;
   width: 100%;
 `;
 
 const TaskTextInput = styled.input`
+  box-sizing: border-box;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 58px;
   padding: 0 16px;
   border: 1px solid rgba(230, 224, 215, 0.95);
@@ -2084,6 +2171,23 @@ const TaskTextInput = styled.input`
   color: var(--color-text);
   box-shadow: var(--shadow-sm);
   font-size: 16px;
+
+  &[type="date"] {
+    appearance: none;
+    -webkit-appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    text-align: left;
+  }
+
+  &[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
+    min-width: 0;
+  }
+
+  &[type="date"]::-webkit-calendar-picker-indicator {
+    margin-left: 4px;
+  }
 `;
 
 const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean }>`
@@ -2264,6 +2368,14 @@ function IconCheckCircle() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="8.5" />
       <path d="m8.8 12 2.1 2.2 4.6-4.8" />
+    </svg>
+  );
+}
+
+function IconCheckTiny() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m7.8 12.3 2.4 2.4 5.9-6.1" />
     </svg>
   );
 }

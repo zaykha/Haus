@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
+import { FilterModal } from "@/components/filter-modal";
 import { canCreateProject as canCreateProjectPermission, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { formatProjectStage, formatRole, getProjectStatusLabel } from "@/lib/display";
 import { Project, ProjectStatus } from "@/lib/types";
@@ -240,6 +241,36 @@ export function ProjectsScreen() {
         </MobileHeader>
 
         <Toolbar>
+          <FilterModal
+            open={showFilters}
+            title="Filter projects"
+            description="Adjust project filtering and sorting."
+            sections={[
+              {
+                id: "filter",
+                label: "Status",
+                options: filterOptions.map((option) => ({
+                  value: option.key,
+                  label: option.label,
+                })),
+              },
+              {
+                id: "sort",
+                label: "Sort by",
+                options: [
+                  { value: "due_date", label: "Due date" },
+                  { value: "name", label: "Name" },
+                ],
+              },
+            ]}
+            values={{ filter, sort }}
+            onApply={(nextValues) => {
+              setFilter(nextValues.filter as FilterKey);
+              setSort(nextValues.sort as SortKey);
+              setCurrentPage(1);
+            }}
+            onClose={() => setShowFilters(false)}
+          />
           <SearchControls onSubmit={handleSearchSubmit}>
             <SearchWrap>
               <SearchInput
@@ -253,40 +284,12 @@ export function ProjectsScreen() {
                 type="button"
                 aria-label="Open filters"
                 aria-expanded={showFilters}
-                onClick={() => setShowFilters((current) => !current)}
+                onClick={() => setShowFilters(true)}
               >
                 <ButtonIcon>
                   <IconFilter />
                 </ButtonIcon>
               </FilterButton>
-              {showFilters ? (
-                <FilterPopup>
-                  <FilterPopupTitle>Filter projects</FilterPopupTitle>
-                  <FilterSelect
-                    value={filter}
-                    onChange={(event) => {
-                      setFilter(event.target.value as FilterKey);
-                      setCurrentPage(1);
-                    }}
-                  >
-                    {filterOptions.map((option) => (
-                      <option key={option.key} value={option.key}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </FilterSelect>
-                  <FilterSelect
-                    value={sort}
-                    onChange={(event) => {
-                      setSort(event.target.value as SortKey);
-                      setCurrentPage(1);
-                    }}
-                  >
-                    <option value="due_date">Sort by due date</option>
-                    <option value="name">Sort by name</option>
-                  </FilterSelect>
-                </FilterPopup>
-              ) : null}
             </FilterMenuWrap>
             <SearchButton type="submit" aria-label="Search projects">
               <ButtonIcon>
@@ -464,7 +467,9 @@ export function ProjectsScreen() {
   );
 }
 
-const desktop = "@media (min-width: 768px)";
+const tablet = "@media (min-width: 768px) and (max-width: 1099px)";
+const tabletUp = "@media (min-width: 768px)";
+const desktop = "@media (min-width: 1100px)";
 
 const cardSurface = css`
   border: 1px solid rgba(230, 224, 215, 0.95);
@@ -482,6 +487,10 @@ const PageShell = styled.main`
   display: block;
   min-height: 100vh;
   padding: 18px 16px 24px;
+
+  ${tablet} {
+    padding: 22px 28px calc(env(safe-area-inset-bottom) + 24px);
+  }
 
   ${desktop} {
     display: flex;

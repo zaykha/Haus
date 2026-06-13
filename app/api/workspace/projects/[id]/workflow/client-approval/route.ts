@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
 
 /**
- * Client -> server workflow transition endpoint.
- * Called by the client review popup *before* closing.
+ * Client -> server task review endpoint.
+ * This updates the task only. Project workflow remains manager-controlled.
  */
 export async function POST(
   request: NextRequest,
@@ -91,21 +91,8 @@ export async function POST(
     return NextResponse.json({ error: taskUpdateError.message }, { status: 500 });
   }
 
-  // Update project workflow status to reflect the decision.
-  const nextProjectStatus = decision === "approve" ? "approved" : "revision";
-  const nextProjectStage = decision === "approve" ? "review" : "review";
-
-  const { error: projectUpdateError } = await supabase
-    .from("projects")
-    .update({ status: nextProjectStatus, stage: nextProjectStage })
-    .eq("id", projectId);
-
-  if (projectUpdateError) {
-    return NextResponse.json({ error: projectUpdateError.message }, { status: 500 });
-  }
-
   // Activity logging (best-effort; do not fail the whole request if activity table isn't ready).
-  const action = decision === "approve" ? "client_approved" : "client_requested_revision";
+  const action = decision === "approve" ? "task_approved" : "task_revision_requested";
   const message =
     decision === "approve"
       ? `client approved task "${task.title}"`
@@ -119,9 +106,8 @@ export async function POST(
   });
 
   if (activityError && !activityError.message?.includes('relation "project_activity" does not exist')) {
-    // Keep parity with other endpoints.
+    return NextResponse.json({ error: activityError.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
 }
-

@@ -6,6 +6,7 @@ import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { useAppState } from "@/components/app-state";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
+import { FilterModal } from "@/components/filter-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { canDeleteTeamMember, canInviteUsers, canUpdateTeamRole } from "@/lib/permissions";
 import { Role, TaskPriority, TaskStatus } from "@/lib/types";
@@ -32,6 +33,7 @@ type MemberRow = {
   email: string;
   role: Role;
   company?: string;
+  joinedAt?: string | null;
   projectCount: number;
   openTasks: MemberTaskRow[];
 };
@@ -131,6 +133,7 @@ export function TeamScreen() {
         email: invitation.email,
         role: invitation.role,
         company: "Haus",
+        createdAt: invitation.acceptedAt ?? invitation.createdAt,
       }));
 
     return [...existingMembers, ...acceptedInviteMembers].map((member) => {
@@ -163,6 +166,7 @@ export function TeamScreen() {
 
       return {
         ...member,
+        joinedAt: member.createdAt ?? null,
         projectCount: memberProjects.length,
         openTasks,
       };
@@ -474,6 +478,29 @@ export function TeamScreen() {
         </Header>
 
         <Toolbar>
+          <FilterModal
+            open={showFilters}
+            title="Filter team"
+            description="Adjust which team roles are shown."
+            sections={[
+              {
+                id: "role",
+                label: "Role",
+                options: [
+                  { value: "all", label: "All Roles" },
+                  { value: "creative_manager", label: "Creative Manager" },
+                  { value: "communication_manager", label: "Communication Manager" },
+                  { value: "designer", label: "Designer" },
+                ],
+              },
+            ]}
+            values={{ role: roleFilter }}
+            onApply={(nextValues) => {
+              setRoleFilter(nextValues.role as RoleFilter);
+              setCurrentPage(1);
+            }}
+            onClose={() => setShowFilters(false)}
+          />
           <SearchControls onSubmit={handleSearchSubmit}>
             <SearchWrap>
               <SearchInput
@@ -487,26 +514,12 @@ export function TeamScreen() {
                 type="button"
                 aria-label="Open filters"
                 aria-expanded={showFilters}
-                onClick={() => setShowFilters((current) => !current)}
+                onClick={() => setShowFilters(true)}
               >
                 <IconWrap>
                   <IconSliders />
                 </IconWrap>
               </FilterButton>
-              {showFilters ? (
-                <FilterPopup>
-                  <FilterPopupTitle>Filter team</FilterPopupTitle>
-                  <TextSelect
-                    value={roleFilter}
-                    onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
-                  >
-                    <option value="all">All Roles</option>
-                    <option value="creative_manager">Creative Manager</option>
-                    <option value="communication_manager">Communication Manager</option>
-                    <option value="designer">Designer</option>
-                  </TextSelect>
-                </FilterPopup>
-              ) : null}
             </FilterMenuWrap>
             <SearchButton type="submit" aria-label="Search team members">
               <IconWrap>
@@ -586,7 +599,7 @@ export function TeamScreen() {
 
           <TableBody>
             {paginatedMembers.length ? (
-              paginatedMembers.map((member, index) => {
+              paginatedMembers.map((member) => {
                 const roleTone = getRoleTone(member.role);
 
                 return (
@@ -604,7 +617,7 @@ export function TeamScreen() {
                       </Pill>
                     </RoleCell>
                     <CountCell>{member.projectCount || "—"}</CountCell>
-                    <JoinedCell>{mockJoinDate((currentPage - 1) * PAGE_SIZE + index)}</JoinedCell>
+                    <JoinedCell>{member.joinedAt ? formatShortDate(member.joinedAt) : "—"}</JoinedCell>
                   </TableRow>
                 );
               })
@@ -656,6 +669,9 @@ export function TeamScreen() {
                       <Pill style={{ background: roleTone.bg, color: roleTone.fg }}>
                         {formatRole(member.role)}
                       </Pill>
+                      <InvitationMeta>
+                        Joined {member.joinedAt ? formatShortDate(member.joinedAt) : "—"}
+                      </InvitationMeta>
                     </MemberCopy>
                   </MobileCardRow>
                 </MobileCard>
@@ -711,21 +727,6 @@ export function TeamScreen() {
       </Content>
     </Shell>
   );
-}
-
-function mockJoinDate(index: number) {
-  const dates = [
-    "Apr 12, 2024",
-    "Mar 18, 2024",
-    "May 2, 2024",
-    "Feb 28, 2024",
-    "Apr 5, 2024",
-    "Jun 1, 2024",
-    "Jan 10, 2024",
-    "Jun 10, 2024",
-  ];
-
-  return dates[index % dates.length];
 }
 
 const cardSurface = css`

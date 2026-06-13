@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
+import { FilterModal } from "@/components/filter-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
 import { formatRole } from "@/lib/display";
@@ -435,6 +436,27 @@ export function ClientsScreen() {
         </Header>
 
         <Toolbar>
+          <FilterModal
+            open={showFilters}
+            title="Filter clients"
+            description="Adjust which client accounts are shown."
+            sections={[
+              {
+                id: "filter",
+                label: "Client status",
+                options: filterOptions.map((option) => ({
+                  value: option.key,
+                  label: option.label,
+                })),
+              },
+            ]}
+            values={{ filter }}
+            onApply={(nextValues) => {
+              setFilter(nextValues.filter as ClientFilter);
+              setCurrentPage(1);
+            }}
+            onClose={() => setShowFilters(false)}
+          />
           <SearchControls onSubmit={handleSearchSubmit}>
             <SearchWrap>
               <SearchInput
@@ -448,27 +470,12 @@ export function ClientsScreen() {
                 type="button"
                 aria-label="Open filters"
                 aria-expanded={showFilters}
-                onClick={() => setShowFilters((current) => !current)}
+                onClick={() => setShowFilters(true)}
               >
                 <ActionIcon>
                   <IconFilter />
                 </ActionIcon>
               </FilterButton>
-              {showFilters ? (
-                <FilterPopup>
-                  <FilterPopupTitle>Filter clients</FilterPopupTitle>
-                  <FilterSelect
-                    value={filter}
-                    onChange={(event) => setFilter(event.target.value as ClientFilter)}
-                  >
-                    {filterOptions.map((option) => (
-                      <option key={option.key} value={option.key}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </FilterSelect>
-                </FilterPopup>
-              ) : null}
             </FilterMenuWrap>
             <SearchButton type="submit" aria-label="Search clients">
               <ActionIcon>

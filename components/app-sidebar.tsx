@@ -6,7 +6,9 @@ import styled, { css } from "styled-components";
 import { AppNavLabel, getPrimaryNavItems } from "@/lib/navigation";
 import { User } from "@/lib/types";
 
-const desktop = "@media (min-width: 768px)";
+const tablet = "@media (min-width: 768px) and (max-width: 1099px)";
+const tabletUp = "@media (min-width: 768px)";
+const desktop = "@media (min-width: 1100px)";
 
 type SidebarLabel = AppNavLabel;
 

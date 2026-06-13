@@ -7,6 +7,7 @@ import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { useAppState } from "@/components/app-state";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
+import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { ProjectForm, ProjectFormValues } from "@/components/project-form";
 import {
@@ -478,8 +479,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
     const trimmedBody = feedbackBody.trim();
 
-    // Client -> server workflow transition to ensure status updates before we close the popup.
-    // This avoids the issue where UI state doesn't reflect immediately and the modal can't be reopened.
+    // Client -> server task review transition.
+    // This updates only the reviewed task. Project workflow stays manager-controlled.
     const transitionEndpoint = editingTask?.id
       ? `/api/workspace/projects/${project.id}/workflow/client-approval`
       : null;
@@ -520,8 +521,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
 
 
-    // Submit server workflow decision FIRST so workflow state updates immediately.
-    // This endpoint is client-safe and will validate task/project consistency.
+    // Submit the task review decision first so task state updates immediately.
+    // This endpoint is client-safe and validates task/project consistency.
     try {
       if (transitionEndpoint && decision) {
         // App backend auth expects a workspace access token.
@@ -558,11 +559,11 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           const payload = (await response.json().catch(() => null)) as
             | { error?: string }
             | null;
-          throw new Error(payload?.error ?? "Unable to update workflow status.");
+          throw new Error(payload?.error ?? "Unable to update task status.");
         }
       }
     } catch (error) {
-      setEditingTaskError(error instanceof Error ? error.message : "Unable to update workflow.");
+      setEditingTaskError(error instanceof Error ? error.message : "Unable to update task.");
       return;
     }
 
@@ -581,8 +582,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     setEditingTaskId(null);
 
 
-    // IMPORTANT: status change is driven by the manager workflow in this app.
-    // Client review updates the task workflow through the client-approval endpoint.
+    // Project workflow is manager-controlled.
+    // Client review updates only the task through the client-approval endpoint.
     // Feedback is stored separately in `project_feedback` for history/timeline.
   };
 
@@ -765,17 +766,19 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
       />
 
       {showEditPanel ? (
-        <ModalBackdrop onClick={() => setShowEditPanel(false)}>
-          <ModalCard onClick={(event) => event.stopPropagation()}>
+      <ModalBackdrop onClick={() => setShowEditPanel(false)}>
+        <ProjectUpdateModalCard onClick={(event) => event.stopPropagation()}>
+          <ProjectUpdateScrollArea>
             <ModalHeader>
               <div>
                 <ModalTitle>Update project</ModalTitle>
-                <ModalDescription>Adjust the project details and workflow from one place.</ModalDescription>
+                <ModalDescription>Change project details, status, and stage.</ModalDescription>
               </div>
               <ModalClose type="button" onClick={() => setShowEditPanel(false)} aria-label="Close">
                 <IconClose />
               </ModalClose>
             </ModalHeader>
+
             <ProjectForm
               initialValues={projectFormInitialValues}
               clients={availableClients}
@@ -784,10 +787,12 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               hideActions
               onValuesChange={setProjectDraft}
             />
+
             {canChangeWorkflow(user.role) ? (
-              <InlineForm onSubmit={handleWorkflowSubmit}>
+              <WorkflowCompactSection>
                 <InlineFormTitle>Workflow</InlineFormTitle>
-                <TaskModalGrid>
+
+                <WorkflowCompactGrid>
                   <TaskModalField>
                     <TaskFloatingSelect $filled $open={workflowSelect === "status"}>
                       <TaskSelectTrigger
@@ -863,15 +868,34 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                       ) : null}
                     </TaskFloatingSelect>
                   </TaskModalField>
-                </TaskModalGrid>
-                <button className="primary-button" type="submit" disabled={isUpdatingProject}>
-                  {isUpdatingProject ? "Updating..." : "Update workflow"}
-                </button>
-              </InlineForm>
+                </WorkflowCompactGrid>
+              </WorkflowCompactSection>
             ) : null}
-          </ModalCard>
-        </ModalBackdrop>
-      ) : null}
+
+            <ProjectUpdateActions>
+            <button
+              className="primary-button mobile-full-button"
+              type="button"
+              disabled={isUpdatingProject}
+              onClick={async () => {
+                setIsUpdatingProject(true);
+
+                try {
+                  await updateProject(project.id, projectDraft);
+                  await updateProjectWorkflow(project.id, status, stage);
+                  setShowEditPanel(false);
+                } finally {
+                  setIsUpdatingProject(false);
+                }
+              }}
+            >
+              {isUpdatingProject ? "Updating..." : "Save changes"}
+            </button>
+            </ProjectUpdateActions>
+          </ProjectUpdateScrollArea>
+        </ProjectUpdateModalCard>
+      </ModalBackdrop>
+            ) : null}
 
       {showCreateTaskPanel && canManageTasks ? (
         <ModalBackdrop onClick={() => setShowCreateTaskPanel(false)}>
@@ -978,16 +1002,11 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 </TaskModalField>
 
                 <TaskModalField>
-                  <TaskFloatingField className={newTaskDueDate ? "auth-field is-filled" : "auth-field"}>
-                    <TaskTextInput
-                      type="date"
-                      value={newTaskDueDate}
-                      onChange={(event) => setNewTaskDueDate(event.target.value)}
-                      placeholder=" "
-                      required
-                    />
-                    <span>Due date</span>
-                  </TaskFloatingField>
+                  <CustomDatePicker
+                    label="Due date"
+                    value={newTaskDueDate}
+                    onChange={setNewTaskDueDate}
+                  />
                 </TaskModalField>
               </TaskModalGrid>
               <PriorityField>
@@ -1253,16 +1272,11 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 </TaskModalField>
 
                 <TaskModalField>
-                  <TaskFloatingField className={editingTaskDueDate ? "auth-field is-filled" : "auth-field"}>
-                    <TaskTextInput
-                      type="date"
-                      value={editingTaskDueDate}
-                      onChange={(event) => setEditingTaskDueDate(event.target.value)}
-                      placeholder=" "
-                      required
-                    />
-                    <span>Due date</span>
-                  </TaskFloatingField>
+                  <CustomDatePicker
+                    label="Due date"
+                    value={editingTaskDueDate}
+                    onChange={setEditingTaskDueDate}
+                  />
                 </TaskModalField>
               </TaskModalGrid>
               {editingTask.completionScreenshotUrl ? (
@@ -2011,6 +2025,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     </>
   );
 }
+const mobileBottomNavHeight = "76px";
 
 const cardSurface = css`
   border: 1px solid rgba(230, 224, 215, 0.95);
@@ -2055,6 +2070,76 @@ const Content = styled.section`
     background:
       radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
       linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84));
+  }
+`;
+
+const ProjectUpdateModalCard = styled.section`
+  ${cardSurface}
+  width: min(100%, 700px);
+  max-width: 100%;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: 22px;
+  display: block;
+
+  @media (max-width: 767px) {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - 76px - 24px - env(safe-area-inset-bottom));
+    align-self: end;
+    border-radius: 24px;
+  }
+
+  ${desktop} {
+    max-height: calc(100vh - 48px);
+    border-radius: 22px;
+  }
+`;
+
+const ProjectUpdateScrollArea = styled.div`
+  min-height: 0;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+
+  @media (max-width: 767px) {
+    padding: 12px 14px 14px;
+    gap: 12px;
+  }
+
+  ${desktop} {
+    padding: 16px 18px;
+    gap: 14px;
+  }
+`;
+
+const ProjectUpdateActions = styled.div`
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+
+  @media (max-width: 767px) {
+    padding-bottom: 4px;
+  }
+
+  ${desktop} {
+    padding-bottom: 6px;
+  }
+`;
+
+const WorkflowCompactSection = styled.div`
+  display: grid;
+  gap: 10px;
+  padding-top: 2px;
+`;
+
+const WorkflowCompactGrid = styled.div`
+  display: grid;
+  gap: 10px;
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 `;
 
@@ -2570,6 +2655,7 @@ const TaskModalGrid = styled.div`
 `;
 
 const TaskModalField = styled.div<{ $wide?: boolean }>`
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2585,11 +2671,15 @@ const TaskModalField = styled.div<{ $wide?: boolean }>`
 `;
 
 const TaskFloatingField = styled.label`
+  min-width: 0;
   width: 100%;
 `;
 
 const TaskTextInput = styled.input`
+  box-sizing: border-box;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 58px;
   padding: 0 16px;
   border: 1.5px solid rgba(27, 63, 53, 0.3);
@@ -2598,6 +2688,28 @@ const TaskTextInput = styled.input`
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   font-size: 16px;
   color: var(--color-text);
+
+  &[type="date"] {
+    appearance: none;
+    -webkit-appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    text-align: left;
+  }
+
+  &[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
+    min-width: 0;
+  }
+
+  &[type="date"]::-webkit-calendar-picker-indicator {
+    margin-left: 4px;
+  }
+
+  @media (max-width: 767px) {
+    min-height: 50px;
+    border-radius: 13px;
+  }
 `;
 
 const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean }>`
@@ -2634,6 +2746,12 @@ const TaskSelectTrigger = styled.button`
   justify-content: space-between;
   gap: 12px;
   text-align: left;
+
+  @media (max-width: 767px) {
+    min-height: 50px;
+    padding: 16px 14px 10px;
+    border-radius: 13px;
+  }
 `;
 
 const TaskSelectValue = styled.span`
@@ -3283,6 +3401,12 @@ const ModalBackdrop = styled.div`
   padding: 20px;
   background: rgba(28, 29, 28, 0.36);
   backdrop-filter: blur(8px);
+
+  @media (max-width: 767px) {
+    display: block;
+    align-items: flex-end;
+    padding: 12px 10px 0;
+  }
 `;
 
 const ModalCard = styled.section`
@@ -3301,6 +3425,16 @@ const ModalHeader = styled.div`
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  padding: 16px 16px 10px;
+
+  @media (max-width: 767px) {
+    padding: 14px 14px 8px;
+    gap: 12px;
+  }
+
+  ${desktop} {
+    padding: 18px 18px 10px;
+  }
 `;
 
 const ModalTitle = styled.h2`
