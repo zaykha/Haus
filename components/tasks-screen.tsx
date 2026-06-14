@@ -1938,7 +1938,7 @@ const ModalBackdrop = styled.div`
   inset: 0;
   z-index: 95;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 20px;
   background: rgba(28, 29, 28, 0.36);
@@ -1980,6 +1980,10 @@ const ModalDescription = styled.p`
   color: var(--color-text-muted);
   font-size: 0.88rem;
   line-height: 1.5;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
 `;
 
 const ModalClose = styled.button`
@@ -1993,17 +1997,23 @@ const ModalClose = styled.button`
   background: rgba(255, 255, 255, 0.88);
   color: var(--color-text);
   flex: 0 0 40px;
+
+  svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+  }
 `;
 
 const InlineForm = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 `;
 
 const TaskModalGrid = styled.div`
   display: grid;
-  gap: 12px;
+  gap: 10px;
 
   ${desktop} {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2036,8 +2046,8 @@ const TaskTextInput = styled.input`
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  min-height: 58px;
-  padding: 0 16px;
+  min-height: 50px;
+  padding: 0 14px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
@@ -2072,8 +2082,8 @@ const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean }>`
 
 const TaskSelectTrigger = styled.button`
   width: 100%;
-  min-height: 58px;
-  padding: 18px 16px 12px;
+  min-height: 50px;
+  padding: 16px 14px 10px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
