@@ -16,7 +16,6 @@ import {
   canDeleteTask,
   canEditProject,
   canEditTask,
-  canUploadFiles,
   canViewProject,
   getUserClientOrganizationIds,
   getVisibleTasksForUser,
@@ -288,7 +287,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     updateTask,
     updateTaskStatus,
     deleteTask,
-    addFile,
     addComment,
     addFeedback,
   } = useAppState();
@@ -297,7 +295,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
   const [showReferencePanel, setShowReferencePanel] = useState(false);
   const [heroDetailPanel, setHeroDetailPanel] = useState<"brief" | "objective" | "advice" | null>(null);
-  const [showVersionPanel, setShowVersionPanel] = useState(false);
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   const [showWorkspaceTools, setShowWorkspaceTools] = useState(false);
   const [isUpdatingProject, setIsUpdatingProject] = useState(false);
@@ -340,10 +337,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [editingTaskReviewComment, setEditingTaskReviewComment] = useState("");
   const [editingTaskError, setEditingTaskError] = useState("");
   const [isUpdatingTask, setIsUpdatingTask] = useState(false);
-  const [versionTitle, setVersionTitle] = useState("");
-  const [versionName, setVersionName] = useState("v1");
-  const [versionNotes, setVersionNotes] = useState("");
-  const [versionVisibility, setVersionVisibility] = useState<"client" | "internal">("client");
   const [feedbackAction, setFeedbackAction] = useState<FeedbackAction>("comment");
   const [feedbackBody, setFeedbackBody] = useState("");
   const [feedbackRating, setFeedbackRating] = useState(5);
@@ -395,7 +388,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const canEditDetails = user ? canEditProject(user.role) : false;
   const canRemoveProject = user ? canDeleteProject(user.role) : false;
   const canManageTasks = user ? canCreateTask(user.role) : false;
-  const canManageVersions = user ? canUploadFiles(user.role) && user.role !== "designer" : false;
   const canLeaveClientFeedback = user?.role === "client";
   const projectStatusTone = getProjectStatusTone(project.stage);
   const visibleFiles =
@@ -660,21 +652,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const handleProjectDelete = async () => {
     await deleteProject(project.id);
     router.push("/projects");
-  };
-
-  const handleVersionSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await addFile(project.id, {
-      title: versionTitle.trim() || `${projectDisplayName} Update`,
-      version: versionName.trim() || "v1",
-      visibility: versionVisibility,
-      notes: versionNotes.trim(),
-    });
-    setVersionTitle("");
-    setVersionName("v1");
-    setVersionNotes("");
-    setVersionVisibility("client");
-    setShowVersionPanel(false);
   };
 
   const handleFeedbackSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1250,66 +1227,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               </button>
             </InlineForm>
           </TaskPopupCard>
-        </ModalBackdrop>
-      ) : null}
-
-      {showVersionPanel && canManageVersions ? (
-        <ModalBackdrop onClick={() => setShowVersionPanel(false)}>
-          <ModalCard onClick={(event) => event.stopPropagation()}>
-            <ModalHeader>
-              <div>
-                <ModalTitle>Update latest version</ModalTitle>
-                <ModalDescription>Publish the newest project deliverable for review.</ModalDescription>
-              </div>
-              <ModalClose type="button" onClick={() => setShowVersionPanel(false)} aria-label="Close">
-                <IconClose />
-              </ModalClose>
-            </ModalHeader>
-            <InlineForm onSubmit={handleVersionSubmit}>
-              <label className="field">
-                <span>Version title</span>
-                <input
-                  value={versionTitle}
-                  onChange={(event) => setVersionTitle(event.target.value)}
-                  placeholder="Homepage concept, logo revision, final deck..."
-                  required
-                />
-              </label>
-              <div className="field-row">
-                <label className="field">
-                  <span>Version name</span>
-                  <input
-                    value={versionName}
-                    onChange={(event) => setVersionName(event.target.value)}
-                    placeholder="v2"
-                    required
-                  />
-                </label>
-                <label className="field">
-                  <span>Visibility</span>
-                  <select
-                    value={versionVisibility}
-                    onChange={(event) => setVersionVisibility(event.target.value as "client" | "internal")}
-                  >
-                    <option value="client">Client visible</option>
-                    <option value="internal">Internal only</option>
-                  </select>
-                </label>
-              </div>
-              <label className="field">
-                <span>Notes</span>
-                <textarea
-                  value={versionNotes}
-                  onChange={(event) => setVersionNotes(event.target.value)}
-                  rows={4}
-                  placeholder="What changed in this version?"
-                />
-              </label>
-              <button className="primary-button" type="submit">
-                Publish version
-              </button>
-            </InlineForm>
-          </ModalCard>
         </ModalBackdrop>
       ) : null}
 
@@ -2259,11 +2176,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
             <WorkspaceCard className="panel">
               <PanelHeader>
                 <h2>Latest Version</h2>
-                {canManageVersions ? (
-                  <InlineActionButton type="button" onClick={() => setShowVersionPanel(true)}>
-                    Update latest
-                  </InlineActionButton>
-                ) : null}
               </PanelHeader>
               {latestVersion ? (
                 <>

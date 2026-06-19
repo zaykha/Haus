@@ -5,6 +5,7 @@ import {
   ReactNode,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import type { SupabaseClient, User as AuthUser } from "@supabase/supabase-js";
@@ -370,6 +371,7 @@ async function apiRequest<T>(input: string, init?: RequestInit): Promise<T> {
   const token = await getAccessToken();
   const response = await fetch(input, {
     ...init,
+    cache: "no-store",
     headers: {
       ...(init?.headers ?? {}),
       Authorization: `Bearer ${token}`,
@@ -395,6 +397,18 @@ async function apiRequest<T>(input: string, init?: RequestInit): Promise<T> {
 async function fetchWorkspaceState(): Promise<DemoState> {
   return apiRequest<DemoState>("/api/workspace/state");
 }
+
+const REALTIME_WORKSPACE_TABLES = [
+  "tasks",
+  "projects",
+  "project_members",
+  "project_feedback",
+  "project_comments",
+  "project_activity",
+  "project_files",
+  "client_organization_liaisons",
+  "profiles",
+] as const;
 
 async function insertProjectActivity(
   projectId: string,
@@ -424,6 +438,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DemoState>(initialAppState);
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  const realtimeRefreshTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (appMode !== "supabase") {
@@ -529,6 +544,80 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const hydratedUser = nextState.users.find((profile) => profile.id === currentUser.id) ?? currentUser;
     setUser((current) => (areUsersEqual(current, hydratedUser) ? current : hydratedUser));
   };
+
+  useEffect(() => {
+    if (!ready || appMode !== "supabase") {
+      return;
+    }
+
+    const currentUserId = user?.id;
+    const supabase = getSupabaseBrowserClient();
+
+    if (!currentUserId || !supabase) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const scheduleRefresh = (payload?: { table?: string; eventType?: string }) => {
+      console.log("[workspace-realtime] change received", {
+        userId: currentUserId,
+        table: payload?.table,
+        eventType: payload?.eventType,
+      });
+
+      if (realtimeRefreshTimeoutRef.current) {
+        window.clearTimeout(realtimeRefreshTimeoutRef.current);
+      }
+
+      realtimeRefreshTimeoutRef.current = window.setTimeout(async () => {
+        try {
+          console.log("[workspace-realtime] refreshing workspace", {
+            userId: currentUserId,
+          });
+          const nextState = await fetchWorkspaceState();
+          if (cancelled) {
+            return;
+          }
+
+          setState(nextState);
+          const hydratedUser = nextState.users.find((profile) => profile.id === currentUserId) ?? null;
+          if (hydratedUser) {
+            setUser((current) => (areUsersEqual(current, hydratedUser) ? current : hydratedUser));
+          }
+        } catch (error) {
+          console.error("Failed to refresh workspace state from realtime event", error);
+        }
+      }, 400);
+    };
+
+    const channel = supabase.channel(`workspace-live:${currentUserId}`);
+
+    REALTIME_WORKSPACE_TABLES.forEach((table) => {
+      channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) =>
+        scheduleRefresh({
+          table,
+          eventType: payload.eventType,
+        }),
+      );
+    });
+
+    channel.subscribe((status) => {
+      console.log("[workspace-realtime] channel status", {
+        userId: currentUserId,
+        status,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (realtimeRefreshTimeoutRef.current) {
+        window.clearTimeout(realtimeRefreshTimeoutRef.current);
+        realtimeRefreshTimeoutRef.current = null;
+      }
+      void supabase.removeChannel(channel);
+    };
+  }, [ready, user?.id]);
 
   const login = async (email: string, password?: string) => {
     if (appMode === "supabase") {

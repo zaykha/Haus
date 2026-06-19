@@ -26,6 +26,9 @@ import {
   User,
 } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type ProfileRecord = {
   id: string;
   email: string;
@@ -466,6 +469,7 @@ export async function GET(request: NextRequest) {
       assigneeId: task.assignee_id,
       status: task.status,
       dueDate: task.due_date,
+      createdAt: task.created_at,
       priority: task.priority,
       completionScreenshotUrl: task.completion_screenshot_url,
       clientVisible: task.client_visible,
@@ -555,6 +559,7 @@ export async function GET(request: NextRequest) {
     return {
     id: project.id,
     name: project.name,
+    createdAt: project.created_at,
     projectCode: project.project_code ?? null,
     requestedDate: project.requested_date ?? null,
     requestStatus: workflowStage,
@@ -643,5 +648,11 @@ export async function GET(request: NextRequest) {
     projects: visibleProjects,
   };
 
-  return NextResponse.json(nextState);
+  return NextResponse.json(nextState, {
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    },
+  });
 }

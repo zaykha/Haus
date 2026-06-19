@@ -7,7 +7,7 @@ import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
 import { FilterModal } from "@/components/filter-modal";
 import { canCreateProject as canCreateProjectPermission, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
-import { formatProjectStage, formatRole, getProjectStatusLabel } from "@/lib/display";
+import { formatProjectStage, formatRole } from "@/lib/display";
 import { Project, ProjectStatus } from "@/lib/types";
 
 type FilterKey = "all" | ProjectStatus;
@@ -146,36 +146,6 @@ function getStageProgress(stage: Project["stage"]) {
 
 function getProjectMark(project: Project) {
   return project.name.trim().charAt(0).toUpperCase() || "P";
-}
-
-function getStatusTone(status: ProjectStatus) {
-  switch (status) {
-    case "active":
-      return {
-        background: "var(--color-info-soft)",
-        color: "var(--color-info)",
-      };
-    case "review":
-      return {
-        background: "var(--color-warning-soft)",
-        color: "var(--color-warning)",
-      };
-    case "revision":
-      return {
-        background: "var(--color-danger-soft)",
-        color: "var(--color-danger)",
-      };
-    case "done":
-      return {
-        background: "var(--color-primary-soft)",
-        color: "var(--color-primary)",
-      };
-    default:
-      return {
-        background: "var(--color-surface-soft)",
-        color: "var(--color-text-muted)",
-      };
-  }
 }
 
 export function ProjectsScreen() {
@@ -372,9 +342,11 @@ export function ProjectsScreen() {
         </Toolbar>
 
         <DesktopList>
-          {mobileProjects.length ? (
-            mobileProjects.map((project) => {
-              const tone = getStatusTone(project.status);
+          {paginatedProjects.length ? (
+            paginatedProjects.map((project) => {
+              const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
+              const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
+              const contactNumberLabel = project.contactNumber?.trim() || "No contact number";
 
               return (
                 <ProjectRow key={project.id} href={`/projects/${project.id}`}>
@@ -383,10 +355,11 @@ export function ProjectsScreen() {
 
                   <ProjectSummary>
                     <SummaryTitle>{project.name}</SummaryTitle>
-                    <SummaryLine>
-                      Client Organization: {getClientOrganizationName(project, organizationNames, userNames)}
-                    </SummaryLine>
-                    <SummaryLine>Primary Contact: {getPrimaryContactLabel(project, usersById)}</SummaryLine>
+                    <SummaryPills>
+                      <SummaryPill>{clientOrganizationName}</SummaryPill>
+                      <SummaryPill>{primaryContactLabel}</SummaryPill>
+                      <SummaryPill>{contactNumberLabel}</SummaryPill>
+                    </SummaryPills>
                   </ProjectSummary>
 
                   <MetaColumn $grow>
@@ -397,15 +370,6 @@ export function ProjectsScreen() {
                         <StageDot key={step.key} $active={step.active} />
                       ))}
                     </StageDots>
-                  </MetaColumn>
-
-                  <MetaColumn>
-                    <MetaLabel>Status</MetaLabel>
-                    <StatusPill
-                      style={{ background: tone.background, color: tone.color }}
-                    >
-                      {getProjectStatusLabel(project.status)}
-                    </StatusPill>
                   </MetaColumn>
 
                   <MetaColumn>
@@ -453,7 +417,6 @@ export function ProjectsScreen() {
         <MobileList>
           {mobileProjects.length ? (
             mobileProjects.map((project) => {
-              const tone = getStatusTone(project.status);
               const visibleTasks = user ? getVisibleTasksForUser(user, project) : [];
               const progress = getVisibleProjectProgress(
                 project,
@@ -471,18 +434,16 @@ export function ProjectsScreen() {
                   <MobileCopy>
                     <MobileTitleRow>
                       <MobileTitle>{project.name}</MobileTitle>
-                      <StatusPill
-                        style={{ background: tone.background, color: tone.color }}
-                      >
-                        {getProjectStatusLabel(project.status)}
-                      </StatusPill>
+                      <MobileStagePill>{formatProjectStage(project.stage)}</MobileStagePill>
                     </MobileTitleRow>
                     <MobileInfoRow>
-                      <MobileClientName>
-                        {getClientOrganizationName(project, organizationNames, userNames)}
-                      </MobileClientName>
+                      <MobileClientName>{getClientOrganizationName(project, organizationNames, userNames)}</MobileClientName>
                       <MobileMetaText>Due {formatShortDate(project.dueDate)}</MobileMetaText>
                     </MobileInfoRow>
+                    <MobilePillRow>
+                      <SummaryPill>{project.contactPerson?.trim() || "No primary contact"}</SummaryPill>
+                      <SummaryPill>{project.contactNumber?.trim() || "No contact number"}</SummaryPill>
+                    </MobilePillRow>
                     <MobileProgressGroup>
                       <MobileProgressBar>
                         <MobileProgressFill style={{ width: `${progress}%` }} />
@@ -927,10 +888,23 @@ const SummaryTitle = styled.strong`
   font-size: 0.98rem;
 `;
 
-const SummaryLine = styled.p`
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: 0.88rem;
+const SummaryPills = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+
+const SummaryPill = styled.span`
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(244, 241, 237, 0.96);
+  color: #7b6f62;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
 `;
 
 const MetaColumn = styled.div<{ $grow?: boolean; $narrow?: boolean }>`
@@ -965,18 +939,6 @@ const StageDot = styled.span<{ $active: boolean }>`
   border-radius: 999px;
   border: 1px solid ${({ $active }) => ($active ? "#222" : "#e2dad0")};
   background: ${({ $active }) => ($active ? "#222" : "#ece7df")};
-`;
-
-const StatusPill = styled.span`
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
 `;
 
 const AvatarStack = styled.div`
@@ -1177,6 +1139,12 @@ const MobileClientName = styled.span`
   text-overflow: ellipsis;
 `;
 
+const MobilePillRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+`;
+
 const MobileMetaText = styled.span`
   flex: 0 0 auto;
   color: var(--color-text-muted);
@@ -1210,6 +1178,19 @@ const MobileProgressText = styled.span`
   font-size: 0.72rem;
   line-height: 1;
   font-weight: 700;
+`;
+
+const MobileStagePill = styled.span`
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--color-info-soft);
+  color: var(--color-info);
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
 `;
 
 const LoadMoreSentinel = styled.div`

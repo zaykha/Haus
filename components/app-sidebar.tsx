@@ -2,8 +2,11 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { useMemo } from "react";
 import styled, { css } from "styled-components";
+import { useAppState } from "@/components/app-state";
 import { AppNavLabel, getPrimaryNavItems } from "@/lib/navigation";
+import { getVisibleTasksForUser } from "@/lib/permissions";
 import { User } from "@/lib/types";
 
 const tablet = "@media (min-width: 768px) and (max-width: 1099px)";
@@ -19,6 +22,17 @@ export function AppSidebar({
   user: User;
   activeLabel: SidebarLabel;
 }) {
+  const { state } = useAppState();
+  const taskBadgeCount = useMemo(() => {
+    if (user.role !== "designer") {
+      return 0;
+    }
+
+    return state.projects
+      .flatMap((project) => getVisibleTasksForUser(user, project))
+      .filter((task) => task.assigneeId === user.id && (task.status === "todo" || task.status === "in_progress"))
+      .length;
+  }, [state.projects, user]);
   const navItems: Array<{
     label: SidebarLabel;
     href: string;
@@ -47,7 +61,12 @@ export function AppSidebar({
           {navItems.map((item) => (
             <SidebarLink key={item.label} href={item.href} $active={item.label === activeLabel}>
               <SidebarIcon>{item.icon}</SidebarIcon>
-              <span>{item.label}</span>
+              <SidebarLabelRow>
+                <span>{item.label}</span>
+                {item.label === "Tasks" && taskBadgeCount > 0 ? (
+                  <TaskBadge>{taskBadgeCount > 99 ? "99+" : taskBadgeCount}</TaskBadge>
+                ) : null}
+              </SidebarLabelRow>
             </SidebarLink>
           ))}
         </SidebarNav>
@@ -125,6 +144,28 @@ const SidebarIcon = styled.span`
     width: 100%;
     height: 100%;
   }
+`;
+
+const SidebarLabelRow = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+`;
+
+const TaskBadge = styled.span`
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #d94b4b;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
 `;
 
 function IconHome() {

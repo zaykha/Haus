@@ -843,8 +843,8 @@ export function ClientOrganizationDetailScreen({
                   </CompactMetaValue>
                 </CompactMetaCard>
                 <CompactMetaCard>
-                  <ReadOnlyLabel>Last Activity</ReadOnlyLabel>
-                  <CompactMetaValue>{formatDate(selectedLiaison.lastActivityDate)}</CompactMetaValue>
+                  <ReadOnlyLabel>Joined</ReadOnlyLabel>
+                  <CompactMetaValue>{formatDate(selectedLiaison.createdAt ?? null)}</CompactMetaValue>
                 </CompactMetaCard>
               </DetailMetaGrid>
               {canManage ? (

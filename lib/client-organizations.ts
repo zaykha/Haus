@@ -57,6 +57,7 @@ export type LiaisonRow = {
   id: string;
   name: string;
   email: string;
+  createdAt: string | null;
   phone: string | null;
   company: string;
   jobTitle: string | null;
@@ -358,6 +359,7 @@ export function buildLiaisonRows(state: DemoState): LiaisonRow[] {
         id: member.id,
         name: member.name,
         email: member.email,
+        createdAt: member.createdAt ?? null,
         phone: member.phone ?? null,
         company: member.company ?? organization?.name ?? "Client liaison",
         jobTitle: member.jobTitle ?? null,

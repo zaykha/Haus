@@ -70,6 +70,7 @@ export interface Task {
   assigneeId: string;
   status: TaskStatus;
   dueDate: string;
+  createdAt?: string;
   priority: TaskPriority;
   completionScreenshotUrl?: string | null;
   clientVisible?: boolean;
@@ -126,6 +127,7 @@ export interface ProjectActivity {
 export interface Project {
   id: string;
   name: string;
+  createdAt?: string;
   projectCode?: string | null;
   requestedDate?: string | null;
   requestStatus?: ProjectRequestStatus | string | null;

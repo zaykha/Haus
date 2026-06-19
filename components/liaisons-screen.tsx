@@ -350,8 +350,8 @@ export function LiaisonsScreen() {
                   </CompactMetaValue>
                 </CompactMetaCard>
                 <CompactMetaCard>
-                  <ReadOnlyLabel>Last Activity</ReadOnlyLabel>
-                  <CompactMetaValue>{formatDate(selectedLiaison.lastActivityDate)}</CompactMetaValue>
+                  <ReadOnlyLabel>Joined</ReadOnlyLabel>
+                  <CompactMetaValue>{formatDate(selectedLiaison.createdAt)}</CompactMetaValue>
                 </CompactMetaCard>
               </DetailMetaGrid>
               {canManage ? (
@@ -567,7 +567,7 @@ export function LiaisonsScreen() {
             <span>Liaison</span>
             <span>Organization</span>
             <span>Projects</span>
-            <span>Last Activity</span>
+            <span>Joined</span>
           </TableHeader>
           <TableBody>
             {paginatedLiaisons.length ? (
@@ -603,7 +603,7 @@ export function LiaisonsScreen() {
                         {liaison.activeProjectCount}/{liaison.projectCount}
                       </CountCell>
                       <MetaColumn>
-                        <DatePill>{formatDate(liaison.lastActivityDate)}</DatePill>
+                        <DatePill>{formatDate(liaison.createdAt)}</DatePill>
                       </MetaColumn>
                     </DesktopStaticRow>
                   );
@@ -665,7 +665,7 @@ export function LiaisonsScreen() {
                       {liaison.activeProjectCount}/{liaison.projectCount}
                     </CountCell>
                     <MetaColumn>
-                      <DatePill>{formatDate(liaison.lastActivityDate)}</DatePill>
+                      <DatePill>{formatDate(liaison.createdAt)}</DatePill>
                     </MetaColumn>
                   </DesktopStaticRow>
                 );
@@ -765,7 +765,7 @@ export function LiaisonsScreen() {
                     </ClientCopy>
                   </MobileTop>
                   <MobileBottom>
-                    <DatePill>{formatShortDate(liaison.lastActivityDate)}</DatePill>
+                    <DatePill>{formatShortDate(liaison.createdAt)}</DatePill>
                     <ClientMeta>
                       {liaison.activeProjectCount}/{liaison.projectCount} active projects
                     </ClientMeta>

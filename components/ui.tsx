@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PropsWithChildren } from "react";
+import { PropsWithChildren, useMemo } from "react";
 import { useAppState } from "@/components/app-state";
 import { getPrimaryNavItems } from "@/lib/navigation";
+import { getVisibleTasksForUser } from "@/lib/permissions";
 
 export function Shell({ children }: PropsWithChildren) {
   return (
@@ -19,7 +20,17 @@ export function Shell({ children }: PropsWithChildren) {
 
 export function BottomNav() {
   const pathname = usePathname();
-  const { user } = useAppState();
+  const { user, state } = useAppState();
+  const taskBadgeCount = useMemo(() => {
+    if (!user || user.role !== "designer") {
+      return 0;
+    }
+
+    return state.projects
+      .flatMap((project) => getVisibleTasksForUser(user, project))
+      .filter((task) => task.assigneeId === user.id && (task.status === "todo" || task.status === "in_progress"))
+      .length;
+  }, [state.projects, user]);
 
   const items = getPrimaryNavItems(user?.role).map((item) => ({
     ...item,
@@ -49,6 +60,9 @@ export function BottomNav() {
         >
           <span className="nav-icon" aria-hidden="true">
             {item.icon}
+            {item.label === "Tasks" && taskBadgeCount > 0 ? (
+              <span className="nav-badge">{taskBadgeCount > 99 ? "99+" : taskBadgeCount}</span>
+            ) : null}
           </span>
           <span className="nav-label">{item.label}</span>
         </Link>

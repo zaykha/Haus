@@ -2,14 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
 import { canCreateProject } from "@/lib/permissions";
 
-function getTodayIsoDate() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = `${now.getMonth() + 1}`.padStart(2, "0");
-  const day = `${now.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 export async function POST(request: NextRequest) {
   const auth = await requireWorkspaceUser(request);
   if (auth instanceof Response) {
@@ -67,7 +59,7 @@ export async function POST(request: NextRequest) {
     .from("projects")
     .insert({
       name: body.projectRequestName.trim(),
-      requested_date: getTodayIsoDate(),
+      requested_date: body.requestedDate || null,
       department_name: body.departmentName?.trim() || null,
       project_request_name: body.projectRequestName.trim(),
       contact_person: body.contactPerson?.trim() || null,
