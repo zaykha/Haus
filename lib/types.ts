@@ -4,14 +4,28 @@ export type Role =
   | "designer"
   | "client";
 
-export type ProjectStatus = "active" | "review" | "approved" | "revision" | "done";
+export type ProjectWorkflowStage =
+  | "Complete"
+  | "WIP"
+  | "Pending Review"
+  | "On Hold"
+  | "Waiting List";
 
+export type ProjectRequestStatus = ProjectWorkflowStage;
 export type ProjectStage =
+  | ProjectWorkflowStage
   | "intake"
   | "concept"
   | "design"
   | "review"
   | "delivery";
+export type ProjectStatus =
+  | ProjectWorkflowStage
+  | "active"
+  | "review"
+  | "approved"
+  | "revision"
+  | "done";
 
 export type FileVisibility = "internal" | "client";
 export type FeedbackAction = "approve" | "request_revision" | "comment";
@@ -20,12 +34,33 @@ export type TaskPriority = "high" | "medium" | "low";
 export type InvitationStatus = "pending" | "accepted" | "expired" | "revoked";
 export type TaskManagerReviewStatus = "internal" | "ready_for_client" | "revision_requested";
 
+export interface ClientOrganization {
+  id: string;
+  name: string;
+  type?: "internal" | "external";
+  status?: "active" | "inactive";
+  phone?: string;
+  address?: string;
+  createdAt?: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  createdAt?: string;
+}
+
 export interface User {
   id: string;
   name: string;
   email: string;
   role: Role;
   company?: string;
+  phone?: string;
+  jobTitle?: string;
+  department?: string;
+  clientOrganizationId?: string | null;
+  clientOrganizationIds?: string[];
   createdAt?: string;
 }
 
@@ -91,8 +126,23 @@ export interface ProjectActivity {
 export interface Project {
   id: string;
   name: string;
-  imageUrl?: string | null;
-  clientId: string;
+  projectCode?: string | null;
+  requestedDate?: string | null;
+  requestStatus?: ProjectRequestStatus | string | null;
+  departmentName?: string | null;
+  projectRequestName?: string | null;
+  contactPerson?: string | null;
+  contactNumber?: string | null;
+  projectType?: string | null;
+  priorityLevel?: string | null;
+  firstDraftDate?: string | null;
+  finalDeliverableDate?: string | null;
+  projectObjective?: string | null;
+  projectBrief?: string | null;
+  creativeAdvice?: string | null;
+  referenceAttachmentUrl?: string | null;
+  clientOrganizationId?: string | null;
+  primaryClientContactId?: string | null;
   ownerId: string;
   description: string;
   category: string;
@@ -118,6 +168,8 @@ export interface Invitation {
   name: string;
   role: Role;
   projectId: string | null;
+  clientOrganizationId?: string | null;
+  clientOrganizationName?: string | null;
   tokenHash: string;
   status: InvitationStatus;
   expiresAt: string;
@@ -128,6 +180,8 @@ export interface Invitation {
 }
 
 export interface DemoState {
+  departments: Department[];
+  clientOrganizations: ClientOrganization[];
   users: User[];
   projects: Project[];
   invitations: Invitation[];

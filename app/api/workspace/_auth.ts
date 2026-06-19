@@ -8,7 +8,22 @@ export type WorkspaceProfile = {
   name: string;
   role: Role;
   company: string | null;
+  phone: string | null;
+  jobTitle: string | null;
+  department: string | null;
+  clientOrganizationId: string | null;
+  clientOrganizationIds: string[];
 };
+
+type ClientOrganizationLiaisonRecord = {
+  profile_id: string;
+  client_organization_id: string;
+  is_primary: boolean;
+};
+
+function isMissingClientOrganizationLiaisonsTableError(message: string | undefined) {
+  return Boolean(message && message.includes('relation "client_organization_liaisons" does not exist'));
+}
 
 export async function requireWorkspaceUser(request: NextRequest): Promise<
   { supabase: NonNullable<ReturnType<typeof getSupabaseAdminClient>>; user: WorkspaceProfile } | Response
@@ -31,7 +46,7 @@ export async function requireWorkspaceUser(request: NextRequest): Promise<
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, email, name, role, company")
+    .select("id, email, name, role, company, phone, job_title, department")
     .eq("id", authData.user.id)
     .maybeSingle();
 
@@ -39,5 +54,45 @@ export async function requireWorkspaceUser(request: NextRequest): Promise<
     return NextResponse.json({ error: "Profile not found" }, { status: 403 });
   }
 
-  return { supabase, user: profile as WorkspaceProfile };
+  const membershipsResult =
+    profile.role === "client"
+      ? await supabase
+          .from("client_organization_liaisons")
+          .select("profile_id, client_organization_id, is_primary")
+          .eq("profile_id", authData.user.id)
+      : { data: [], error: null };
+
+  if (
+    membershipsResult.error &&
+    !isMissingClientOrganizationLiaisonsTableError(membershipsResult.error.message)
+  ) {
+    return NextResponse.json({ error: membershipsResult.error.message }, { status: 500 });
+  }
+
+  const membershipRows =
+    profile.role === "client" && !isMissingClientOrganizationLiaisonsTableError(membershipsResult.error?.message)
+      ? ((membershipsResult.data ?? []) as ClientOrganizationLiaisonRecord[])
+      : [];
+  const orderedMembershipIds = membershipRows
+    .slice()
+    .sort((left, right) => Number(right.is_primary) - Number(left.is_primary))
+    .map((membership) => membership.client_organization_id);
+  const clientOrganizationIds =
+    orderedMembershipIds.length > 0 ? orderedMembershipIds : [];
+
+  return {
+    supabase,
+    user: {
+      id: profile.id,
+      email: profile.email,
+      name: profile.name,
+      role: profile.role,
+      company: profile.company,
+      phone: profile.phone ?? null,
+      jobTitle: profile.job_title ?? null,
+      department: profile.department ?? null,
+      clientOrganizationId: clientOrganizationIds[0] ?? null,
+      clientOrganizationIds,
+    } satisfies WorkspaceProfile,
+  };
 }

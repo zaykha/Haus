@@ -42,7 +42,7 @@ export function AppSidebar({
   return (
     <Sidebar>
       <div>
-        <Brand>haus</Brand>
+        <Brand src="/haus_logo.png" alt="Haus" />
         <SidebarNav aria-label="Primary sections">
           {navItems.map((item) => (
             <SidebarLink key={item.label} href={item.href} $active={item.label === activeLabel}>
@@ -60,25 +60,28 @@ const Sidebar = styled.aside`
   display: none;
 
   ${desktop} {
+    position: sticky;
+    top: 8px;
     width: 260px;
     flex: 0 0 260px;
+    align-self: flex-start;
+    height: calc(100vh - 16px);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     padding: 22px 16px;
+    overflow-y: auto;
     border-right: 1px solid rgba(230, 224, 215, 0.95);
     border-radius: 26px 0 0 26px;
     background: rgba(255, 255, 255, 0.62);
   }
 `;
 
-const Brand = styled.div`
+const Brand = styled.img`
   padding: 10px 8px 24px;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 2.6rem;
-  line-height: 1;
-  font-weight: 600;
-  text-transform: lowercase;
+  width: 124px;
+  height: auto;
+  display: block;
 `;
 
 const SidebarNav = styled.nav`

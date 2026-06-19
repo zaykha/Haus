@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { useAppState } from "@/components/app-state";
@@ -10,7 +10,7 @@ import { FilterModal } from "@/components/filter-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { canDeleteTeamMember, canInviteUsers, canUpdateTeamRole } from "@/lib/permissions";
 import { Role, TaskPriority, TaskStatus } from "@/lib/types";
-import { formatRole } from "@/lib/display";
+import { formatRole, getTaskStatusLabel } from "@/lib/display";
 
 const desktop = "@media (min-width: 768px)";
 const PAGE_SIZE = 6;
@@ -75,18 +75,7 @@ function formatShortDate(value: string) {
 }
 
 function formatTaskStatus(status: TaskStatus) {
-  switch (status) {
-    case "in_progress":
-      return "In progress";
-    case "review":
-      return "Review";
-    case "approved":
-      return "Approved";
-    case "done":
-      return "Completed";
-    default:
-      return "To do";
-  }
+  return getTaskStatusLabel(status);
 }
 
 function formatPriority(priority: TaskPriority) {
@@ -110,6 +99,10 @@ export function TeamScreen() {
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
   const [showDeleteMemberModal, setShowDeleteMemberModal] = useState(false);
   const [isDeletingMember, setIsDeletingMember] = useState(false);
+  const roleFieldRef = useRef<HTMLDivElement | null>(null);
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+  const [roleMenuDirection, setRoleMenuDirection] = useState<"up" | "down">("down");
+  const [roleMenuMaxHeight, setRoleMenuMaxHeight] = useState(220);
 
   const viewerRole = user?.role ?? "client";
   const canManageInvites = canInviteUsers(viewerRole);
@@ -117,24 +110,31 @@ export function TeamScreen() {
   const canManageDelete = canDeleteTeamMember(viewerRole);
   const members = useMemo<MemberRow[]>(() => {
     const existingMembers = state.users.filter((member) => member.role !== "client");
-    const knownEmails = new Set(
-      existingMembers.map((member) => `${member.email.toLowerCase()}::${member.role}`),
+    const knownMemberEmails = new Set(
+      existingMembers.map((member) => member.email.trim().toLowerCase()),
     );
+    const acceptedInviteEmails = new Set<string>();
     const acceptedInviteMembers = state.invitations
       .filter(
         (invitation) =>
           invitation.role !== "client" &&
           invitation.status === "accepted" &&
-          !knownEmails.has(`${invitation.email.toLowerCase()}::${invitation.role}`),
+          !knownMemberEmails.has(invitation.email.trim().toLowerCase()) &&
+          !acceptedInviteEmails.has(invitation.email.trim().toLowerCase()),
       )
-      .map((invitation) => ({
-        id: `accepted-invite:${invitation.id}`,
-        name: invitation.name,
-        email: invitation.email,
-        role: invitation.role,
-        company: "Haus",
-        createdAt: invitation.acceptedAt ?? invitation.createdAt,
-      }));
+      .map((invitation) => {
+        const normalizedEmail = invitation.email.trim().toLowerCase();
+        acceptedInviteEmails.add(normalizedEmail);
+
+        return {
+          id: `accepted-invite:${invitation.id}`,
+          name: invitation.name,
+          email: invitation.email,
+          role: invitation.role,
+          company: "Haus",
+          createdAt: invitation.acceptedAt ?? invitation.createdAt,
+        };
+      });
 
     return [...existingMembers, ...acceptedInviteMembers].map((member) => {
       const memberProjects = state.projects.filter(
@@ -243,6 +243,68 @@ export function TeamScreen() {
       setNextRole(selectedMemberRole);
     }
   }, [selectedMemberId, selectedMemberRole]);
+
+  useEffect(() => {
+    if (!showUpdateRoleModal) {
+      setRoleMenuOpen(false);
+    }
+  }, [showUpdateRoleModal]);
+
+  useEffect(() => {
+    if (!roleMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!roleFieldRef.current?.contains(target)) {
+        setRoleMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setRoleMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [roleMenuOpen]);
+
+  useLayoutEffect(() => {
+    if (!roleMenuOpen || !roleFieldRef.current) {
+      return;
+    }
+
+    const updatePlacement = () => {
+      if (!roleFieldRef.current) {
+        return;
+      }
+
+      const rect = roleFieldRef.current.getBoundingClientRect();
+      const spaceAbove = rect.top - 20;
+      const spaceBelow = window.innerHeight - rect.bottom - 20;
+      const shouldOpenUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+
+      setRoleMenuDirection(shouldOpenUp ? "up" : "down");
+      setRoleMenuMaxHeight(Math.max(120, Math.min(220, shouldOpenUp ? spaceAbove : spaceBelow)));
+    };
+
+    updatePlacement();
+    window.addEventListener("resize", updatePlacement);
+    window.addEventListener("scroll", updatePlacement, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePlacement);
+      window.removeEventListener("scroll", updatePlacement, true);
+    };
+  }, [roleMenuOpen]);
 
   const selectedTaskPages = Math.max(
     1,
@@ -431,12 +493,44 @@ export function TeamScreen() {
               </DialogCloseButton>
             </NestedModalHeader>
             <NestedModalBody>
-              <FieldLabel>Role</FieldLabel>
-              <TextSelect value={nextRole} onChange={(event) => setNextRole(event.target.value as InternalRole)}>
-                <option value="creative_manager">Creative Manager</option>
-                <option value="communication_manager">Communication Manager</option>
-                <option value="designer">Designer</option>
-              </TextSelect>
+              <FloatingSelectField ref={roleFieldRef} $filled $open={roleMenuOpen}>
+                <SelectTrigger
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={roleMenuOpen}
+                  onClick={() => setRoleMenuOpen((current) => !current)}
+                >
+                  <SelectValue>{formatRole(nextRole)}</SelectValue>
+                  <SelectChevron $open={roleMenuOpen}>
+                    <IconChevronDown />
+                  </SelectChevron>
+                </SelectTrigger>
+                <FieldLabel>Role</FieldLabel>
+                {roleMenuOpen ? (
+                  <SelectMenu
+                    $direction={roleMenuDirection}
+                    $maxHeight={roleMenuMaxHeight}
+                    role="listbox"
+                    aria-label="Role"
+                  >
+                    {(["creative_manager", "communication_manager", "designer"] as InternalRole[]).map((role) => (
+                      <SelectOption
+                        key={role}
+                        type="button"
+                        role="option"
+                        aria-selected={nextRole === role}
+                        $active={nextRole === role}
+                        onClick={() => {
+                          setNextRole(role);
+                          setRoleMenuOpen(false);
+                        }}
+                      >
+                        {formatRole(role)}
+                      </SelectOption>
+                    ))}
+                  </SelectMenu>
+                ) : null}
+              </FloatingSelectField>
             </NestedModalBody>
             <NestedModalActions>
               <GhostButton type="button" onClick={() => setShowUpdateRoleModal(false)} disabled={isUpdatingRole}>
@@ -445,6 +539,7 @@ export function TeamScreen() {
               <InviteButton
                 type="button"
                 onClick={async () => {
+                  setRoleMenuOpen(false);
                   setIsUpdatingRole(true);
                   try {
                     await updateTeamMemberRole(selectedMember.id, nextRole);
@@ -748,7 +843,7 @@ const Shell = styled.main`
 
   ${desktop} {
     display: flex;
-    align-items: stretch;
+    align-items: flex-start;
     padding: 8px;
     background: rgba(255, 255, 255, 0.58);
   }
@@ -931,12 +1026,17 @@ const Field = styled.label`
 `;
 
 const FieldLabel = styled.span`
-  color: var(--color-text-muted);
-  font-size: 11px;
-  line-height: 1.2;
+  position: absolute;
+  left: 16px;
+  top: 1px;
+  transform: translateY(-50%);
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #29463e;
+  font-size: 13px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  z-index: 3;
+  pointer-events: none;
 `;
 
 const TextInput = styled.input`
@@ -948,13 +1048,78 @@ const TextInput = styled.input`
   color: var(--color-text);
 `;
 
-const TextSelect = styled.select`
+const FloatingSelectField = styled.div<{ $filled?: boolean; $open?: boolean }>`
+  position: relative;
+  display: block;
+  width: 100%;
+  z-index: ${({ $open }) => ($open ? 8 : 2)};
+`;
+
+const SelectTrigger = styled.button`
   ${controlSurface}
   width: 100%;
-  min-height: 40px;
-  padding: 0 14px;
-  border-radius: 10px;
+  min-height: 52px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 16px 12px;
+  border-radius: 14px;
   color: var(--color-text);
+  font-size: 16px;
+  text-align: left;
+`;
+
+const SelectValue = styled.span`
+  color: var(--color-text);
+  font-size: 16px;
+  line-height: 1.2;
+`;
+
+const SelectChevron = styled.span<{ $open?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  transform: rotate(${({ $open }) => ($open ? "180deg" : "0deg")});
+  transition: transform 140ms ease;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+`;
+
+const SelectMenu = styled.div<{ $direction: "up" | "down"; $maxHeight: number }>`
+  ${cardSurface}
+  position: absolute;
+  left: 0;
+  right: 0;
+  ${({ $direction }) => ($direction === "up" ? "bottom: calc(100% + 8px);" : "top: calc(100% + 8px);")}
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 18px;
+  max-height: ${({ $maxHeight }) => `${$maxHeight}px`};
+  overflow-y: auto;
+`;
+
+const SelectOption = styled.button<{ $active?: boolean }>`
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: ${({ $active }) => ($active ? "rgba(31, 67, 57, 0.1)" : "transparent")};
+  color: ${({ $active }) => ($active ? "#1f4339" : "var(--color-text)")};
+  font-size: 0.94rem;
+  font-weight: ${({ $active }) => ($active ? 600 : 500)};
+  text-align: left;
+
+  &:hover {
+    background: rgba(31, 67, 57, 0.08);
+  }
 `;
 
 const FormActions = styled.div`
@@ -1652,6 +1817,14 @@ function IconClose() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
+function IconChevronDown() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }

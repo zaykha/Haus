@@ -11,7 +11,6 @@ import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { ProjectForm, ProjectFormValues } from "@/components/project-form";
 import {
-  canChangeWorkflow,
   canCreateTask,
   canDeleteProject,
   canDeleteTask,
@@ -19,13 +18,19 @@ import {
   canEditTask,
   canUploadFiles,
   canViewProject,
+  getUserClientOrganizationIds,
   getVisibleTasksForUser,
 } from "@/lib/permissions";
+import {
+  getTaskCompletionLabel,
+  isTaskCompletionImage,
+  isTaskCompletionLink,
+  parseTaskCompletionAssets,
+} from "@/lib/task-completion-assets";
 import {
   FeedbackAction,
   Project,
   ProjectStage,
-  ProjectStatus,
   TaskPriority,
   TaskStatus,
   User,
@@ -33,11 +38,10 @@ import {
 import {
   formatLabel,
   formatProjectStage,
-  getProjectStatusLabel,
+  getTaskStatusLabel,
 } from "@/lib/display";
 
-const statuses: ProjectStatus[] = ["active", "review", "approved", "revision", "done"];
-const stages: ProjectStage[] = ["intake", "concept", "design", "review", "delivery"];
+const workflowTimelineStages: ProjectStage[] = ["Waiting List", "WIP", "Pending Review", "Complete"];
 const desktop = "@media (min-width: 1100px)";
 
 type DerivedPriority = "high" | "medium" | "low";
@@ -59,24 +63,14 @@ type FeedbackRow = {
   createdAt: string;
 };
 
-const timelineSteps = [
-  { key: "intake", label: "Intake", stages: ["intake"] as ProjectStage[] },
-  { key: "concept", label: "Concept", stages: ["concept"] as ProjectStage[] },
-  { key: "design", label: "Design", stages: ["design"] as ProjectStage[] },
-  { key: "review", label: "Review", stages: ["review"] as ProjectStage[] },
-  { key: "delivery", label: "Delivery", stages: ["delivery"] as ProjectStage[] },
-] as const;
-
 const EMPTY_PROJECT: Project = {
   id: "",
   name: "",
-  imageUrl: null,
-  clientId: "",
   ownerId: "",
   description: "",
   category: "",
-  stage: "intake",
-  status: "active",
+  stage: "Waiting List",
+  status: "Waiting List",
   dueDate: "",
   staffIds: [],
   tasks: [],
@@ -115,6 +109,46 @@ function formatTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function parseReferenceAttachments(value?: string | null) {
+  if (!value?.trim()) {
+    return [] as string[];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    }
+  } catch {
+    return [value];
+  }
+
+  return [value];
+}
+
+function getReferenceLabel(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value);
+    const lastSegment = url.pathname.split("/").filter(Boolean).at(-1) ?? value;
+    return decodeURIComponent(lastSegment);
+  } catch {
+    return value;
+  }
+}
+
+function getWorkflowTimelineIndex(stage: ProjectStage) {
+  if (stage === "On Hold") {
+    return 1;
+  }
+
+  const index = workflowTimelineStages.indexOf(stage);
+  return index >= 0 ? index : 0;
 }
 
 function startOfDay(value: Date) {
@@ -177,26 +211,26 @@ function getTaskStatusTone(status: DerivedTaskStatus) {
     case "in_progress":
       return { bg: "#e6efff", fg: "#4770d8", label: "In Progress" };
     case "review":
-      return { bg: "#fff1da", fg: "#ca8a22", label: "Review" };
+      return { bg: "#fff1da", fg: "#ca8a22", label: "Submit to Client" };
     case "approved":
-      return { bg: "#e5f4e8", fg: "#5ca16d", label: "Approved" };
+      return { bg: "#e5f4e8", fg: "#5ca16d", label: "Complete" };
     case "completed":
-      return { bg: "#efe7ff", fg: "#7f61d7", label: "Completed" };
+      return { bg: "#efe7ff", fg: "#7f61d7", label: "Internal Submit" };
     default:
       return { bg: "#f4f1ed", fg: "#8d857b", label: "To Do" };
   }
 }
 
-function getProjectStatusTone(status: ProjectStatus) {
+function getProjectStatusTone(status: ProjectStage | string) {
   switch (status) {
-    case "review":
+    case "Pending Review":
       return { bg: "#fff1da", fg: "#ca8a22" };
-    case "revision":
+    case "On Hold":
       return { bg: "#ffe7e5", fg: "#e06457" };
-    case "approved":
-      return { bg: "#e5f4e8", fg: "#5ca16d" };
-    case "done":
+    case "Complete":
       return { bg: "#e5f4e8", fg: "#2c6b43" };
+    case "Waiting List":
+      return { bg: "#f4f1ed", fg: "#8d857b" };
     default:
       return { bg: "#e6efff", fg: "#4770d8" };
   }
@@ -213,45 +247,16 @@ function getFeedbackTone(action: FeedbackAction) {
   }
 }
 
-function getStatusAccent(status: ProjectStatus) {
-  switch (status) {
-    case "review":
-      return "#ca8a22";
-    case "revision":
-      return "#e06457";
-    case "approved":
-      return "#5ca16d";
-    case "done":
-      return "#2c6b43";
-    default:
-      return "#4770d8";
-  }
-}
-
-function getTimelineIndex(stage: ProjectStage) {
-  return timelineSteps.findIndex((step) => step.stages.includes(stage));
-}
-
-function getStageBadgeLabel(stage: ProjectStage) {
-  const matchedStep = timelineSteps.find((step) => step.stages.includes(stage));
-  return matchedStep?.label ?? formatProjectStage(stage);
-}
-
-function getTimelineProgress(stage: ProjectStage) {
-  const currentIndex = getTimelineIndex(stage);
-  if (currentIndex <= 0) {
-    return 0;
-  }
-
-  return (currentIndex / (timelineSteps.length - 1)) * 100;
-}
-
 function getUserInitial(name: string) {
   return name.trim().charAt(0).toUpperCase() || "U";
 }
 
 function getProjectInitial(name: string) {
   return name.trim().charAt(0).toUpperCase() || "P";
+}
+
+function canClientOpenTask(task: Project["tasks"][number]) {
+  return task.status === "review" || task.status === "approved";
 }
 
 export function ProjectDetailScreen({ projectId }: { projectId: string }) {
@@ -261,7 +266,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     user,
     updateProject,
     deleteProject,
-    updateProjectWorkflow,
     createTask,
     updateTask,
     updateTaskStatus,
@@ -270,24 +274,35 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     addComment,
     addFeedback,
   } = useAppState();
-  const [status, setStatus] = useState<ProjectStatus>("active");
-  const [stage, setStage] = useState<ProjectStage>("intake");
   const [showEditPanel, setShowEditPanel] = useState(false);
   const [showCreateTaskPanel, setShowCreateTaskPanel] = useState(false);
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
+  const [showReferencePanel, setShowReferencePanel] = useState(false);
+  const [heroDetailPanel, setHeroDetailPanel] = useState<"brief" | "objective" | "advice" | null>(null);
   const [showVersionPanel, setShowVersionPanel] = useState(false);
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   const [showWorkspaceTools, setShowWorkspaceTools] = useState(false);
   const [isUpdatingProject, setIsUpdatingProject] = useState(false);
-  const [workflowSelect, setWorkflowSelect] = useState<"status" | "stage" | null>(null);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [createTaskSelect, setCreateTaskSelect] = useState<"assignee" | "status" | null>(null);
   const [editTaskSelect, setEditTaskSelect] = useState<"assignee" | "status" | null>(null);
   const [projectDraft, setProjectDraft] = useState<ProjectFormValues>({
-    name: "",
+    requestedDate: "",
+    requestStatus: "Waiting List",
+    departmentName: "",
+    projectRequestName: "",
+    contactPerson: "",
+    contactNumber: "",
+    projectType: "",
+    priorityLevel: "",
+    firstDraftDate: "",
+    finalDeliverableDate: "",
+    projectObjective: "",
+    projectBrief: "",
+    creativeAdvice: "",
     description: "",
-    category: "",
-    dueDate: "",
-    clientId: "",
+    referenceAttachmentUrl: "",
+    clientOrganizationId: "",
   });
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState("");
@@ -314,6 +329,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [feedbackAction, setFeedbackAction] = useState<FeedbackAction>("comment");
   const [feedbackBody, setFeedbackBody] = useState("");
   const [feedbackRating, setFeedbackRating] = useState(5);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   const projectRecord = useMemo(
     () => state.projects.find((candidate) => candidate.id === projectId) ?? null,
@@ -326,52 +342,136 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     () => new Map(state.users.map((member) => [member.id, member.name])),
     [state.users],
   );
-  const availableClients = state.users.filter((candidate) => candidate.role === "client");
-  const availableStaff = state.users.filter((candidate) => candidate.role !== "client");
-  const client = state.users.find((candidate) => candidate.id === project.clientId);
-  const owner = state.users.find((candidate) => candidate.id === project.ownerId) ?? null;
+  const organizationsById = useMemo(
+    () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization])),
+    [state.clientOrganizations],
+  );
+  const availableClients = useMemo(
+    () => state.users.filter((candidate) => candidate.role === "client"),
+    [state.users],
+  );
+  const availableStaff = useMemo(
+    () => state.users.filter((candidate) => candidate.role !== "client"),
+    [state.users],
+  );
+  const clientOrganization = project.clientOrganizationId
+    ? organizationsById.get(project.clientOrganizationId) ?? null
+    : null;
+  const primaryClientContact =
+    (project.primaryClientContactId
+      ? state.users.find((candidate) => candidate.id === project.primaryClientContactId)
+      : null) ?? null;
+  const primaryClientContactOrganizationId = primaryClientContact
+    ? getUserClientOrganizationIds(primaryClientContact)[0] ?? null
+    : null;
+  const client = primaryClientContact;
+  const projectDisplayName = project.projectRequestName || project.name;
+  const clientOrganizationName =
+    clientOrganization?.name ?? project.contactPerson ?? "Unassigned client";
+  const primaryContactLabel = project.contactPerson
+    ? `${project.contactPerson}${project.contactNumber ? ` · ${project.contactNumber}` : ""}`
+    : primaryClientContact
+      ? `${primaryClientContact.name}${primaryClientContact.phone ? ` · ${primaryClientContact.phone}` : ""}`
+    : "No primary contact";
   const canEditDetails = user ? canEditProject(user.role) : false;
   const canRemoveProject = user ? canDeleteProject(user.role) : false;
   const canManageTasks = user ? canCreateTask(user.role) : false;
   const canManageVersions = user ? canUploadFiles(user.role) : false;
   const canLeaveClientFeedback = user?.role === "client";
-  const timelineIndex = getTimelineIndex(project.stage);
-  const projectStatusTone = getProjectStatusTone(project.status);
+  const projectStatusTone = getProjectStatusTone(project.stage);
   const visibleFiles =
     user?.role === "client"
       ? project.files.filter((file) => file.visibility === "client")
       : project.files;
 
   useEffect(() => {
-    setStatus(project.status);
-    setStage(project.stage);
     setNewTaskDueDate(project.dueDate);
     setProjectDraft({
-      name: project.name,
+      requestedDate: project.requestedDate ?? "",
+      requestStatus: project.stage ?? "Waiting List",
+      departmentName: project.departmentName ?? "",
+      projectRequestName: project.projectRequestName ?? project.name,
+      contactPerson: project.contactPerson ?? primaryClientContact?.name ?? "",
+      contactNumber: project.contactNumber ?? primaryClientContact?.phone ?? "",
+      projectType: project.projectType ?? project.category,
+      priorityLevel: project.priorityLevel ?? "",
+      firstDraftDate: project.firstDraftDate ?? "",
+      finalDeliverableDate: project.finalDeliverableDate ?? project.dueDate,
+      projectObjective: project.projectObjective ?? "",
+      projectBrief: project.projectBrief ?? "",
+      creativeAdvice: project.creativeAdvice ?? "",
       description: project.description,
-      category: project.category,
-      dueDate: project.dueDate,
-      clientId: project.clientId,
+      referenceAttachmentUrl: project.referenceAttachmentUrl ?? "",
+      clientOrganizationId: project.clientOrganizationId ?? primaryClientContactOrganizationId ?? "",
     });
   }, [
+    primaryClientContact?.name,
+    primaryClientContact?.phone,
+    project.clientOrganizationId,
     project.category,
-    project.clientId,
+    project.contactNumber,
+    project.contactPerson,
+    project.creativeAdvice,
+    project.departmentName,
     project.description,
     project.dueDate,
+    project.finalDeliverableDate,
+    project.firstDraftDate,
     project.name,
+    project.priorityLevel,
+    project.projectBrief,
+    project.projectObjective,
+    project.projectRequestName,
+    project.projectType,
+    project.referenceAttachmentUrl,
+    project.requestedDate,
+    primaryClientContactOrganizationId,
     project.stage,
-    project.status,
   ]);
 
   const projectFormInitialValues = useMemo<ProjectFormValues>(
     () => ({
-      name: project.name,
+      requestedDate: project.requestedDate ?? "",
+      requestStatus: project.stage ?? "Waiting List",
+      departmentName: project.departmentName ?? "",
+      projectRequestName: project.projectRequestName ?? project.name,
+      contactPerson: project.contactPerson ?? primaryClientContact?.name ?? "",
+      contactNumber: project.contactNumber ?? primaryClientContact?.phone ?? "",
+      projectType: project.projectType ?? project.category,
+      priorityLevel: project.priorityLevel ?? "",
+      firstDraftDate: project.firstDraftDate ?? "",
+      finalDeliverableDate: project.finalDeliverableDate ?? project.dueDate,
+      projectObjective: project.projectObjective ?? "",
+      projectBrief: project.projectBrief ?? "",
+      creativeAdvice: project.creativeAdvice ?? "",
       description: project.description,
-      category: project.category,
-      dueDate: project.dueDate,
-      clientId: project.clientId,
+      referenceAttachmentUrl: project.referenceAttachmentUrl ?? "",
+      clientOrganizationId: project.clientOrganizationId ?? primaryClientContactOrganizationId ?? "",
     }),
-    [project.category, project.clientId, project.description, project.dueDate, project.name],
+    [
+      primaryClientContactOrganizationId,
+      project.clientOrganizationId,
+      project.category,
+      project.contactNumber,
+      project.contactPerson,
+      project.creativeAdvice,
+      project.departmentName,
+      project.description,
+      project.dueDate,
+      project.finalDeliverableDate,
+      project.firstDraftDate,
+      project.name,
+      primaryClientContact?.name,
+      primaryClientContact?.phone,
+      project.priorityLevel,
+      project.projectBrief,
+      project.projectObjective,
+      project.projectRequestName,
+      project.projectType,
+      project.referenceAttachmentUrl,
+      project.requestedDate,
+      project.stage,
+    ],
   );
 
   const assignedStaff = useMemo(() => {
@@ -411,10 +511,15 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   );
 
   const latestVersion = visibleFiles[0] ?? null;
+  const referenceAttachments = useMemo(
+    () => parseReferenceAttachments(project.referenceAttachmentUrl),
+    [project.referenceAttachmentUrl],
+  );
   const feedbackRows = [...project.feedback].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   ) as FeedbackRow[];
   const latestFeedback = feedbackRows[0] ?? null;
+  const workflowTimelineIndex = getWorkflowTimelineIndex(project.stage);
 
   const recentActivity = useMemo<ActivityItem[]>(() => {
     const items = [...project.activities]
@@ -441,19 +546,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   ).length;
   const completionPercent = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-  const handleWorkflowSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsUpdatingProject(true);
-
-    try {
-      await updateProject(project.id, projectDraft);
-      await updateProjectWorkflow(project.id, status, stage);
-      setShowEditPanel(false);
-    } finally {
-      setIsUpdatingProject(false);
-    }
-  };
-
   const handleProjectDelete = async () => {
     await deleteProject(project.id);
     router.push("/projects");
@@ -462,7 +554,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const handleVersionSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     await addFile(project.id, {
-      title: versionTitle.trim() || `${project.name} Update`,
+      title: versionTitle.trim() || `${projectDisplayName} Update`,
       version: versionName.trim() || "v1",
       visibility: versionVisibility,
       notes: versionNotes.trim(),
@@ -476,6 +568,9 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
   const handleFeedbackSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingFeedback) {
+      return;
+    }
 
     const trimmedBody = feedbackBody.trim();
 
@@ -523,6 +618,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
     // Submit the task review decision first so task state updates immediately.
     // This endpoint is client-safe and validates task/project consistency.
+    setIsSubmittingFeedback(true);
+
     try {
       if (transitionEndpoint && decision) {
         // App backend auth expects a workspace access token.
@@ -562,25 +659,23 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           throw new Error(payload?.error ?? "Unable to update task status.");
         }
       }
+      await addFeedback(project.id, {
+        action: feedbackAction,
+        body: trimmedBody,
+        rating: feedbackRating,
+      });
+
+      setFeedbackAction("approve");
+      setFeedbackBody("");
+      setFeedbackRating(5);
+      setShowFeedbackPanel(false);
+      setEditingTaskId(null);
     } catch (error) {
       setEditingTaskError(error instanceof Error ? error.message : "Unable to update task.");
       return;
+    } finally {
+      setIsSubmittingFeedback(false);
     }
-
-    // Then store feedback (keeps existing feedback timeline).
-    await addFeedback(project.id, {
-      action: feedbackAction,
-      body: trimmedBody,
-      rating: feedbackRating,
-    });
-
-    // Close the modal immediately so the user cannot click again.
-    setFeedbackAction("approve");
-    setFeedbackBody("");
-    setFeedbackRating(5);
-    setShowFeedbackPanel(false);
-    setEditingTaskId(null);
-
 
     // Project workflow is manager-controlled.
     // Client review updates only the task through the client-approval endpoint.
@@ -591,19 +686,24 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    await createTask(project.id, {
-      title: newTaskTitle,
-      assigneeId: newTaskAssigneeId,
-      status: newTaskStatus,
-      dueDate: newTaskDueDate,
-      priority: newTaskPriority,
-    });
-    setNewTaskTitle("");
-    setNewTaskAssigneeId("");
-    setNewTaskStatus("todo");
-    setNewTaskDueDate(project.dueDate);
-    setNewTaskPriority("medium");
-    setShowCreateTaskPanel(false);
+    setIsCreatingTask(true);
+    try {
+      await createTask(project.id, {
+        title: newTaskTitle,
+        assigneeId: newTaskAssigneeId,
+        status: newTaskStatus,
+        dueDate: newTaskDueDate,
+        priority: newTaskPriority,
+      });
+      setNewTaskTitle("");
+      setNewTaskAssigneeId("");
+      setNewTaskStatus("todo");
+      setNewTaskDueDate(project.dueDate);
+      setNewTaskPriority("medium");
+      setShowCreateTaskPanel(false);
+    } finally {
+      setIsCreatingTask(false);
+    }
   };
 
   const startEditingTask = (taskId: string) => {
@@ -618,17 +718,21 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     setEditingTaskStatus(task.status);
     setEditingTaskDueDate(task.dueDate ?? project.dueDate);
     setEditingTaskPriority(task.priority ?? derivePriority(task.dueDate ?? project.dueDate, task.status));
-    setEditingTaskReviewAction(task.clientVisible ? "submit" : "internal");
-    setEditingTaskReviewComment("");
-    setEditingTaskError("");
+      setEditingTaskReviewAction(task.clientVisible ? "submit" : "internal");
+      setEditingTaskReviewComment("");
+      setEditingTaskError("");
 
-    // Important: client deliverable review should default to approve.
-    // Otherwise the select may visually show Approve while state is still "comment".
+      // Important: client deliverable review should default to approve.
+      // Otherwise the select may visually show Approve while state is still "comment".
     if (user?.role === "client" && task.status === "review") {
       setFeedbackAction("approve");
       setFeedbackBody("");
       setFeedbackRating(5);
     }
+  };
+
+  const openManagerTaskDetail = (taskId: string) => {
+    router.push(`/projects/${project.id}/tasks/${taskId}`);
   };
 
   const handleTaskUpdate = async (event: FormEvent<HTMLFormElement>) => {
@@ -654,9 +758,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
         editingTask?.completionScreenshotUrl && editingTaskReviewAction === "revise"
           ? "in_progress"
           : editingTask?.completionScreenshotUrl && editingTaskReviewAction === "submit"
-            ? editingTask.status === "review"
-              ? "approved"
-              : "review"
+            ? "review"
             : editingTask?.completionScreenshotUrl && editingTaskReviewAction === "internal"
               ? "done"
           : editingTaskStatus;
@@ -664,6 +766,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
       const nextClientVisible =
         editingTask?.completionScreenshotUrl && editingTaskReviewAction === "submit"
           ? true
+          : editingTask?.completionScreenshotUrl && editingTaskReviewAction === "revise"
+            ? false
           : editingTask?.completionScreenshotUrl && editingTaskReviewAction === "internal"
             ? false
             : editingTask?.clientVisible ?? false;
@@ -681,6 +785,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
         status: nextStatus,
         dueDate: editingTaskDueDate,
         priority: editingTaskPriority,
+        completionScreenshotUrl: editingTask?.completionScreenshotUrl ?? null,
         clientVisible: nextClientVisible,
         managerReviewStatus: nextManagerReviewStatus,
         activityNote:
@@ -705,6 +810,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const activeDesignerTask = activeDesignerTaskId
     ? taskRows.find((task) => task.id === activeDesignerTaskId) ?? null
     : null;
+  const editingTaskAssets = editingTask ? parseTaskCompletionAssets(editingTask.completionScreenshotUrl) : [];
 
   if (!user || !projectRecord || !canAccessProject) {
     return (
@@ -719,11 +825,19 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
   return (
     <>
-      {isUpdatingProject || isUpdatingTask ? (
+      {isUpdatingProject || isUpdatingTask || isCreatingTask || isSubmittingFeedback ? (
         <TaskUpdateLoadingOverlay role="status" aria-live="polite">
           <div className="auth-loading-card">
             <div className="auth-loading-spinner" aria-hidden="true" />
-            <p>{isUpdatingTask ? "Updating task..." : "Updating project..."}</p>
+            <p>
+              {isSubmittingFeedback
+                ? "Submitting review..."
+                : isCreatingTask
+                  ? "Creating task..."
+                  : isUpdatingTask
+                    ? "Updating task..."
+                    : "Updating project..."}
+            </p>
           </div>
         </TaskUpdateLoadingOverlay>
       ) : null}
@@ -765,15 +879,84 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
         }}
       />
 
+      {showReferencePanel ? (
+        <ModalBackdrop onClick={() => setShowReferencePanel(false)}>
+          <ModalCard onClick={(event) => event.stopPropagation()}>
+            <ModalHeader>
+              <div>
+                <ModalTitle>Reference files</ModalTitle>
+                <ModalDescription>Open or download the attachments linked to this project.</ModalDescription>
+              </div>
+              <ModalClose type="button" onClick={() => setShowReferencePanel(false)} aria-label="Close">
+                <IconClose />
+              </ModalClose>
+            </ModalHeader>
+
+            {referenceAttachments.length ? (
+              <ReferenceList>
+                {referenceAttachments.map((attachmentUrl, index) => (
+                  <ReferenceItem key={`${attachmentUrl}-${index}`}>
+                    <ReferenceItemCopy>
+                      <ReferenceItemName>{getReferenceLabel(attachmentUrl)}</ReferenceItemName>
+                    </ReferenceItemCopy>
+                    <ReferenceItemLink href={attachmentUrl} target="_blank" rel="noreferrer">
+                      <IconDownload />
+                      Download
+                    </ReferenceItemLink>
+                  </ReferenceItem>
+                ))}
+              </ReferenceList>
+            ) : (
+              <EmptyState>No reference files have been attached yet.</EmptyState>
+            )}
+          </ModalCard>
+        </ModalBackdrop>
+      ) : null}
+
+      {heroDetailPanel ? (
+        <ModalBackdrop onClick={() => setHeroDetailPanel(null)}>
+          <ModalCard onClick={(event) => event.stopPropagation()}>
+            <ModalHeader>
+              <div>
+                <ModalTitle>
+                  {heroDetailPanel === "brief"
+                    ? "Project brief"
+                    : heroDetailPanel === "objective"
+                      ? "Project objective"
+                      : "Creative advice"}
+                </ModalTitle>
+                <ModalDescription>
+                  {heroDetailPanel === "brief"
+                    ? "Detailed project brief for this request."
+                    : heroDetailPanel === "objective"
+                      ? "Primary objective and expected outcome."
+                      : "Creative direction and supporting notes."}
+                </ModalDescription>
+              </div>
+              <ModalClose type="button" onClick={() => setHeroDetailPanel(null)} aria-label="Close">
+                <IconClose />
+              </ModalClose>
+            </ModalHeader>
+            <HeroDetailCopy>
+              {heroDetailPanel === "brief"
+                ? project.projectBrief || project.description || "No project brief yet."
+                : heroDetailPanel === "objective"
+                  ? project.projectObjective || "Not set"
+                  : project.creativeAdvice || "Not set"}
+            </HeroDetailCopy>
+          </ModalCard>
+        </ModalBackdrop>
+      ) : null}
+
       {showEditPanel ? (
       <ModalBackdrop onClick={() => setShowEditPanel(false)}>
         <ProjectUpdateModalCard onClick={(event) => event.stopPropagation()}>
           <ProjectUpdateScrollArea>
-            <ModalHeader>
-              <div>
-                <ModalTitle>Update project</ModalTitle>
-                <ModalDescription>Change project details, status, and stage.</ModalDescription>
-              </div>
+                <ModalHeader>
+                  <div>
+                    <ModalTitle>Update project</ModalTitle>
+                    <ModalDescription>Change project details and request intake.</ModalDescription>
+                  </div>
               <ModalClose type="button" onClick={() => setShowEditPanel(false)} aria-label="Close">
                 <IconClose />
               </ModalClose>
@@ -781,96 +964,15 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
             <ProjectForm
               initialValues={projectFormInitialValues}
+              departments={state.departments}
+              clientOrganizations={state.clientOrganizations}
               clients={availableClients}
               submitLabel="Save Project"
               onSubmit={async () => {}}
               hideActions
               onValuesChange={setProjectDraft}
+              embedded
             />
-
-            {canChangeWorkflow(user.role) ? (
-              <WorkflowCompactSection>
-                <InlineFormTitle>Workflow</InlineFormTitle>
-
-                <WorkflowCompactGrid>
-                  <TaskModalField>
-                    <TaskFloatingSelect $filled $open={workflowSelect === "status"}>
-                      <TaskSelectTrigger
-                        type="button"
-                        aria-haspopup="listbox"
-                        aria-expanded={workflowSelect === "status"}
-                        onClick={() =>
-                          setWorkflowSelect((current) => (current === "status" ? null : "status"))
-                        }
-                      >
-                        <TaskSelectValue>{getProjectStatusLabel(status)}</TaskSelectValue>
-                        <TaskSelectChevron $open={workflowSelect === "status"}>
-                          <IconChevronDown />
-                        </TaskSelectChevron>
-                      </TaskSelectTrigger>
-                      <TaskFloatingLabel>Status</TaskFloatingLabel>
-                      {workflowSelect === "status" ? (
-                        <TaskSelectMenu role="listbox" aria-label="Project status">
-                          {statuses.map((option) => (
-                            <TaskSelectOption
-                              key={option}
-                              type="button"
-                              role="option"
-                              aria-selected={status === option}
-                              $active={status === option}
-                              onClick={() => {
-                                setStatus(option);
-                                setWorkflowSelect(null);
-                              }}
-                            >
-                              {getProjectStatusLabel(option)}
-                            </TaskSelectOption>
-                          ))}
-                        </TaskSelectMenu>
-                      ) : null}
-                    </TaskFloatingSelect>
-                  </TaskModalField>
-
-                  <TaskModalField>
-                    <TaskFloatingSelect $filled $open={workflowSelect === "stage"}>
-                      <TaskSelectTrigger
-                        type="button"
-                        aria-haspopup="listbox"
-                        aria-expanded={workflowSelect === "stage"}
-                        onClick={() =>
-                          setWorkflowSelect((current) => (current === "stage" ? null : "stage"))
-                        }
-                      >
-                        <TaskSelectValue>{formatProjectStage(stage)}</TaskSelectValue>
-                        <TaskSelectChevron $open={workflowSelect === "stage"}>
-                          <IconChevronDown />
-                        </TaskSelectChevron>
-                      </TaskSelectTrigger>
-                      <TaskFloatingLabel>Stage</TaskFloatingLabel>
-                      {workflowSelect === "stage" ? (
-                        <TaskSelectMenu role="listbox" aria-label="Project stage">
-                          {stages.map((option) => (
-                            <TaskSelectOption
-                              key={option}
-                              type="button"
-                              role="option"
-                              aria-selected={stage === option}
-                              $active={stage === option}
-                              onClick={() => {
-                                setStage(option);
-                                setWorkflowSelect(null);
-                              }}
-                            >
-                              {formatProjectStage(option)}
-                            </TaskSelectOption>
-                          ))}
-                        </TaskSelectMenu>
-                      ) : null}
-                    </TaskFloatingSelect>
-                  </TaskModalField>
-                </WorkflowCompactGrid>
-              </WorkflowCompactSection>
-            ) : null}
 
             <ProjectUpdateActions>
             <button
@@ -882,7 +984,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
                 try {
                   await updateProject(project.id, projectDraft);
-                  await updateProjectWorkflow(project.id, status, stage);
                   setShowEditPanel(false);
                 } finally {
                   setIsUpdatingProject(false);
@@ -899,7 +1000,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
       {showCreateTaskPanel && canManageTasks ? (
         <ModalBackdrop onClick={() => setShowCreateTaskPanel(false)}>
-          <ModalCard onClick={(event) => event.stopPropagation()}>
+          <TaskPopupCard onClick={(event) => event.stopPropagation()}>
             <ModalHeader>
               <div>
                 <ModalTitle>Create task</ModalTitle>
@@ -973,7 +1074,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                         setCreateTaskSelect((current) => (current === "status" ? null : "status"))
                       }
                     >
-                      <TaskSelectValue>{formatLabel(newTaskStatus)}</TaskSelectValue>
+                      <TaskSelectValue>{getTaskStatusLabel(newTaskStatus)}</TaskSelectValue>
                       <TaskSelectChevron $open={createTaskSelect === "status"}>
                         <IconChevronDown />
                       </TaskSelectChevron>
@@ -981,7 +1082,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                     <TaskFloatingLabel>Status</TaskFloatingLabel>
                     {createTaskSelect === "status" ? (
                       <TaskSelectMenu role="listbox" aria-label="Status">
-                        {(["todo", "in_progress", "done", "review", "approved"] as TaskStatus[]).map((option) => (
+                        {(["todo", "in_progress", "done"] as TaskStatus[]).map((option) => (
                           <TaskSelectOption
                             key={option}
                             type="button"
@@ -993,7 +1094,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                               setCreateTaskSelect(null);
                             }}
                           >
-                            {formatLabel(option)}
+                            {getTaskStatusLabel(option)}
                           </TaskSelectOption>
                         ))}
                       </TaskSelectMenu>
@@ -1029,7 +1130,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 Add task
               </button>
             </InlineForm>
-          </ModalCard>
+          </TaskPopupCard>
         </ModalBackdrop>
       ) : null}
 
@@ -1110,6 +1211,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 <span>Decision</span>
                 <select
                   value={feedbackAction}
+                  disabled={isSubmittingFeedback}
                   onChange={(event) => {
                     const nextAction = event.target.value as "approve" | "request_revision";
                     setFeedbackAction(nextAction);
@@ -1131,13 +1233,22 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                     <RatingChip
                       key={rating}
                       type="button"
+                      disabled={isSubmittingFeedback}
                       $active={feedbackRating === rating}
                       onClick={() => setFeedbackRating(rating)}
+                      aria-label={`Rate ${rating} star${rating === 1 ? "" : "s"}`}
                     >
-                      {rating} Star{rating === 1 ? "" : "s"}
+                      <RatingChipStars aria-hidden="true">
+                        {Array.from({ length: 5 }, (_, index) => (
+                          <Star key={index} $filled={index < rating}>
+                            ★
+                          </Star>
+                        ))}
+                      </RatingChipStars>
                     </RatingChip>
                   ))}
                 </RatingChips>
+                <RatingSelection>{feedbackRating} / 5</RatingSelection>
               </PriorityField>
 
               {feedbackAction === "request_revision" ? (
@@ -1145,6 +1256,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   <span>Revision comment</span>
                   <textarea
                     value={feedbackBody}
+                    disabled={isSubmittingFeedback}
                     onChange={(event) => setFeedbackBody(event.target.value)}
                     rows={4}
                     placeholder="Please explain what needs to be revised."
@@ -1156,6 +1268,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   <span>Comment</span>
                   <textarea
                     value={feedbackBody}
+                    disabled={isSubmittingFeedback}
                     onChange={(event) => setFeedbackBody(event.target.value)}
                     rows={4}
                     placeholder="Optional — add context for your decision."
@@ -1163,8 +1276,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 </label>
               )}
 
-              <button className="primary-button" type="submit">
-                Submit feedback
+              <button className="primary-button" type="submit" disabled={isSubmittingFeedback}>
+                {isSubmittingFeedback ? "Submitting..." : "Submit feedback"}
               </button>
             </InlineForm>
           </ModalCard>
@@ -1173,7 +1286,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
       {editingTask && canManageTasks ? (
         <ModalBackdrop onClick={() => setEditingTaskId(null)}>
-          <ModalCard onClick={(event) => event.stopPropagation()}>
+          <TaskPopupCard onClick={(event) => event.stopPropagation()}>
             <ModalHeader>
               <div>
                 <ModalTitle>Edit task</ModalTitle>
@@ -1243,7 +1356,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                       aria-expanded={editTaskSelect === "status"}
                       onClick={() => setEditTaskSelect((current) => (current === "status" ? null : "status"))}
                     >
-                      <TaskSelectValue>{formatLabel(editingTaskStatus)}</TaskSelectValue>
+                      <TaskSelectValue>{getTaskStatusLabel(editingTaskStatus)}</TaskSelectValue>
                       <TaskSelectChevron $open={editTaskSelect === "status"}>
                         <IconChevronDown />
                       </TaskSelectChevron>
@@ -1263,7 +1376,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                               setEditTaskSelect(null);
                             }}
                           >
-                            {formatLabel(option)}
+                            {getTaskStatusLabel(option)}
                           </TaskSelectOption>
                         ))}
                       </TaskSelectMenu>
@@ -1279,15 +1392,28 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   />
                 </TaskModalField>
               </TaskModalGrid>
-              {editingTask.completionScreenshotUrl ? (
+              {editingTaskAssets.length > 0 ? (
                 <TaskDeliveryReview>
-                  <InlineFormTitle>Latest uploaded image</InlineFormTitle>
-                  <TaskDeliveryPreviewWrap>
-                    <TaskDeliveryPreview
-                      src={editingTask.completionScreenshotUrl}
-                      alt={`Latest uploaded image for ${editingTask.title}`}
-                    />
-                  </TaskDeliveryPreviewWrap>
+                  <InlineFormTitle>Latest uploaded assets</InlineFormTitle>
+                  <TaskDeliveryAssetGrid>
+                    {editingTaskAssets.map((asset) => (
+                      <TaskDeliveryAssetCard key={asset}>
+                        {isTaskCompletionImage(asset) ? (
+                          <TaskDeliveryPreviewWrap>
+                            <TaskDeliveryPreview
+                              src={asset}
+                              alt={`${getTaskCompletionLabel(asset)} for ${editingTask.title}`}
+                            />
+                          </TaskDeliveryPreviewWrap>
+                        ) : (
+                          <TaskDeliveryFileCard href={asset} target="_blank" rel="noreferrer">
+                            {isTaskCompletionLink(asset) ? <IconLink /> : <IconFile />}
+                            <span>{getTaskCompletionLabel(asset)}</span>
+                          </TaskDeliveryFileCard>
+                        )}
+                      </TaskDeliveryAssetCard>
+                    ))}
+                  </TaskDeliveryAssetGrid>
                   <TaskReviewActions>
                     <TaskReviewActionButton
                       type="button"
@@ -1307,7 +1433,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                         setEditingTaskError("");
                       }}
                     >
-                      {editingTask.status === "review" ? "Approve" : "Send to client"}
+                      {editingTask.status === "review" ? "Awaiting client review" : "Send to client"}
                     </TaskReviewActionButton>
                     <TaskReviewActionButton
                       type="button"
@@ -1352,13 +1478,17 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               </PriorityField>
               {editingTaskError ? <TaskInlineError>{editingTaskError}</TaskInlineError> : null}
               <CompactActions>
-                <button className="primary-button" type="submit">
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={editingTaskReviewAction === "submit" && editingTask?.status === "review"}
+                >
                   {editingTask?.completionScreenshotUrl
                     ? editingTaskReviewAction === "revise"
                       ? "Send revision"
                       : editingTaskReviewAction === "submit"
                         ? editingTask.status === "review"
-                          ? "Approve"
+                          ? "Awaiting client review"
                           : "Send to client"
                         : "Keep internal"
                     : "Save task"}
@@ -1377,37 +1507,54 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 ) : null}
               </CompactActions>
             </InlineForm>
-          </ModalCard>
+          </TaskPopupCard>
         </ModalBackdrop>
       ) : null}
 
       {editingTask &&
         user &&
         user.role === "client" &&
-        editingTask.status === "review" &&
-        editingTask.clientVisible ? (
+        (editingTask.status === "approved" || (editingTask.status === "review" && editingTask.clientVisible)) ? (
         <ModalBackdrop onClick={() => setEditingTaskId(null)}>
 
           <ModalCard onClick={(event) => event.stopPropagation()}>
             <ModalHeader>
               <div>
-                <ModalTitle>Deliverable review</ModalTitle>
-                <ModalDescription>View the latest screenshot, rate it, and approve or request revision.</ModalDescription>
+                <ModalTitle>{editingTask.status === "approved" ? "Approved deliverable" : "Deliverable review"}</ModalTitle>
+                <ModalDescription>
+                  {editingTask.status === "approved"
+                    ? "View the files that were approved for this task."
+                    : "View the latest screenshot, rate it, and approve or request revision."}
+                </ModalDescription>
               </div>
               <ModalClose type="button" onClick={() => setEditingTaskId(null)} aria-label="Close">
                 <IconClose />
               </ModalClose>
             </ModalHeader>
 
-            {editingTask.completionScreenshotUrl ? (
-              <TaskDeliveryPreviewWrap>
-                <TaskDeliveryPreview
-                  src={editingTask.completionScreenshotUrl}
-                  alt={`Task completion screenshot for ${editingTask.title}`}
-                />
-              </TaskDeliveryPreviewWrap>
+            {editingTaskAssets.length > 0 ? (
+              <TaskDeliveryAssetGrid>
+                {editingTaskAssets.map((asset) => (
+                  <TaskDeliveryAssetCard key={asset}>
+                    {isTaskCompletionImage(asset) ? (
+                      <TaskDeliveryPreviewWrap>
+                        <TaskDeliveryPreview
+                          src={asset}
+                          alt={`${getTaskCompletionLabel(asset)} for ${editingTask.title}`}
+                        />
+                      </TaskDeliveryPreviewWrap>
+                    ) : (
+                      <TaskDeliveryFileCard href={asset} target="_blank" rel="noreferrer">
+                        {isTaskCompletionLink(asset) ? <IconLink /> : <IconFile />}
+                        <span>{getTaskCompletionLabel(asset)}</span>
+                      </TaskDeliveryFileCard>
+                    )}
+                  </TaskDeliveryAssetCard>
+                ))}
+              </TaskDeliveryAssetGrid>
             ) : null}
 
+            {editingTask.status === "review" ? (
             <InlineForm
               onSubmit={(event) => {
                 const formEvent = event as FormEvent<HTMLFormElement>;
@@ -1418,6 +1565,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 <span>Decision</span>
                 <select
                   value={feedbackAction === "request_revision" ? "request_revision" : "approve"}
+                  disabled={isSubmittingFeedback}
                   onChange={(event) => {
                     const nextAction = event.target.value as "approve" | "request_revision";
                     setFeedbackAction(nextAction);
@@ -1440,13 +1588,22 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                     <RatingChip
                       key={rating}
                       type="button"
+                      disabled={isSubmittingFeedback}
                       $active={feedbackRating === rating}
                       onClick={() => setFeedbackRating(rating)}
+                      aria-label={`Rate ${rating} star${rating === 1 ? "" : "s"}`}
                     >
-                      {rating} Star{rating === 1 ? "" : "s"}
+                      <RatingChipStars aria-hidden="true">
+                        {Array.from({ length: 5 }, (_, index) => (
+                          <Star key={index} $filled={index < rating}>
+                            ★
+                          </Star>
+                        ))}
+                      </RatingChipStars>
                     </RatingChip>
                   ))}
                 </RatingChips>
+                <RatingSelection>{feedbackRating} / 5</RatingSelection>
               </PriorityField>
 
               {feedbackAction === "request_revision" ? (
@@ -1454,6 +1611,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   <span>Revision comment</span>
                   <textarea
                     value={feedbackBody}
+                    disabled={isSubmittingFeedback}
                     onChange={(event) => setFeedbackBody(event.target.value)}
                     rows={4}
                     placeholder="Please explain what needs to be revised."
@@ -1467,6 +1625,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   <span>Comment (optional)</span>
                   <textarea
                     value={feedbackBody}
+                    disabled={isSubmittingFeedback}
                     onChange={(event) => setFeedbackBody(event.target.value)}
                     rows={3}
                     placeholder="Optional — add context for your decision."
@@ -1476,10 +1635,15 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
               {editingTaskError ? <TaskInlineError>{editingTaskError}</TaskInlineError> : null}
 
-              <button className="primary-button" type="submit">
-                Submit review
+              <button className="primary-button" type="submit" disabled={isSubmittingFeedback}>
+                {isSubmittingFeedback ? "Submitting..." : "Submit review"}
               </button>
             </InlineForm>
+            ) : (
+              <ApprovedTaskNotice>
+                This task has already been approved by the client.
+              </ApprovedTaskNotice>
+            )}
           </ModalCard>
         </ModalBackdrop>
       ) : null}
@@ -1495,7 +1659,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           <BackIconButton as={Link} href="/projects" aria-label="Back to projects">
             <IconChevronLeft />
           </BackIconButton>
-          <MobileTitle>{project.name}</MobileTitle>
+          <MobileTitle>{projectDisplayName}</MobileTitle>
           <MobileNavSpacer />
         </MobileNavRow>
 
@@ -1503,7 +1667,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           <Breadcrumbs>
             <Link href="/projects">Projects</Link>
             <span>/</span>
-            <strong>{project.name}</strong>
+            <strong>{projectDisplayName}</strong>
           </Breadcrumbs>
           <HeaderActionRow>
             {canEditDetails ? (
@@ -1535,135 +1699,276 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
         <HeroTop>
           <ProjectGlyph>
             <IconCloudMark />
-            <FallbackLetter>{getProjectInitial(project.name)}</FallbackLetter>
+            <FallbackLetter>{getProjectInitial(projectDisplayName)}</FallbackLetter>
           </ProjectGlyph>
 
           <HeroCopy>
             <HeroTitleRow>
-              <HeroTitle>{project.name}</HeroTitle>
-              <MobileStatusPills>
-                <Badge style={{ background: projectStatusTone.bg, color: projectStatusTone.fg }}>
-                  {getProjectStatusLabel(project.status)}
-                </Badge>
-                <Badge style={{ background: "rgba(244, 241, 237, 1)", color: "#7f7468" }}>
-                  {getStageBadgeLabel(project.stage)}
-                </Badge>
-              </MobileStatusPills>
+              <HeroTitleStack>
+                <ProjectIdTag>{project.projectCode ?? project.id}</ProjectIdTag>
+                <HeroTitle>{projectDisplayName}</HeroTitle>
+                <MobileStatusPills>
+                  {project.stage === "On Hold" ? (
+                    <Badge style={{ background: projectStatusTone.bg, color: projectStatusTone.fg }}>
+                      {formatProjectStage(project.stage)}
+                    </Badge>
+                  ) : null}
+                </MobileStatusPills>
+              </HeroTitleStack>
+              <HeroUtilityRow>
+                {project.departmentName ? (
+                  <Badge style={{ background: "rgba(244, 241, 237, 1)", color: "#7f7468" }}>
+                    {project.departmentName}
+                  </Badge>
+                ) : null}
+                {project.priorityLevel ? (
+                  <Badge style={{ background: "rgba(244, 241, 237, 1)", color: "#7f7468" }}>
+                    {project.priorityLevel}
+                  </Badge>
+                ) : null}
+                <ReferenceTrigger
+                  type="button"
+                  onClick={() => setShowReferencePanel(true)}
+                  aria-label="Open reference files"
+                >
+                  <IconAttachment />
+                  <span>Reference files</span>
+                  {referenceAttachments.length ? <ReferenceCount>{referenceAttachments.length}</ReferenceCount> : null}
+                </ReferenceTrigger>
+              </HeroUtilityRow>
             </HeroTitleRow>
 
             <DesktopMetaGrid>
               <MetaBlock>
-                <MetaLabel>Client</MetaLabel>
-                <MetaValue>{client?.name ?? "Unassigned client"}</MetaValue>
+                <MetaLabel>Client Organization</MetaLabel>
+                <MetaValue>{clientOrganizationName}</MetaValue>
+                <MetaMuted>{primaryContactLabel}</MetaMuted>
               </MetaBlock>
               <MetaBlock>
-                <MetaLabel>Status</MetaLabel>
-                <Badge style={{ background: projectStatusTone.bg, color: projectStatusTone.fg }}>
-                  {getProjectStatusLabel(project.status)}
-                </Badge>
-              </MetaBlock>
-              <MetaBlock>
-                <MetaLabel>Due Date</MetaLabel>
+                <MetaLabel>Requested Date</MetaLabel>
                 <MetaValue>
                   <InlineIcon>
                     <IconCalendarMini />
                   </InlineIcon>
-                  {formatDate(project.dueDate)}
+                  {project.requestedDate ? formatDate(project.requestedDate) : "Auto-set"}
                 </MetaValue>
               </MetaBlock>
               <MetaBlock>
-                <MetaLabel>Created By</MetaLabel>
-                <PersonRow>
-                  <AvatarCircle>{getUserInitial(owner?.name ?? "Manager")}</AvatarCircle>
-                  <span>{owner?.name ?? "Team Manager"}</span>
-                </PersonRow>
+                <MetaLabel>First Draft</MetaLabel>
+                <MetaValue>
+                  <InlineIcon>
+                    <IconCalendarMini />
+                  </InlineIcon>
+                  {formatDate(project.firstDraftDate ?? "")}
+                </MetaValue>
               </MetaBlock>
               <MetaBlock>
-                <MetaLabel>Assigned Staff</MetaLabel>
-                <AvatarStack>
-                  {assignedStaff.length ? (
-                    <>
-                      {assignedStaff.slice(0, 3).map((member) => (
-                        <StackAvatar key={member.id}>{getUserInitial(member.name)}</StackAvatar>
-                      ))}
-                      {assignedStaff.length > 3 ? (
-                        <StackCount>+{assignedStaff.length - 3}</StackCount>
-                      ) : null}
-                    </>
-                  ) : (
-                    <MetaMuted>Task-level only</MetaMuted>
-                  )}
-                </AvatarStack>
+                <MetaLabel>Final Deliverable</MetaLabel>
+                <MetaValue>
+                  <InlineIcon>
+                    <IconCalendarMini />
+                  </InlineIcon>
+                  {formatDate(project.finalDeliverableDate ?? project.dueDate)}
+                </MetaValue>
+              </MetaBlock>
+              <MetaBlock>
+                <MetaLabel>Project Type</MetaLabel>
+                <MetaValueText>{project.projectType ?? project.category ?? "Not set"}</MetaValueText>
               </MetaBlock>
             </DesktopMetaGrid>
 
           
           </HeroCopy>
-            <MobileInfoGrid>
-              <CompactInfo>
+        </HeroTop>
+
+        <HeroDesktopGrid>
+          <HeroPillRow>
+            <HeroDetailPill type="button" onClick={() => setHeroDetailPanel("brief")}>
+              <IconDocument />
+              Project Brief
+            </HeroDetailPill>
+            <HeroDetailPill type="button" onClick={() => setHeroDetailPanel("objective")}>
+              <IconTarget />
+              Project Objective
+            </HeroDetailPill>
+            <HeroDetailPill type="button" onClick={() => setHeroDetailPanel("advice")}>
+              <IconSpark />
+              Creative Advice
+            </HeroDetailPill>
+          </HeroPillRow>
+
+          <WorkflowPanel>
+            <WorkflowHeader>
+              <MetaLabel>Project Workflow</MetaLabel>
+              {project.stage === "On Hold" ? (
+                <Badge style={{ background: projectStatusTone.bg, color: projectStatusTone.fg }}>
+                  {formatProjectStage(project.stage)}
+                </Badge>
+              ) : null}
+            </WorkflowHeader>
+
+            <WorkflowRail>
+              <WorkflowLine />
+              <WorkflowLineFill $progress={workflowTimelineIndex / (workflowTimelineStages.length - 1)} />
+              <WorkflowStageGrid>
+                {workflowTimelineStages.map((option, index) => {
+                  const isComplete = index < workflowTimelineIndex;
+                  const isCurrent = index === workflowTimelineIndex;
+                  const isUpcoming = index > workflowTimelineIndex;
+
+                  return (
+                    <WorkflowStageItem key={option}>
+                      <WorkflowNode $complete={isComplete} $current={isCurrent} $upcoming={isUpcoming}>
+                        {isComplete ? <IconCheckTiny /> : null}
+                      </WorkflowNode>
+                      <WorkflowStageLabel>{formatProjectStage(option)}</WorkflowStageLabel>
+                    </WorkflowStageItem>
+                  );
+                })}
+              </WorkflowStageGrid>
+            </WorkflowRail>
+          </WorkflowPanel>
+        </HeroDesktopGrid>
+
+        <HeroMobileStack>
+          <MobileHeroMetaCard>
+            <MobileHeroMetaGrid>
+              <MobileHeroMetaItem>
                 <CompactIconWrap>
                   <IconClient />
                 </CompactIconWrap>
                 <div>
-                  <MetaLabel>Client</MetaLabel>
-                  <MetaValueText>{client?.name ?? "Unassigned client"}</MetaValueText>
+                  <MetaLabel>Client Organization</MetaLabel>
+                  <MetaValueText>{clientOrganizationName}</MetaValueText>
                 </div>
-              </CompactInfo>
-              <CompactInfo>
+              </MobileHeroMetaItem>
+              <MobileHeroMetaItem>
+                <CompactIconWrap>
+                  <IconClient />
+                </CompactIconWrap>
+                <div>
+                  <MetaLabel>Primary Contact</MetaLabel>
+                  <MetaValueText>{primaryClientContact?.name ?? "No primary contact"}</MetaValueText>
+                </div>
+              </MobileHeroMetaItem>
+              <MobileHeroMetaItem>
                 <CompactIconWrap>
                   <IconCalendarMini />
                 </CompactIconWrap>
                 <div>
-                  <MetaLabel>Due Date</MetaLabel>
-                  <MetaValueText>{formatDate(project.dueDate)}</MetaValueText>
+                  <MetaLabel>First Draft</MetaLabel>
+                  <MetaValueText>{formatDate(project.firstDraftDate ?? "")}</MetaValueText>
                 </div>
-              </CompactInfo>
-              <CompactInfo>
+              </MobileHeroMetaItem>
+              <MobileHeroMetaItem>
+                <CompactIconWrap>
+                  <IconCalendarMini />
+                </CompactIconWrap>
+                <div>
+                  <MetaLabel>Final Deliverable</MetaLabel>
+                  <MetaValueText>{formatDate(project.finalDeliverableDate ?? project.dueDate)}</MetaValueText>
+                </div>
+              </MobileHeroMetaItem>
+              <MobileHeroMetaItem>
                 <CompactIconWrap>
                   <IconFolderMini />
                 </CompactIconWrap>
                 <div>
                   <MetaLabel>Project Type</MetaLabel>
-                  <MetaValueText>{project.category}</MetaValueText>
+                  <MetaValueText>{project.projectType ?? project.category ?? "Not set"}</MetaValueText>
                 </div>
-              </CompactInfo>
-              <CompactInfo>
-                <CompactIconWrap>
-                  <AvatarCircle>{getUserInitial(owner?.name ?? "Manager")}</AvatarCircle>
-                </CompactIconWrap>
+              </MobileHeroMetaItem>
+            </MobileHeroMetaGrid>
+          </MobileHeroMetaCard>
+
+          <MobileHeroLinksCard>
+            <MobileHeroDetailRow type="button" onClick={() => setHeroDetailPanel("brief")}>
+              <MobileHeroDetailLeading>
+                <MobileHeroDetailIcon>
+                  <IconDocument />
+                </MobileHeroDetailIcon>
                 <div>
-                  <MetaLabel>Created By</MetaLabel>
-                  <MetaValueText>{owner?.name ?? "Team Manager"}</MetaValueText>
+                  <MobileHeroDetailTitle>Project Brief</MobileHeroDetailTitle>
+                  <MobileHeroDetailPreview>{project.projectBrief || project.description || "No project brief yet."}</MobileHeroDetailPreview>
                 </div>
-              </CompactInfo>
-            </MobileInfoGrid>
-        </HeroTop>
+              </MobileHeroDetailLeading>
+              <MobileHeroDetailArrow>
+                <IconArrowRight />
+              </MobileHeroDetailArrow>
+            </MobileHeroDetailRow>
 
-        <BriefAndTimeline>
-          <BriefBlock>
-            <MetaLabel>Project Brief</MetaLabel>
-            <BriefCopy>{project.description}</BriefCopy>
-          </BriefBlock>
+            <MobileHeroDetailRow type="button" onClick={() => setHeroDetailPanel("objective")}>
+              <MobileHeroDetailLeading>
+                <MobileHeroDetailIcon>
+                  <IconTarget />
+                </MobileHeroDetailIcon>
+                <div>
+                  <MobileHeroDetailTitle>Project Objective</MobileHeroDetailTitle>
+                  <MobileHeroDetailPreview>{project.projectObjective || "Not set"}</MobileHeroDetailPreview>
+                </div>
+              </MobileHeroDetailLeading>
+              <MobileHeroDetailArrow>
+                <IconArrowRight />
+              </MobileHeroDetailArrow>
+            </MobileHeroDetailRow>
 
-          <TimelineBlock>
-            <TimelineRail $tone={project.status} $progress={getTimelineProgress(project.stage)} />
-            <TimelineSteps>
-              {timelineSteps.map((step, index) => {
-                const done = index < timelineIndex;
-                const current = index === timelineIndex;
+            <MobileHeroDetailRow type="button" onClick={() => setHeroDetailPanel("advice")}>
+              <MobileHeroDetailLeading>
+                <MobileHeroDetailIcon>
+                  <IconSpark />
+                </MobileHeroDetailIcon>
+                <div>
+                  <MobileHeroDetailTitle>Creative Advice</MobileHeroDetailTitle>
+                  <MobileHeroDetailPreview>{project.creativeAdvice || "Not set"}</MobileHeroDetailPreview>
+                </div>
+              </MobileHeroDetailLeading>
+              <MobileHeroDetailArrow>
+                <IconArrowRight />
+              </MobileHeroDetailArrow>
+            </MobileHeroDetailRow>
+          </MobileHeroLinksCard>
 
-                return (
-                  <TimelineStep key={step.key}>
-                    <TimelineNode $done={done} $current={current} $tone={project.status}>
-                      {done ? <IconCheckTiny /> : null}
-                    </TimelineNode>
-                    <TimelineLabel>{step.label}</TimelineLabel>
-                  </TimelineStep>
-                );
-              })}
-            </TimelineSteps>
-          </TimelineBlock>
-        </BriefAndTimeline>
+          <BriefAndTimeline>
+            <WorkflowPanel>
+              <WorkflowHeader>
+                <MetaLabel>Project Workflow</MetaLabel>
+                {project.stage === "On Hold" ? (
+                  <Badge style={{ background: projectStatusTone.bg, color: projectStatusTone.fg }}>
+                    {formatProjectStage(project.stage)}
+                  </Badge>
+                ) : null}
+              </WorkflowHeader>
+
+              <WorkflowRail>
+                <WorkflowLine />
+                <WorkflowLineFill $progress={workflowTimelineIndex / (workflowTimelineStages.length - 1)} />
+                <WorkflowStageGrid>
+                  {workflowTimelineStages.map((option, index) => {
+                    const isComplete = index < workflowTimelineIndex;
+                    const isCurrent = index === workflowTimelineIndex;
+                    const isUpcoming = index > workflowTimelineIndex;
+
+                    return (
+                      <WorkflowStageItem key={option}>
+                        <WorkflowNode $complete={isComplete} $current={isCurrent} $upcoming={isUpcoming}>
+                          {isComplete ? <IconCheckTiny /> : null}
+                        </WorkflowNode>
+                        <WorkflowStageLabel>{formatProjectStage(option)}</WorkflowStageLabel>
+                      </WorkflowStageItem>
+                    );
+                  })}
+                </WorkflowStageGrid>
+              </WorkflowRail>
+
+              {/* <OverviewDetailsGrid>
+                <DetailChip>
+                  <MetaLabel>Project Type</MetaLabel>
+                  <MetaValueText>{project.projectType ?? project.category ?? "Not set"}</MetaValueText>
+                </DetailChip>
+              </OverviewDetailsGrid> */}
+            </WorkflowPanel>
+          </BriefAndTimeline>
+        </HeroMobileStack>
       </HeroCard>
 
       <MobileActionRow>
@@ -1718,16 +2023,15 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   return (
                     <TaskRowBlock key={task.id}>
                       <TaskTableRow
-                        $interactive={canManageThisTask || canOpenDesignerTask || (user.role === "client" && task.status === "review")}
+                        $interactive={canManageThisTask || canOpenDesignerTask || (user.role === "client" && canClientOpenTask(task))}
                         onClick={() => {
-                          if (user.role === "client" && task.status === "review") {
-                            // open client review modal (uses editingTaskId)
+                          if (user.role === "client" && canClientOpenTask(task)) {
                             startEditingTask(task.id);
                             return;
                           }
 
                           if (canManageThisTask) {
-                            startEditingTask(task.id);
+                            openManagerTaskDetail(task.id);
                           } else if (canOpenDesignerTask) {
                             setActiveDesignerTaskId(task.id);
                           }
@@ -1778,14 +2082,16 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   return (
                   <MobileTaskCard
                       key={task.id}
-                      $interactive={canManageThisTask || canOpenDesignerTask || (user.role === "client" && task.status === "review")}
+                      $interactive={canManageThisTask || canOpenDesignerTask || (user.role === "client" && canClientOpenTask(task))}
                       onClick={() => {
-                        if (user.role === "client" && task.status === "review") {
+                        if (user.role === "client" && canClientOpenTask(task)) {
                           startEditingTask(task.id);
                           return;
                         }
 
-                        if (canOpenDesignerTask) {
+                        if (canManageThisTask) {
+                          openManagerTaskDetail(task.id);
+                        } else if (canOpenDesignerTask) {
                           setActiveDesignerTaskId(task.id);
                         }
                       }}
@@ -1843,9 +2149,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               {latestVersion ? (
                 <>
                   <VersionHero>
-                    <VersionPreview $imageUrl={project.imageUrl ?? null}>
-                      {project.imageUrl ? null : getProjectInitial(project.name)}
-                    </VersionPreview>
+                    <VersionPreview>{getProjectInitial(project.name)}</VersionPreview>
                     <VersionCopy>
                       <VersionHeadingRow>
                         <strong>{latestVersion.title}</strong>
@@ -1900,7 +2204,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                     <ActivityAvatar>
                       {getUserInitial(
                         state.users.find((candidate) => candidate.id === latestFeedback.authorId)?.name ??
-                          client?.name ??
+                          primaryClientContact?.name ??
+                          clientOrganization?.name ??
                           "C",
                       )}
                     </ActivityAvatar>
@@ -1908,7 +2213,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                       <ActivityLine>
                         <strong>
                           {state.users.find((candidate) => candidate.id === latestFeedback.authorId)?.name ??
-                            client?.name ??
+                            primaryClientContact?.name ??
+                            clientOrganization?.name ??
                             "Client"}
                         </strong>
                         <Badge
@@ -1940,10 +2246,16 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                         const author = state.users.find((candidate) => candidate.id === item.authorId);
                         return (
                           <ActivityItemCard key={item.id}>
-                            <ActivityAvatar>{getUserInitial(author?.name ?? client?.name ?? "C")}</ActivityAvatar>
+                            <ActivityAvatar>
+                              {getUserInitial(
+                                author?.name ?? primaryClientContact?.name ?? clientOrganization?.name ?? "C",
+                              )}
+                            </ActivityAvatar>
                             <div>
                               <ActivityLine>
-                                <strong>{author?.name ?? client?.name ?? "Client"}</strong>
+                                <strong>
+                                  {author?.name ?? primaryClientContact?.name ?? clientOrganization?.name ?? "Client"}
+                                </strong>
                                 <span>{tone.label}</span>
                               </ActivityLine>
                               <ActivityMeta>{item.body}</ActivityMeta>
@@ -2049,7 +2361,7 @@ const Shell = styled.main`
 
   ${desktop} {
     display: flex;
-    align-items: stretch;
+    align-items: flex-start;
     padding: 8px;
     background: rgba(255, 255, 255, 0.58);
     height: 100vh;
@@ -2065,6 +2377,7 @@ const Content = styled.section`
   ${desktop} {
     flex: 1;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 14px 16px 16px;
     border-radius: 0 22px 22px 0;
     background:
@@ -2128,28 +2441,15 @@ const ProjectUpdateActions = styled.div`
   }
 `;
 
-const WorkflowCompactSection = styled.div`
-  display: grid;
-  gap: 10px;
-  padding-top: 2px;
-`;
-
-const WorkflowCompactGrid = styled.div`
-  display: grid;
-  gap: 10px;
-
-  @media (min-width: 640px) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-`;
-
 const ContentInner = styled.div`
-  margin: 0 auto;
+  
   display: grid;
   gap: 14px;
 
   ${desktop} {
     gap: 16px;
+    width: 90%;
+    margin: 0 auto;
   }
 `;
 
@@ -2230,18 +2530,6 @@ const MobileNavSpacer = styled.span`
   }
 `;
 
-const DesktopTitle = styled.h1`
-  display: none;
-
-  ${desktop} {
-    display: block;
-    margin: 0;
-    font-size: clamp(2.8rem, 3vw, 4rem);
-    line-height: 1.02;
-    letter-spacing: -0.05em;
-  }
-`;
-
 const BackIconButton = styled.button`
   ${outlineButton}
   min-height: 44px;
@@ -2269,14 +2557,18 @@ const HeroCard = styled.section`
 `;
 
 const HeroTop = styled.div`
-  display: flex;
-  flex-direction: column;
+  display: grid;
   grid-template-columns: 74px minmax(0, 1fr);
   align-items: start;
   gap: 12px;
 
+  @media (max-width: 639px) {
+    grid-template-columns: 60px minmax(0, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
   ${desktop} {
-    display: grid;
     grid-template-columns: 88px minmax(0, 1fr);
     align-items: start;
     gap: 18px;
@@ -2299,6 +2591,17 @@ const ProjectGlyph = styled.div`
     height: 34px;
     z-index: 2;
   }
+
+  @media (max-width: 639px) {
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+
+    svg {
+      width: 28px;
+      height: 28px;
+    }
+  }
 `;
 
 const FallbackLetter = styled.span`
@@ -2308,6 +2611,12 @@ const FallbackLetter = styled.span`
   font-size: 0.72rem;
   font-weight: 700;
   color: rgba(46, 42, 39, 0.32);
+
+  @media (max-width: 639px) {
+    bottom: 6px;
+    right: 8px;
+    font-size: 0.66rem;
+  }
 `;
 
 const HeroCopy = styled.div`
@@ -2316,18 +2625,57 @@ const HeroCopy = styled.div`
 `;
 
 const HeroTitleRow = styled.div`
-  display: grid;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 10px;
+
+  @media (max-width: 767px) {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
   ${desktop} {
     gap: 12px;
   }
 `;
 
+const HeroTitleStack = styled.div`
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+`;
+
+const HeroUtilityRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  @media (max-width: 767px) {
+    justify-content: flex-start;
+  }
+`;
+
+const ProjectIdTag = styled.span`
+  color: var(--color-text-light);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+`;
+
 const HeroTitle = styled.h2`
   margin: 0;
   font-size: clamp(1.3rem, 1.7vw, 1.72rem);
   line-height: 1.15;
+
+  @media (max-width: 639px) {
+    font-size: 1.16rem;
+    line-height: 1.18;
+  }
 `;
 
 const MobileStatusPills = styled.div`
@@ -2341,12 +2689,55 @@ const MobileStatusPills = styled.div`
   }
 `;
 
+const ReferenceTrigger = styled.button`
+  ${outlineButton}
+  position: relative;
+  min-height: 40px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+
+  svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  @media (max-width: 767px) {
+    width: 100%;
+    justify-content: flex-start;
+  }
+`;
+
+const ReferenceCount = styled.span`
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #214f39;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+`;
+
 const DesktopMetaGrid = styled.div`
   display: none;
 
   ${desktop} {
     display: grid;
-    grid-template-columns: 1.08fr 1.08fr 1fr 1fr 1.15fr;
+    grid-template-columns: 1.35fr 1fr 1fr 1fr 0.92fr;
     gap: 0;
     border-top: 1px solid rgba(235, 229, 221, 0.95);
     border-bottom: 1px solid rgba(235, 229, 221, 0.95);
@@ -2354,13 +2745,7 @@ const DesktopMetaGrid = styled.div`
 `;
 
 const MobileInfoGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 10px;
-
-  ${desktop} {
-    display: none;
-  }
+  display: none;
 `;
 
 const MetaBlock = styled.div`
@@ -2407,54 +2792,11 @@ const MetaMuted = styled.span`
   font-size: 0.84rem;
 `;
 
-const PersonRow = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 600;
-`;
-
-const AvatarStack = styled.div`
-  display: inline-flex;
-  align-items: center;
-`;
-
-const StackAvatar = styled.span`
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  margin-left: -7px;
-  border: 2px solid #fff;
-  background: linear-gradient(180deg, #eadfce, #cfb89f);
-  color: #5e4c37;
-  font-size: 0.78rem;
-  font-weight: 700;
-
-  &:first-child {
-    margin-left: 0;
-  }
-`;
-
-const StackCount = styled.span`
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  margin-left: -7px;
-  border: 2px solid #fff;
-  background: #f4f1ed;
-  color: #4f4a44;
-  font-size: 0.78rem;
-  font-weight: 700;
-`;
-
 const CompactInfo = styled.div`
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  min-width: 0;
 `;
 
 const CompactIconWrap = styled.span`
@@ -2470,6 +2812,17 @@ const CompactIconWrap = styled.span`
   svg {
     width: 18px;
     height: 18px;
+  }
+
+  @media (max-width: 639px) {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
   }
 `;
 
@@ -2490,74 +2843,342 @@ const BriefBlock = styled.div`
   gap: 8px;
 `;
 
-const BriefCopy = styled.p`
-  margin: 0;
-  color: #433b34;
-  font-size: 0.96rem;
-  line-height: 1.52;
-`;
-
-const TimelineBlock = styled.div`
-  position: relative;
-  padding-top: 16px;
-`;
-
-const TimelineRail = styled.div<{ $tone: ProjectStatus; $progress: number }>`
-  position: absolute;
-  left: 9%;
-  right: 9%;
-  top: 30px;
-  height: 3px;
-  background: ${({ $tone, $progress }) =>
-    `linear-gradient(90deg, ${getStatusAccent($tone)} 0%, ${getStatusAccent($tone)} ${$progress}%, #e6e0d8 ${$progress}%, #e6e0d8 100%)`};
-  border-radius: 999px;
+const HeroDesktopGrid = styled.div`
+  display: none;
 
   ${desktop} {
-    left: 8%;
-    right: 8%;
+    display: grid;
+    gap: 16px;
+    margin-top: 18px;
+    align-items: stretch;
   }
 `;
 
-const TimelineSteps = styled.div`
-  position: relative;
+const HeroMobileStack = styled.div`
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
+  gap: 14px;
+
+  ${desktop} {
+    display: none;
+  }
 `;
 
-const TimelineStep = styled.div`
+const MobileHeroMetaCard = styled.div`
+  ${cardSurface}
+  border-radius: 22px;
+  padding: 12px 14px;
+`;
+
+const MobileHeroMetaGrid = styled.div`
   display: grid;
-  justify-items: center;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+  @media (max-width: 639px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+`;
+
+const MobileHeroMetaItem = styled.div`
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 10px 14px 0;
+  border-right: 1px solid rgba(235, 229, 221, 0.95);
+  border-bottom: 1px solid rgba(235, 229, 221, 0.95);
+
+  &:nth-child(2n) {
+    padding-left: 12px;
+    border-right: 0;
+  }
+
+  &:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+
+  &:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    border-right: 0;
+    padding-right: 0;
+  }
+
+  ${MetaValueText} {
+    margin-top: 8px;
+    font-size: 0.86rem;
+    line-height: 1.4;
+  }
+
+  ${MetaLabel} {
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+  }
+`;
+
+const MobileHeroLinksCard = styled.div`
+  ${cardSurface}
+  border-radius: 22px;
+  overflow: hidden;
+`;
+
+const MobileHeroDetailRow = styled.button`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  text-align: center;
+  padding: 14px 16px;
+  border: 0;
+  border-top: 1px solid rgba(235, 229, 221, 0.95);
+  background: transparent;
+  text-align: left;
+
+  &:first-child {
+    border-top: 0;
+  }
 `;
 
-const TimelineNode = styled.span<{ $done?: boolean; $current?: boolean; $tone: ProjectStatus }>`
-  width: 28px;
-  height: 28px;
+const MobileHeroDetailLeading = styled.div`
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+`;
+
+const MobileHeroDetailIcon = styled.span`
+  width: 40px;
+  height: 40px;
   border-radius: 999px;
   display: grid;
   place-items: center;
-  background: ${({ $done, $current, $tone }) =>
-    $done ? getStatusAccent($tone) : $current ? "#ffffff" : "#ffffff"};
-  border: 3px solid
-    ${({ $done, $current, $tone }) =>
-      $done ? getStatusAccent($tone) : $current ? getStatusAccent($tone) : "#e2ddd6"};
-  color: #fff;
-  box-shadow: ${({ $current, $tone }) =>
-    $current ? `0 0 0 4px ${getStatusAccent($tone)}1a` : "none"};
+  background: linear-gradient(180deg, #fbf7f1 0%, #f5efe5 100%);
+  color: #aa7a2a;
 
   svg {
-    width: 12px;
-    height: 12px;
+    width: 20px;
+    height: 20px;
   }
 `;
 
-const TimelineLabel = styled.span`
-  color: #62594f;
-  font-size: 0.78rem;
+const MobileHeroDetailTitle = styled.strong`
+  display: block;
+  color: #2e2a27;
+  font-size: 0.94rem;
+  line-height: 1.25;
+`;
+
+const MobileHeroDetailPreview = styled.p`
+  margin: 4px 0 0;
+  color: #7d7266;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const MobileHeroDetailArrow = styled.span`
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #2e2a27;
+  flex: 0 0 auto;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+`;
+
+const HeroPillRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+`;
+
+const HeroDetailPill = styled.button`
+  ${outlineButton}
+  min-height: 40px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #6d5f4d;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    color: #aa7a2a;
+  }
+`;
+
+const HeroDetailCopy = styled.p`
+  margin: 0;
+  color: #2e2a27;
+  font-size: 0.96rem;
+  line-height: 1.7;
+`;
+
+const WorkflowPanel = styled.div`
+  ${cardSurface}
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 14px 18px;
+  border-radius: 24px;
+`;
+
+const WorkflowHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+`;
+
+const WorkflowRail = styled.div`
+  position: relative;
+  padding: 12px 10px 0;
+`;
+
+const WorkflowLine = styled.div`
+  position: absolute;
+  top: 24px;
+  left: 28px;
+  right: 28px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(204, 187, 154, 0.46);
+`;
+
+const WorkflowLineFill = styled.div<{ $progress: number }>`
+  position: absolute;
+  top: 24px;
+  left: 28px;
+  height: 2px;
+  width: calc(
+    ((100% - 56px) * ${({ $progress }) => $progress}) +
+      ${({ $progress }) => ($progress > 0 ? "20px" : "0px")}
+  );
+  border-radius: 999px;
+  background: #b98a33;
+`;
+
+const WorkflowStageGrid = styled.div`
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+`;
+
+const WorkflowStageItem = styled.div`
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+`;
+
+const WorkflowNode = styled.span<{ $complete?: boolean; $current?: boolean; $upcoming?: boolean }>`
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid
+    ${({ $complete, $current }) =>
+      $complete || $current ? "#c08f36" : "rgba(220, 213, 205, 0.95)"};
+  background: ${({ $complete, $current }) => ($complete || $current ? "#fff" : "#fff")};
+  color: #c08f36;
+  box-shadow: ${({ $current }) => ($current ? "0 0 0 4px rgba(192, 143, 54, 0.14)" : "none")};
+
+  svg {
+    width: 9px;
+    height: 9px;
+  }
+`;
+
+const WorkflowStageLabel = styled.span`
+  color: #5d544b;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+`;
+
+const OverviewDetailsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+
+  ${desktop} {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-content: start;
+  }
+`;
+
+const DetailChip = styled.div`
+  ${cardSurface}
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 18px;
+`;
+
+const ReferenceList = styled.div`
+  display: grid;
+  gap: 10px;
+`;
+
+const ReferenceItem = styled.div`
+  ${cardSurface}
+  padding: 12px;
+  border-radius: 18px;
+  display: grid;
+  gap: 10px;
+
+  ${desktop} {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+`;
+
+const ReferenceItemCopy = styled.div`
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+`;
+
+const ReferenceItemName = styled.strong`
+  color: #2e2a27;
+  font-size: 0.9rem;
   line-height: 1.35;
-  font-weight: 600;
+  overflow-wrap: anywhere;
+`;
+
+const ReferenceItemLink = styled.a`
+  ${outlineButton}
+  min-height: 38px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  color: #214f39;
+  font-size: 0.84rem;
+  font-weight: 700;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
 `;
 
 const MobileActionRow = styled.div`
@@ -3040,12 +3661,51 @@ const TaskDeliveryPreviewWrap = styled.div`
   border-radius: 18px;
 `;
 
+const TaskDeliveryAssetGrid = styled.div`
+  display: grid;
+  gap: 12px;
+
+  ${desktop} {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+`;
+
+const TaskDeliveryAssetCard = styled.div`
+  display: grid;
+  gap: 8px;
+`;
+
 const TaskDeliveryPreview = styled.img`
   width: 100%;
   max-height: 260px;
   display: block;
   object-fit: cover;
   border-radius: 14px;
+`;
+
+const TaskDeliveryFileCard = styled.a`
+  ${cardSurface}
+  min-height: 88px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  color: var(--color-text);
+  text-decoration: none;
+
+  span {
+    font-size: 0.9rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    color: #8d6520;
+  }
 `;
 
 const TaskReviewActions = styled.div`
@@ -3070,6 +3730,17 @@ const TaskInlineError = styled.p`
   color: #c04f42;
   font-size: 0.84rem;
   line-height: 1.45;
+`;
+
+const ApprovedTaskNotice = styled.p`
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(229, 244, 232, 0.72);
+  color: #2c6b43;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.5;
 `;
 
 const TaskUpdateLoadingOverlay = styled.div`
@@ -3279,19 +3950,15 @@ const VersionHero = styled.div`
   align-items: start;
 `;
 
-const VersionPreview = styled.div<{ $imageUrl?: string | null }>`
+const VersionPreview = styled.div`
   width: 84px;
   height: 84px;
   border-radius: 18px;
   display: grid;
   place-items: center;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  background:
-    ${({ $imageUrl }) =>
-      $imageUrl
-        ? `center / cover no-repeat url("${$imageUrl}")`
-        : "linear-gradient(180deg, #fbf7f1 0%, #f5efe5 100%)"};
-  color: ${({ $imageUrl }) => ($imageUrl ? "transparent" : "#8c7040")};
+  background: linear-gradient(180deg, #fbf7f1 0%, #f5efe5 100%);
+  color: #8c7040;
   font-size: 1.35rem;
   font-weight: 800;
 `;
@@ -3363,19 +4030,40 @@ const FeedbackHero = styled.div`
 
 const RatingChips = styled.div`
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 `;
 
 const RatingChip = styled.button<{ $active?: boolean }>`
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: 14px;
   border: 1px solid ${({ $active }) => ($active ? "#214f39" : "rgba(33, 79, 57, 0.18)")};
   background: ${({ $active }) => ($active ? "rgba(33, 79, 57, 0.12)" : "rgba(255, 255, 255, 0.96)")};
   color: #214f39;
-  font-size: 0.8rem;
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
+const RatingChipStars = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+`;
+
+const RatingSelection = styled.span`
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
 `;
 
 const RatingReadout = styled.div`
@@ -3418,6 +4106,10 @@ const ModalCard = styled.section`
   padding: 18px;
   display: grid;
   gap: 14px;
+`;
+
+const TaskPopupCard = styled(ModalCard)`
+  overflow: visible;
 `;
 
 const ModalHeader = styled.div`
@@ -3624,6 +4316,81 @@ function IconClose() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
+function IconAttachment() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m21.44 11.05-8.49 8.49a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.5 8.49a2 2 0 0 1-2.83-2.83l7.78-7.78" />
+    </svg>
+  );
+}
+
+function IconDownload() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 21h14" />
+    </svg>
+  );
+}
+
+function IconDocument() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+      <path d="M14 2v5h5" />
+      <path d="M9 13h6" />
+      <path d="M9 17h6" />
+    </svg>
+  );
+}
+
+function IconFile() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 2v6h6" />
+    </svg>
+  );
+}
+
+function IconLink() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L10.41 5.5" />
+      <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 1 0 7.07 7.07l2.42-2.4" />
+    </svg>
+  );
+}
+
+function IconTarget() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <path d="m16.5 7.5 3-3" />
+      <path d="M15 6h4v4" />
+    </svg>
+  );
+}
+
+function IconSpark() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2v4" />
+      <path d="m19.07 4.93-2.83 2.83" />
+      <path d="M22 12h-4" />
+      <path d="m19.07 19.07-2.83-2.83" />
+      <path d="M12 22v-4" />
+      <path d="m4.93 19.07 2.83-2.83" />
+      <path d="M2 12h4" />
+      <path d="m4.93 4.93 2.83 2.83" />
+      <circle cx="12" cy="12" r="3.5" />
     </svg>
   );
 }

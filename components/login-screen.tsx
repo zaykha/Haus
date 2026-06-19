@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/app-state";
@@ -81,7 +82,7 @@ export function LoginScreen() {
           <section className="auth-form-column">
             <div className="auth-card">
               <div className="auth-card-brand">
-                <h1 className="auth-brand">Haus</h1>
+                <Image className="auth-logo" src="/haus_logo.png" alt="Haus" width={112} height={32} priority />
                 <p className="muted">Design project tracking for creative teams and clients.</p>
               </div>
 

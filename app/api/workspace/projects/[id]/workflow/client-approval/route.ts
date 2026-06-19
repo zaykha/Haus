@@ -1,5 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
+import {
+  parseTaskCompletionState,
+  recordTaskCompletionSnapshot,
+  serializeTaskCompletionState,
+  startNextTaskCompletionVersion,
+} from "@/lib/task-completion-assets";
+
+async function updateProjectRequestStatusIfAllowed(
+  supabase: any,
+  projectId: string,
+  nextStatus: "Waiting List" | "WIP" | "Pending Review" | "Complete",
+) {
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id, stage")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (projectError || !project) {
+    return;
+  }
+
+  if (project.stage === "On Hold" || project.stage === nextStatus) {
+    return;
+  }
+
+  await supabase
+    .from("projects")
+    .update({ stage: nextStatus })
+    .eq("id", projectId);
+}
 
 /**
  * Client -> server task review endpoint.
@@ -46,7 +77,7 @@ export async function POST(
     }
   const { data: task, error: taskError } = await supabase
     .from("tasks")
-    .select("id, project_id, title, status, client_visible, manager_review_status")
+    .select("id, project_id, title, status, client_visible, manager_review_status, completion_screenshot_url")
     .eq("id", taskId)
     .eq("project_id", projectId)
     .maybeSingle();
@@ -73,16 +104,31 @@ export async function POST(
     );
     }
 
- const nextTaskStatus = decision === "approve" ? "approved" : "in_progress";
+  const nextTaskStatus = decision === "approve" ? "approved" : "in_progress";
 
-    const nextManagerReviewStatus =
+  const nextManagerReviewStatus =
     decision === "approve" ? "internal" : ("revision_requested" as const);
 
-    const { error: taskUpdateError } = await supabase
+  const taskCompletionState = parseTaskCompletionState(task.completion_screenshot_url ?? null);
+  const nextCompletionState =
+    decision === "request_revision"
+      ? startNextTaskCompletionVersion(
+          recordTaskCompletionSnapshot(
+            taskCompletionState,
+            "submitted",
+            taskCompletionState.currentAssets,
+          ),
+          "submitted",
+        )
+      : taskCompletionState;
+
+  const { error: taskUpdateError } = await supabase
     .from("tasks")
     .update({
         status: nextTaskStatus,
         manager_review_status: nextManagerReviewStatus,
+        client_visible: false,
+        completion_screenshot_url: serializeTaskCompletionState(nextCompletionState),
     })
     .eq("id", taskId)
     .eq("project_id", projectId);
@@ -90,6 +136,12 @@ export async function POST(
   if (taskUpdateError) {
     return NextResponse.json({ error: taskUpdateError.message }, { status: 500 });
   }
+
+  await updateProjectRequestStatusIfAllowed(
+    supabase,
+    projectId,
+    decision === "approve" ? "Complete" : "WIP",
+  );
 
   // Activity logging (best-effort; do not fail the whole request if activity table isn't ready).
   const action = decision === "approve" ? "task_approved" : "task_revision_requested";

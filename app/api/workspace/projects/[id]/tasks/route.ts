@@ -16,6 +16,31 @@ async function logProjectActivity(supabase: any, projectId: string, actorId: str
   }
 }
 
+async function updateProjectRequestStatusIfAllowed(
+  supabase: any,
+  projectId: string,
+  nextStatus: "Waiting List" | "WIP" | "Pending Review" | "Complete",
+) {
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id, stage")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (projectError || !project) {
+    return;
+  }
+
+  if (project.stage === "On Hold" || project.stage === nextStatus) {
+    return;
+  }
+
+  await supabase
+    .from("projects")
+    .update({ stage: nextStatus })
+    .eq("id", projectId);
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -74,6 +99,7 @@ export async function POST(
   }
 
   if (createdTask) {
+    await updateProjectRequestStatusIfAllowed(supabase, id, "WIP");
     await logProjectActivity(supabase, id, user.id, "task_created", `created task "${createdTask.title}"`);
   }
 

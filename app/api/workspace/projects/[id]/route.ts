@@ -18,34 +18,59 @@ export async function PATCH(
   }
 
   const body = (await request.json()) as {
-    name?: string;
-    imageUrl?: string | null;
+    projectRequestName?: string;
+    requestedDate?: string;
+    requestStatus?: string;
+    departmentName?: string;
+    contactPerson?: string;
+    contactNumber?: string;
+    projectType?: string;
+    priorityLevel?: string;
+    firstDraftDate?: string;
+    finalDeliverableDate?: string;
+    projectObjective?: string;
+    projectBrief?: string;
+    creativeAdvice?: string;
+    referenceAttachmentUrl?: string;
     description?: string;
-    category?: string;
-    dueDate?: string;
-    clientId?: string;
+    clientOrganizationId?: string;
   };
 
-  if (body.clientId) {
-    const { data: client } = await supabase
-      .from("profiles")
-      .select("id, role")
-      .eq("id", body.clientId)
+  let resolvedClientOrganizationId = body.clientOrganizationId?.trim() ?? "";
+
+  if (resolvedClientOrganizationId) {
+    const { data: organization } = await supabase
+      .from("client_organizations")
+      .select("id")
+      .eq("id", resolvedClientOrganizationId)
       .maybeSingle();
-    if (!client || client.role !== "client") {
-      return NextResponse.json({ error: "Project client must be a client user" }, { status: 400 });
+    if (!organization) {
+      return NextResponse.json({ error: "Project client organization must exist" }, { status: 400 });
     }
   }
 
   const { error } = await supabase
     .from("projects")
     .update({
-      name: body.name?.trim(),
-      image_url: body.imageUrl?.trim() ? body.imageUrl.trim() : null,
-      description: body.description?.trim(),
-      category: body.category?.trim(),
-      due_date: body.dueDate,
-      client_id: body.clientId || null,
+      name: body.projectRequestName?.trim(),
+      requested_date: body.requestedDate || undefined,
+      department_name: body.departmentName?.trim() || null,
+      project_request_name: body.projectRequestName?.trim(),
+      contact_person: body.contactPerson?.trim() || null,
+      contact_number: body.contactNumber?.trim() || null,
+      project_type: body.projectType?.trim() || null,
+      priority_level: body.priorityLevel?.trim() || null,
+      first_draft_date: body.firstDraftDate || null,
+      final_deliverable_date: body.finalDeliverableDate || null,
+      project_objective: body.projectObjective?.trim() || null,
+      project_brief: body.projectBrief?.trim() || null,
+      creative_advice: body.creativeAdvice?.trim() || null,
+      reference_attachment_url: body.referenceAttachmentUrl?.trim() || null,
+      description: body.description?.trim() || "",
+      category: body.projectType?.trim() || null,
+      stage: body.requestStatus?.trim() || null,
+      due_date: body.finalDeliverableDate || null,
+      client_organization_id: resolvedClientOrganizationId || null,
     })
     .eq("id", id);
 

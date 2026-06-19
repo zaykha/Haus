@@ -20,7 +20,9 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("invitations")
-    .select("email, name, role, status, expires_at, projects(name)")
+    .select(
+      "email, name, role, status, expires_at, client_organization_id, projects(name), client_organizations(name)",
+    )
     .eq("token_hash", tokenHash)
     .maybeSingle();
 
@@ -37,12 +39,17 @@ export async function GET(request: NextRequest) {
   }
 
   const projectRecord = Array.isArray(data.projects) ? data.projects[0] : data.projects;
+  const clientOrganizationRecord = Array.isArray(data.client_organizations)
+    ? data.client_organizations[0]
+    : data.client_organizations;
 
   return NextResponse.json({
     email: data.email,
     name: data.name,
     role: data.role,
     projectName: projectRecord?.name ?? null,
+    clientOrganizationId: data.client_organization_id ?? null,
+    clientOrganizationName: clientOrganizationRecord?.name ?? null,
     status,
     expiresAt: data.expires_at,
   });

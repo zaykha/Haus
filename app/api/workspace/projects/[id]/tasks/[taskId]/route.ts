@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
 import { canAssignTask, canDeleteTask, canEditTask } from "@/lib/permissions";
+import {
+  parseTaskCompletionAssets,
+  parseTaskCompletionState,
+  recordTaskCompletionSnapshot,
+  serializeTaskCompletionState,
+  setCurrentTaskCompletionAssets,
+  startNextTaskCompletionVersion,
+} from "@/lib/task-completion-assets";
 import { TaskManagerReviewStatus, TaskPriority, TaskStatus } from "@/lib/types";
 
 const TASK_STATUSES: TaskStatus[] = ["todo", "in_progress", "done", "review", "approved"];
@@ -18,14 +26,39 @@ function formatTaskStatus(status: TaskStatus) {
     case "in_progress":
       return "In Progress";
     case "done":
-      return "Done";
+      return "Internal Submit";
     case "review":
-      return "Review";
+      return "Submit to Client";
     case "approved":
-      return "Approved";
+      return "Complete";
     default:
       return status;
   }
+}
+
+async function updateProjectRequestStatusIfAllowed(
+  supabase: any,
+  projectId: string,
+  nextStatus: "Waiting List" | "WIP" | "Pending Review" | "Complete",
+) {
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id, stage")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (projectError || !project) {
+    return;
+  }
+
+  if (project.stage === "On Hold" || project.stage === nextStatus) {
+    return;
+  }
+
+  await supabase
+    .from("projects")
+    .update({ stage: nextStatus })
+    .eq("id", projectId);
 }
 
 async function logProjectActivity(supabase: any, projectId: string, actorId: string, action: string, message: string) {
@@ -105,6 +138,37 @@ export async function PATCH(
       return NextResponse.json({ error: "Tasks can only be assigned to internal staff" }, { status: 400 });
     }
 
+    let nextCompletionState = parseTaskCompletionState(existingTask.completion_screenshot_url);
+    const nextStatus = body.status as TaskStatus;
+    const nextReviewStatus = body.managerReviewStatus ?? existingTask.manager_review_status;
+
+    if (
+      existingTask.status === "done" &&
+      nextStatus === "in_progress" &&
+      existingTask.completion_screenshot_url
+    ) {
+      nextCompletionState = startNextTaskCompletionVersion(
+        recordTaskCompletionSnapshot(
+          nextCompletionState,
+          "internal",
+          nextCompletionState.currentAssets,
+        ),
+        "internal",
+      );
+    } else if (nextStatus === "review" && nextReviewStatus === "ready_for_client") {
+      nextCompletionState = recordTaskCompletionSnapshot(
+        nextCompletionState,
+        "submitted",
+        nextCompletionState.currentAssets,
+      );
+    } else if (nextStatus === "done") {
+      nextCompletionState = recordTaskCompletionSnapshot(
+        nextCompletionState,
+        "internal",
+        nextCompletionState.currentAssets,
+      );
+    }
+
     const { error } = await supabase
       .from("tasks")
       .update({
@@ -114,11 +178,19 @@ export async function PATCH(
         due_date: body.dueDate,
         priority: body.priority,
         completion_screenshot_url:
-          body.status === "done"
-            ? body.completionScreenshotUrl ?? existingTask.completion_screenshot_url
-            : null,
-        client_visible: body.clientVisible ?? existingTask.client_visible,
-        manager_review_status: body.managerReviewStatus ?? existingTask.manager_review_status,
+          body.completionScreenshotUrl !== undefined
+            ? serializeTaskCompletionState(
+                setCurrentTaskCompletionAssets(
+                  nextCompletionState,
+                  parseTaskCompletionAssets(body.completionScreenshotUrl),
+                ),
+              )
+            : serializeTaskCompletionState(nextCompletionState),
+        client_visible:
+          nextStatus === "in_progress"
+            ? false
+            : body.clientVisible ?? existingTask.client_visible,
+        manager_review_status: nextReviewStatus,
       })
       .eq("id", taskId)
       .eq("project_id", id);
@@ -127,8 +199,6 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const nextStatus = body.status as TaskStatus;
-    const nextReviewStatus = body.managerReviewStatus ?? existingTask.manager_review_status;
     const revisionNote = body.activityNote?.trim();
 
     if (
@@ -136,6 +206,7 @@ export async function PATCH(
       nextReviewStatus === "ready_for_client" &&
       nextStatus === "review"
     ) {
+      await updateProjectRequestStatusIfAllowed(supabase, id, "Pending Review");
       await logProjectActivity(
         supabase,
         id,
@@ -147,6 +218,7 @@ export async function PATCH(
       existingTask.manager_review_status !== "revision_requested" &&
       nextReviewStatus === "revision_requested"
     ) {
+      await updateProjectRequestStatusIfAllowed(supabase, id, "WIP");
       await logProjectActivity(
         supabase,
         id,
@@ -165,6 +237,9 @@ export async function PATCH(
         `approved task "${body.title.trim()}"`,
       );
     } else if (existingTask.status !== nextStatus) {
+      if (nextStatus === "in_progress" || nextStatus === "done") {
+        await updateProjectRequestStatusIfAllowed(supabase, id, "WIP");
+      }
       await logProjectActivity(
         supabase,
         id,
@@ -181,12 +256,36 @@ export async function PATCH(
     return NextResponse.json({ error: "Task status is required" }, { status: 400 });
   }
 
-  const nextScreenshotUrl =
-    body.status === "done"
-      ? (body.completionScreenshotUrl ?? existingTask.completion_screenshot_url)
-      : null;
+  let nextCompletionState = parseTaskCompletionState(existingTask.completion_screenshot_url);
+  if (body.completionScreenshotUrl !== undefined) {
+    nextCompletionState = setCurrentTaskCompletionAssets(
+      nextCompletionState,
+      parseTaskCompletionAssets(body.completionScreenshotUrl),
+    );
+  }
 
-  if (body.status === "done" && !nextScreenshotUrl) {
+  const hasSubmittedVersion = nextCompletionState.history.length > 0;
+  if (body.status === "todo" && hasSubmittedVersion) {
+    return NextResponse.json(
+      { error: "This task already has submitted versions and cannot be moved back to To Do" },
+      { status: 400 },
+    );
+  }
+
+  const nextStatus =
+    nextCompletionState.currentAssets.length > 0 && (body.status === "todo" || body.status === "in_progress")
+      ? "done"
+      : (body.status as TaskStatus);
+
+  if (nextStatus === "done") {
+    nextCompletionState = recordTaskCompletionSnapshot(
+      nextCompletionState,
+      "internal",
+      nextCompletionState.currentAssets,
+    );
+  }
+
+  if (nextStatus === "done" && nextCompletionState.currentAssets.length === 0) {
     return NextResponse.json(
       { error: "A completion screenshot is required before marking this task complete" },
       { status: 400 },
@@ -196,8 +295,10 @@ export async function PATCH(
   const { error } = await supabase
     .from("tasks")
     .update({
-      status: body.status,
-      completion_screenshot_url: nextScreenshotUrl,
+      status: nextStatus,
+      completion_screenshot_url: serializeTaskCompletionState(nextCompletionState),
+      client_visible: nextStatus === "done" ? false : existingTask.client_visible,
+      manager_review_status: nextStatus === "done" ? "internal" : existingTask.manager_review_status,
     })
     .eq("id", taskId)
     .eq("project_id", id);
@@ -206,8 +307,10 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const nextStatus = body.status as TaskStatus;
   if (existingTask.status !== nextStatus) {
+    if (nextStatus === "in_progress" || nextStatus === "done") {
+      await updateProjectRequestStatusIfAllowed(supabase, id, "WIP");
+    }
     await logProjectActivity(
       supabase,
       id,

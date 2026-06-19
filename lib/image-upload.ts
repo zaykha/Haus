@@ -1,5 +1,3 @@
-import { appMode } from "@/lib/config";
-
 const DEFAULT_MAX_IMAGE_DIMENSION = 1600;
 
 export async function optimizeImageToWebp(
@@ -33,28 +31,6 @@ export async function optimizeImageToWebp(
   }
 
   return blob;
-}
-
-export async function uploadOptimizedImage(blob: Blob, fileNamePrefix = "upload") {
-  if (appMode !== "supabase") {
-    return blobToDataUrl(blob);
-  }
-
-  const formData = new FormData();
-  formData.append("file", blob, `${fileNamePrefix}-${Date.now()}.webp`);
-
-  const response = await fetch("/api/projects/upload-image", {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(payload?.error ?? "Unable to upload image.");
-  }
-
-  const payload = (await response.json()) as { url: string };
-  return payload.url;
 }
 
 export function blobToDataUrl(blob: Blob) {

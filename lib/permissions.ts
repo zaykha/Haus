@@ -1,5 +1,14 @@
 import { Project, Role, Task, User } from "@/lib/types";
 
+export function getUserClientOrganizationIds(user: Pick<User, "clientOrganizationId" | "clientOrganizationIds">) {
+  const membershipIds = user.clientOrganizationIds ?? [];
+  if (membershipIds.length > 0) {
+    return membershipIds.filter(Boolean);
+  }
+
+  return user.clientOrganizationId ? [user.clientOrganizationId] : [];
+}
+
 export function isManagerRole(role: Role) {
   return role === "communication_manager" || role === "creative_manager";
 }
@@ -85,7 +94,13 @@ export function canViewProject(user: User, project: Project) {
     return project.staffIds.includes(user.id) || project.tasks.some((task) => task.assigneeId === user.id);
   }
 
-  return user.role === "client" && project.clientId === user.id;
+  return (
+    user.role === "client" &&
+    Boolean(
+      project.clientOrganizationId &&
+        getUserClientOrganizationIds(user).includes(project.clientOrganizationId),
+    )
+  );
 }
 
 export function getVisibleTasksForUser(user: User, project: Project) {
@@ -97,7 +112,7 @@ export function getVisibleTasksForUser(user: User, project: Project) {
     return project.tasks.filter((task) => task.assigneeId === user.id);
   }
 
-  return project.tasks.filter((task) => task.clientVisible);
+  return project.tasks.filter((task) => task.clientVisible || task.status === "approved");
 }
 
 export function canChangeWorkflow(role: Role) {

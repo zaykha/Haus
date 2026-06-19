@@ -9,6 +9,7 @@ type CustomDatePickerProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  minDate?: string;
 };
 
 const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -77,7 +78,12 @@ function buildCalendarDays(month: Date) {
   });
 }
 
-export function CustomDatePicker({ label, value, onChange }: CustomDatePickerProps) {
+function toDayTimestamp(value: string) {
+  const parsed = parseIsoDate(value);
+  return parsed ? new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime() : null;
+}
+
+export function CustomDatePicker({ label, value, onChange, minDate }: CustomDatePickerProps) {
   const [open, setOpen] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const parsed = parseIsoDate(value);
@@ -118,9 +124,12 @@ export function CustomDatePicker({ label, value, onChange }: CustomDatePickerPro
   );
   const days = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
   const displayValue = formatDisplayDate(value) || "Select date";
+  const minTimestamp = useMemo(() => {
+    return toDayTimestamp(minDate ?? "");
+  }, [minDate]);
 
   return (
-    <FieldWrap>
+    <FieldWrap $open={open}>
       {open ? <MobileScrim type="button" aria-label="Close date picker" onClick={() => setOpen(false)} /> : null}
       <Trigger
         type="button"
@@ -158,21 +167,32 @@ export function CustomDatePicker({ label, value, onChange }: CustomDatePickerPro
           </Weekdays>
 
           <DaysGrid>
-            {days.map((day) => (
-              <DayButton
-                key={day.iso}
-                type="button"
-                $selected={day.iso === value}
-                $muted={!day.inMonth}
-                $today={day.isToday}
-                onClick={() => {
-                  onChange(day.iso);
-                  setOpen(false);
-                }}
-              >
-                {day.day}
-              </DayButton>
-            ))}
+            {days.map((day) => {
+              const dayTimestamp = toDayTimestamp(day.iso);
+              const disabled =
+                minTimestamp !== null && dayTimestamp !== null && dayTimestamp < minTimestamp;
+
+              return (
+                <DayButton
+                  key={day.iso}
+                  type="button"
+                  $selected={day.iso === value}
+                  $muted={!day.inMonth}
+                  $today={day.isToday}
+                  $disabled={disabled}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (disabled) {
+                      return;
+                    }
+                    onChange(day.iso);
+                    setOpen(false);
+                  }}
+                >
+                  {day.day}
+                </DayButton>
+              );
+            })}
           </DaysGrid>
         </Popover>
       ) : null}
@@ -180,10 +200,11 @@ export function CustomDatePicker({ label, value, onChange }: CustomDatePickerPro
   );
 }
 
-const FieldWrap = styled.div`
+const FieldWrap = styled.div<{ $open?: boolean }>`
   position: relative;
   width: 100%;
   min-width: 0;
+  z-index: ${({ $open }) => ($open ? 320 : "auto")};
 `;
 
 const inputSurface = css`
@@ -269,7 +290,7 @@ const Popover = styled.div`
   position: absolute;
   left: 0;
   top: calc(100% + 8px);
-  z-index: 150;
+  z-index: 340;
   width: min(320px, calc(100vw - 40px));
   padding: 12px;
   border: 1px solid rgba(230, 224, 215, 0.95);
@@ -332,17 +353,30 @@ const DaysGrid = styled.div`
   gap: 6px;
 `;
 
-const DayButton = styled.button<{ $selected?: boolean; $muted?: boolean; $today?: boolean }>`
+const DayButton = styled.button<{
+  $selected?: boolean;
+  $muted?: boolean;
+  $today?: boolean;
+  $disabled?: boolean;
+}>`
   min-height: 36px;
   border: 1px solid
     ${({ $selected, $today }) =>
       $selected ? "#1f4339" : $today ? "rgba(31, 67, 57, 0.45)" : "rgba(230, 224, 215, 0.85)"};
   border-radius: 12px;
   background: ${({ $selected }) => ($selected ? "#1f4339" : "rgba(255, 255, 255, 0.92)")};
-  color: ${({ $selected, $muted }) =>
-    $selected ? "#fff" : $muted ? "var(--color-text-light)" : "var(--color-text)"};
+  color: ${({ $selected, $muted, $disabled }) =>
+    $selected
+      ? "#fff"
+      : $disabled
+        ? "rgba(46, 42, 39, 0.28)"
+        : $muted
+          ? "var(--color-text-light)"
+          : "var(--color-text)"};
   font-size: 0.84rem;
   font-weight: ${({ $selected }) => ($selected ? 700 : 500)};
+  opacity: ${({ $disabled }) => ($disabled ? 0.55 : 1)};
+  cursor: ${({ $disabled }) => ($disabled ? "not-allowed" : "pointer")};
 `;
 
 function ChevronLeft() {

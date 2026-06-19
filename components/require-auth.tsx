@@ -15,7 +15,16 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }, [ready, router, user]);
 
   if (!ready || !user) {
-    return null;
+    return (
+      <main className="auth-screen">
+        <div className="auth-loading-overlay" role="status" aria-live="polite">
+          <div className="auth-loading-card">
+            <div className="auth-loading-spinner" aria-hidden="true" />
+            <p>Loading dashboard...</p>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return <>{children}</>;

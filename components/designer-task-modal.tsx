@@ -1,9 +1,19 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
-import { optimizeImageToWebp, uploadOptimizedImage } from "@/lib/image-upload";
-import { formatLabel } from "@/lib/display";
+import { optimizeImageToWebp } from "@/lib/image-upload";
+import {
+  getCurrentTaskCompletionLabel,
+  getTaskCompletionLabel,
+  isTaskCompletionImage,
+  isTaskCompletionLink,
+  parseTaskCompletionAssets,
+  parseTaskCompletionState,
+  serializeTaskCompletionAssets,
+} from "@/lib/task-completion-assets";
+import { uploadTaskDeliverable } from "@/lib/task-deliverable-upload";
+import { getTaskStatusLabel } from "@/lib/display";
 import { TaskManagerReviewStatus, TaskStatus } from "@/lib/types";
 
 type DesignerTaskModalTask = {
@@ -29,6 +39,13 @@ type Props = {
   }) => Promise<void>;
 };
 
+type PendingCompletionUpload = {
+  file: File;
+  previewUrl: string;
+  isImage: boolean;
+  label: string;
+};
+
 const desktop = "@media (min-width: 768px)";
 
 function formatDueDate(value: string) {
@@ -45,19 +62,110 @@ function getCompletionMessage(reviewStatus?: TaskManagerReviewStatus) {
   }
 
   if (reviewStatus === "internal") {
-    return "This task was completed and kept internal. It is locked until a manager reopens it.";
+    return "This task was internally submitted and is locked until a manager reopens it.";
   }
 
-  return "This task is complete. A manager must move it back to In Progress before you can update it again.";
+  return "This task was submitted for internal review. A manager must move it back to In Progress before you can update it again.";
 }
 
 export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
   const [status, setStatus] = useState<TaskStatus>("todo");
   const [statusOpen, setStatusOpen] = useState(false);
-  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
-  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [versionOpen, setVersionOpen] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState("current");
+  const [pendingUploads, setPendingUploads] = useState<PendingCompletionUpload[]>([]);
+  const [completionLinks, setCompletionLinks] = useState<string[]>([]);
+  const [linkValue, setLinkValue] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const completionState = useMemo(
+    () => parseTaskCompletionState(task?.completionScreenshotUrl ?? null),
+    [task?.completionScreenshotUrl],
+  );
+  const currentVersionAssets = useMemo(
+    () => parseTaskCompletionAssets(task?.completionScreenshotUrl ?? null),
+    [task?.completionScreenshotUrl],
+  );
+  const hasVersionHistory = completionState.history.length > 0;
+  const isLocked = task?.status === "done" || task?.status === "review" || task?.status === "approved";
+  const editableCurrentAssets = useMemo(
+    () => (!isLocked && hasVersionHistory ? [] : currentVersionAssets),
+    [currentVersionAssets, hasVersionHistory, isLocked],
+  );
+  const canReturnToTodo = !hasVersionHistory && currentVersionAssets.length === 0;
+  const availableStatusOptions = useMemo(
+    () =>
+      (canReturnToTodo ? ["todo", "in_progress", "done"] : ["in_progress", "done"]) as TaskStatus[],
+    [canReturnToTodo],
+  );
+  const versionOptions = useMemo(() => {
+    const historyOptions = completionState.history
+      .slice()
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((snapshot) => ({
+        id: snapshot.id,
+        label: snapshot.label,
+        assets: snapshot.assets,
+        isCurrent: false,
+      }));
+
+    if (isLocked) {
+      if (historyOptions.length === 0 && currentVersionAssets.length > 0) {
+        return [
+          {
+            id: "current",
+            label: getCurrentTaskCompletionLabel(completionState),
+            assets: currentVersionAssets,
+            isCurrent: false,
+          },
+        ];
+      }
+
+      return historyOptions;
+    }
+
+    return [
+      {
+        id: "current",
+        label: `${getCurrentTaskCompletionLabel(completionState)} (Current)`,
+        assets: editableCurrentAssets,
+        isCurrent: true,
+      },
+      ...historyOptions,
+    ];
+  }, [completionState, currentVersionAssets, editableCurrentAssets, isLocked]);
+  const allAssets = useMemo(
+    () => [
+      ...editableCurrentAssets.map((value) => ({
+        key: `existing-${value}`,
+        value,
+        label: getTaskCompletionLabel(value),
+        isImage: isTaskCompletionImage(value),
+        isLink: isTaskCompletionLink(value),
+        removable: false,
+      })),
+      ...pendingUploads.map((upload) => ({
+        key: `pending-${upload.previewUrl}`,
+        value: upload.previewUrl,
+        label: upload.label,
+        isImage: upload.isImage,
+        isLink: false,
+        removable: true,
+      })),
+      ...completionLinks.map((value) => ({
+        key: `link-${value}`,
+        value,
+        label: getTaskCompletionLabel(value),
+        isImage: false,
+        isLink: true,
+        removable: true,
+      })),
+    ],
+    [completionLinks, editableCurrentAssets, pendingUploads],
+  );
+  const selectedVersion = versionOptions.find((option) => option.id === selectedVersionId) ?? versionOptions[0] ?? null;
+  const displayedAssets = selectedVersion?.isCurrent ? allAssets : (selectedVersion?.assets ?? []);
+  const isViewingCurrentVersion = selectedVersion?.isCurrent ?? false;
 
   useEffect(() => {
     if (!task) {
@@ -66,33 +174,77 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
 
     setStatus(task.status);
     setStatusOpen(false);
-    setScreenshotFile(null);
-    setScreenshotPreview(task.completionScreenshotUrl ?? null);
+    setVersionOpen(false);
+    setSelectedVersionId("current");
+    setPendingUploads([]);
+    setCompletionLinks([]);
+    setLinkValue("");
     setError("");
   }, [task]);
 
   useEffect(() => {
     return () => {
-      if (screenshotPreview?.startsWith("blob:")) {
-        URL.revokeObjectURL(screenshotPreview);
-      }
+      pendingUploads.forEach((upload) => {
+        if (upload.previewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(upload.previewUrl);
+        }
+      });
     };
-  }, [screenshotPreview]);
+  }, [pendingUploads]);
 
   if (!open || !task) {
     return null;
   }
 
-  const isLocked = task.status === "done" || task.status === "review" || task.status === "approved";
-
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    if (screenshotPreview?.startsWith("blob:")) {
-      URL.revokeObjectURL(screenshotPreview);
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) {
+      return;
     }
-    setScreenshotFile(file);
-    setScreenshotPreview(file ? URL.createObjectURL(file) : task.completionScreenshotUrl ?? null);
+
+    setPendingUploads((current) => [
+      ...current,
+      ...files.map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+        isImage: file.type.startsWith("image/"),
+        label: file.name,
+      })),
+    ]);
     setError("");
+    event.target.value = "";
+  };
+
+  const handleAddLink = () => {
+    const nextLink = linkValue.trim();
+    if (!nextLink) {
+      return;
+    }
+
+    if (!isTaskCompletionLink(nextLink)) {
+      setError("Enter a valid https:// link.");
+      return;
+    }
+
+    setCompletionLinks((current) => [...current, nextLink]);
+    setLinkValue("");
+    setError("");
+  };
+
+  const handleRemoveAsset = (asset: string) => {
+    const previewIndex = pendingUploads.findIndex((upload) => upload.previewUrl === asset);
+    if (previewIndex >= 0) {
+      const nextPreview = pendingUploads[previewIndex]?.previewUrl;
+      if (nextPreview?.startsWith("blob:")) {
+        URL.revokeObjectURL(nextPreview);
+      }
+      setPendingUploads((current) => current.filter((_, index) => index !== previewIndex));
+      return;
+    }
+
+    if (completionLinks.includes(asset)) {
+      setCompletionLinks((current) => current.filter((value) => value !== asset));
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -102,8 +254,11 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
       return;
     }
 
-    if (status === "done" && !screenshotFile && !task.completionScreenshotUrl) {
-      setError("Upload a completion screenshot before marking this task complete.");
+    const nextStatus =
+      allAssets.length > 0 && (status === "todo" || status === "in_progress") ? "done" : status;
+
+    if (nextStatus === "done" && allAssets.length === 0) {
+      setError("Upload completion screenshots, files, or links before submitting this task for internal review.");
       return;
     }
 
@@ -111,20 +266,36 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
     setError("");
 
     try {
-      let completionScreenshotUrl = task.completionScreenshotUrl ?? null;
-      if (screenshotFile) {
-        const optimized = await optimizeImageToWebp(screenshotFile, {
-          maxDimension: 1600,
-          quality: 0.82,
-        });
-        completionScreenshotUrl = await uploadOptimizedImage(optimized, "task-completion");
+      const uploadedUrls: string[] = [];
+      for (const { file } of pendingUploads) {
+        if (file.type.startsWith("image/")) {
+          const optimized = await optimizeImageToWebp(file, {
+            maxDimension: 1600,
+            quality: 0.82,
+          });
+          uploadedUrls.push(
+            await uploadTaskDeliverable(
+              new File([optimized], `${file.name.replace(/\.[^.]+$/, "") || "task-completion"}.webp`, {
+                type: "image/webp",
+              }),
+            ),
+          );
+        } else {
+          uploadedUrls.push(await uploadTaskDeliverable(file));
+        }
       }
+
+      const completionScreenshotUrl = serializeTaskCompletionAssets([
+        ...editableCurrentAssets,
+        ...uploadedUrls,
+        ...completionLinks,
+      ]);
 
       await onSubmit({
         taskId: task.id,
         projectId: task.projectId,
-        status,
-        completionScreenshotUrl: status === "done" ? completionScreenshotUrl : null,
+        status: nextStatus,
+        completionScreenshotUrl,
       });
       onClose();
     } catch (nextError) {
@@ -152,7 +323,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
               <ModalDescription>
                 {isLocked
                   ? getCompletionMessage(task.managerReviewStatus)
-                  : "Move your task forward and attach a completion screenshot when it is done."}
+                  : "Move your task forward and attach completion screenshots, files, or links when it reaches internal submit."}
               </ModalDescription>
             </div>
             <ModalClose type="button" onClick={onClose} aria-label="Close">
@@ -183,7 +354,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
               <TaskModalField $wide>
                 {isLocked ? (
                   <TaskFloatingField className="auth-field is-filled">
-                    <TaskTextInput value={formatLabel(task.status)} readOnly placeholder=" " />
+                    <TaskTextInput value={getTaskStatusLabel(task.status)} readOnly placeholder=" " />
                     <span>Status</span>
                   </TaskFloatingField>
                 ) : (
@@ -194,7 +365,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
                       aria-expanded={statusOpen}
                       onClick={() => setStatusOpen((current) => !current)}
                     >
-                      <TaskSelectValue>{formatLabel(status)}</TaskSelectValue>
+                      <TaskSelectValue>{getTaskStatusLabel(status)}</TaskSelectValue>
                       <TaskSelectChevron $open={statusOpen}>
                         <IconChevronDown />
                       </TaskSelectChevron>
@@ -202,7 +373,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
                     <TaskFloatingLabel>Status</TaskFloatingLabel>
                     {statusOpen ? (
                       <TaskSelectMenu role="listbox" aria-label="Task status">
-                        {(["todo", "in_progress", "done"] as TaskStatus[]).map((option) => (
+                        {availableStatusOptions.map((option) => (
                           <TaskSelectOption
                             key={option}
                             type="button"
@@ -215,7 +386,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
                               setError("");
                             }}
                           >
-                            {formatLabel(option)}
+                            {getTaskStatusLabel(option)}
                           </TaskSelectOption>
                         ))}
                       </TaskSelectMenu>
@@ -223,64 +394,158 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
                   </TaskFloatingSelect>
                 )}
               </TaskModalField>
+              {versionOptions.length ? (
+                <TaskModalField $wide>
+                  <TaskFloatingSelect $filled $open={versionOpen}>
+                    <TaskSelectTrigger
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={versionOpen}
+                      onClick={() => setVersionOpen((current) => !current)}
+                    >
+                      <TaskSelectValue>{selectedVersion?.label ?? "Select version"}</TaskSelectValue>
+                      <TaskSelectChevron $open={versionOpen}>
+                        <IconChevronDown />
+                      </TaskSelectChevron>
+                    </TaskSelectTrigger>
+                    <TaskFloatingLabel>Version</TaskFloatingLabel>
+                    {versionOpen ? (
+                      <TaskSelectMenu role="listbox" aria-label="Version">
+                        {versionOptions.map((option) => (
+                          <TaskSelectOption
+                            key={option.id}
+                            type="button"
+                            role="option"
+                            aria-selected={selectedVersionId === option.id}
+                            $active={selectedVersionId === option.id}
+                            onClick={() => {
+                              setSelectedVersionId(option.id);
+                              setVersionOpen(false);
+                            }}
+                          >
+                            {option.label}
+                          </TaskSelectOption>
+                        ))}
+                      </TaskSelectMenu>
+                    ) : null}
+                  </TaskFloatingSelect>
+                </TaskModalField>
+              ) : null}
             </TaskModalGrid>
 
-            {/* {screenshotPreview ? (
-              <ScreenshotPreviewWrap>
-                <ScreenshotPreview src={screenshotPreview} alt="Task completion screenshot preview" />
-              </ScreenshotPreviewWrap>
+            {(isLocked || !isViewingCurrentVersion) && displayedAssets.length > 0 ? (
+              <SubmittedAssetsPanel>
+                <UploadHeader>
+                  <UploadLabel>{isLocked ? "Submitted assets" : "Version assets"}</UploadLabel>
+                  <UploadCount>{displayedAssets.length} item{displayedAssets.length === 1 ? "" : "s"}</UploadCount>
+                </UploadHeader>
+                <SubmittedAssetsScroller>
+                  {displayedAssets.map((asset) => (
+                    <SubmittedAssetCard key={typeof asset === "string" ? asset : asset.key}>
+                      {typeof asset === "string" && isTaskCompletionImage(asset) ? (
+                        <UploadAssetPreview src={asset} alt={getTaskCompletionLabel(asset)} />
+                      ) : (
+                        <UploadAssetFile>
+                          {typeof asset === "string" && isTaskCompletionLink(asset) ? <IconLink /> : <IconFile />}
+                        </UploadAssetFile>
+                      )}
+                      <UploadAssetMeta>
+                        <UploadAssetName>
+                          {typeof asset === "string" ? getTaskCompletionLabel(asset) : asset.label}
+                        </UploadAssetName>
+                        <UploadAssetType>
+                          {typeof asset === "string" && isTaskCompletionImage(asset)
+                            ? "Image"
+                            : typeof asset === "string" && isTaskCompletionLink(asset)
+                              ? "Link"
+                              : "File"}
+                        </UploadAssetType>
+                      </UploadAssetMeta>
+                    </SubmittedAssetCard>
+                  ))}
+                </SubmittedAssetsScroller>
+              </SubmittedAssetsPanel>
             ) : null}
 
-            {!isLocked && status === "done" ? (
-              <UploadField>
-                <MetaLabel>Completion screenshot</MetaLabel>
-                <UploadHint>Required when marking the task complete.</UploadHint>
-                <UploadButton as="label">
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/jpg"
-                    onChange={handleFileChange}
-                  />
-                  <IconUpload />
-                  <span>{screenshotFile ? "Replace screenshot" : "Upload screenshot"}</span>
-                </UploadButton>
-              </UploadField>
-            ) : null} */}
-          {!isLocked && status === "done" ? (<UploadCompactArea>
-            <UploadLabel>Completion screenshot</UploadLabel>
-
-            {screenshotPreview ? (
-              <ImageReplaceLabel>
-                <ScreenshotPreview src={screenshotPreview} alt="Task completion preview" />
-                {!isLocked ? <ReplaceImageOverlay>Tap to replace image</ReplaceImageOverlay> : null}
-
-                {!isLocked ? (
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    hidden
-                  />
-                ) : null}
-              </ImageReplaceLabel>
-            ) : (
-              <>
-                <UploadEmptyState>No screenshot uploaded yet.</UploadEmptyState>
-
-                {!isLocked ? (
-                  <UploadButtonLabel>
-                    Choose image
+            {!isLocked && isViewingCurrentVersion ? (
+              <UploadCompactArea>
+                <UploadHeader>
+                  <UploadLabel>Completion assets</UploadLabel>
+                  <UploadCount>{allAssets.length} item{allAssets.length === 1 ? "" : "s"}</UploadCount>
+                </UploadHeader>
+                <UploadEmptyState>
+                  Add screenshots, files, or links for {getCurrentTaskCompletionLabel(completionState)}. Previous versions are read-only.
+                </UploadEmptyState>
+                <UploadTileGrid>
+                  {allAssets.map((asset) => (
+                    <UploadAssetTile key={asset.key}>
+                      {asset.isImage ? (
+                        <UploadAssetPreview src={asset.value} alt={asset.label} />
+                      ) : (
+                        <UploadAssetFile>
+                          {asset.isLink ? <IconLink /> : <IconFile />}
+                        </UploadAssetFile>
+                      )}
+                      <UploadAssetMeta>
+                        <UploadAssetName>{asset.label}</UploadAssetName>
+                        <UploadAssetType>
+                          {asset.isImage
+                            ? "Image"
+                            : asset.isLink
+                              ? "Link"
+                              : "File"}
+                        </UploadAssetType>
+                      </UploadAssetMeta>
+                      {asset.removable ? (
+                        <UploadAssetRemove
+                          type="button"
+                          onClick={() => handleRemoveAsset(asset.value)}
+                          aria-label="Remove asset"
+                        >
+                          <IconClose />
+                        </UploadAssetRemove>
+                      ) : null}
+                    </UploadAssetTile>
+                  ))}
+                  <UploadDropTile as="label">
+                    <UploadDropInner>
+                      <IconUpload />
+                      <span>Upload files</span>
+                    </UploadDropInner>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.txt"
+                      multiple
                       onChange={handleFileChange}
                       hidden
                     />
-                  </UploadButtonLabel>
-                ) : null}
-              </>
-            )}
-          </UploadCompactArea>): null} 
+                  </UploadDropTile>
+                </UploadTileGrid>
+
+                <LinkInputRow>
+                  <TaskFloatingField className={linkValue ? "auth-field is-filled" : "auth-field"}>
+                    <TaskTextInput
+                      value={linkValue}
+                      onChange={(event) => {
+                        setLinkValue(event.target.value);
+                        setError("");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleAddLink();
+                        }
+                      }}
+                      placeholder=" "
+                    />
+                    <span>Attachment link</span>
+                  </TaskFloatingField>
+                  <LinkAddButton type="button" onClick={handleAddLink}>
+                    Add link
+                  </LinkAddButton>
+                </LinkInputRow>
+              </UploadCompactArea>
+            ) : null}
             {error ? <InlineError>{error}</InlineError> : null}
 
             <button className="primary-button" type="submit" disabled={isSubmitting}>
@@ -492,58 +757,6 @@ const TaskSelectOption = styled.button<{ $active?: boolean }>`
   text-align: left;
 `;
 
-const UploadField = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-`;
-
-const MetaLabel = styled.span`
-  color: var(--color-text-muted);
-  font-size: 11px;
-  line-height: 1.2;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-`;
-
-const UploadHint = styled.p`
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: 0.82rem;
-  line-height: 1.45;
-`;
-
-const UploadButton = styled.label`
-  min-height: 48px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 0 16px;
-  border: 1px dashed rgba(33, 79, 57, 0.28);
-  border-radius: 16px;
-  background: rgba(244, 248, 246, 0.92);
-  color: #214f39;
-  font-weight: 600;
-  cursor: pointer;
-
-  input {
-    display: none;
-  }
-
-  svg {
-    width: 18px;
-    height: 18px;
-  }
-`;
-
-const ScreenshotPreviewWrap = styled.div`
-  ${cardSurface}
-  padding: 10px;
-  border-radius: 18px;
-`;
-
 const InlineError = styled.p`
   margin: 0;
   color: var(--color-danger);
@@ -614,36 +827,6 @@ const TaskSummaryValue = styled.strong`
   overflow-wrap: anywhere;
 `;
 
-const CompactFieldGroup = styled.label`
-  display: grid;
-  gap: 8px;
-`;
-
-const CompactFieldLabel = styled.span`
-  color: #7f7468;
-  font-size: 0.74rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-`;
-
-const StatusSelect = styled.select`
-  width: 100%;
-  min-height: 46px;
-  border-radius: 14px;
-  border: 1.5px solid rgba(47, 93, 80, 0.28);
-  background: #fff;
-  color: #1f1f1f;
-  padding: 0 14px;
-  font-size: 0.95rem;
-  font-weight: 700;
-
-  &:disabled {
-    opacity: 0.65;
-    cursor: not-allowed;
-  }
-`;
-
 const UploadCompactArea = styled.div`
   display: grid;
   gap: 10px;
@@ -651,6 +834,23 @@ const UploadCompactArea = styled.div`
   border: 1px dashed rgba(47, 93, 80, 0.22);
   background: rgba(251, 250, 247, 0.8);
   padding: 12px;
+`;
+
+const SubmittedAssetsPanel = styled.div`
+  display: grid;
+  gap: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(251, 250, 247, 0.88);
+  padding: 12px;
+`;
+
+const SubmittedAssetsScroller = styled.div`
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
 `;
 
 const UploadLabel = styled.span`
@@ -661,18 +861,6 @@ const UploadLabel = styled.span`
   text-transform: uppercase;
 `;
 
-const ScreenshotPreview = styled.img`
-  width: 100%;
-  max-height: 170px;
-  object-fit: cover;
-  border-radius: 14px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-
-  @media (min-width: 768px) {
-    max-height: 220px;
-  }
-`;
-
 const UploadEmptyState = styled.p`
   margin: 0;
   color: #8b8277;
@@ -680,54 +868,160 @@ const UploadEmptyState = styled.p`
   line-height: 1.45;
 `;
 
-const UploadButtonLabel = styled.label`
-  min-height: 42px;
-  border-radius: 14px;
-  background: #214f39;
-  color: #fff;
+const UploadHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+`;
+
+const UploadCount = styled.span`
+  color: #8b8277;
+  font-size: 0.8rem;
+  font-weight: 600;
+`;
+
+const UploadTileGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  ${desktop} {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+`;
+
+const UploadAssetTile = styled.div`
+  position: relative;
+  display: grid;
+  gap: 8px;
+  min-height: 124px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(255, 255, 255, 0.94);
+`;
+
+const SubmittedAssetCard = styled.div`
+  flex: 0 0 168px;
+  display: grid;
+  gap: 8px;
+  min-height: 124px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(255, 255, 255, 0.94);
+`;
+
+const UploadDropTile = styled.label`
+  min-height: 124px;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px dashed rgba(47, 93, 80, 0.28);
+  background: rgba(244, 248, 246, 0.92);
+  cursor: pointer;
+`;
+
+const UploadDropInner = styled.div`
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: #214f39;
+  font-size: 0.86rem;
+  font-weight: 800;
+  text-align: center;
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+`;
+
+const UploadAssetPreview = styled.img`
+  width: 100%;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+`;
+
+const UploadAssetFile = styled.div`
+  width: 100%;
+  height: 68px;
+  border-radius: 12px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(251, 248, 243, 0.96);
+  color: #8d6520;
+  display: grid;
+  place-items: center;
+
+  svg {
+    width: 22px;
+    height: 22px;
+  }
+`;
+
+const UploadAssetMeta = styled.div`
+  display: grid;
+  gap: 2px;
+`;
+
+const UploadAssetName = styled.span`
+  color: #2e2a27;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+`;
+
+const UploadAssetType = styled.span`
+  color: #8b8277;
+  font-size: 0.74rem;
+  line-height: 1.3;
+`;
+
+const UploadAssetRemove = styled.button`
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 16px;
-  font-size: 0.9rem;
-  font-weight: 800;
-  cursor: pointer;
-`;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #5f564b;
 
-const ImageReplaceLabel = styled.label`
-  position: relative;
-  display: block;
-  cursor: pointer;
-  border-radius: 14px;
-  overflow: hidden;
-
-  &:hover span {
-    opacity: 1;
+  svg {
+    width: 12px;
+    height: 12px;
   }
 `;
 
-const ReplaceImageOverlay = styled.span`
-  position: absolute;
-  inset: 0;
+const LinkInputRow = styled.div`
   display: grid;
-  place-items: center;
-  background: rgba(31, 31, 31, 0.42);
-  color: #fff;
-  font-size: 0.86rem;
-  font-weight: 800;
-  opacity: 0;
-  transition: opacity 160ms ease;
+  gap: 10px;
 
-  @media (max-width: 767px) {
-    opacity: 1;
+  ${desktop} {
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
-    padding-bottom: 12px;
-    background: linear-gradient(
-      180deg,
-      rgba(31, 31, 31, 0) 35%,
-      rgba(31, 31, 31, 0.58) 100%
-    );
   }
+`;
+
+const LinkAddButton = styled.button`
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #214f39;
+  font-size: 0.92rem;
+  font-weight: 800;
+  white-space: nowrap;
 `;
 
 function IconChevronDown() {
@@ -752,6 +1046,24 @@ function IconUpload() {
       <path d="M12 16V5" />
       <path d="m7.5 9.5 4.5-4.5 4.5 4.5" />
       <path d="M4.5 18.5h15" />
+    </svg>
+  );
+}
+
+function IconFile() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 3v5h5" />
+    </svg>
+  );
+}
+
+function IconLink() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L10.41 5.5" />
+      <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 1 0 7.07 7.07l2.42-2.4" />
     </svg>
   );
 }

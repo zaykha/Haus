@@ -9,7 +9,7 @@ import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { FilterModal } from "@/components/filter-modal";
 import { canCreateTask, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
-import { formatLabel, formatRole } from "@/lib/display";
+import { formatLabel, formatRole, getTaskStatusLabel } from "@/lib/display";
 import { Project, TaskManagerReviewStatus, TaskPriority, TaskStatus } from "@/lib/types";
 
 type FilterKey =
@@ -64,9 +64,9 @@ const filterOptions: { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "todo", label: "To Do" },
   { key: "in_progress", label: "In Progress" },
-  { key: "review", label: "Review" },
-  { key: "approved", label: "Approved" },
-  { key: "completed", label: "Completed" },
+  { key: "completed", label: "Internal Submit" },
+  { key: "review", label: "Submit to Client" },
+  { key: "approved", label: "Complete" },
 ] as const;
 
 function formatDueDate(value: string) {
@@ -142,11 +142,11 @@ function getStatusTone(status: DerivedTaskStatus) {
     case "in_progress":
       return { bg: "#e6efff", fg: "#4770d8", label: "In Progress" };
     case "review":
-      return { bg: "#fff1da", fg: "#ca8a22", label: "Review" };
+      return { bg: "#fff1da", fg: "#ca8a22", label: "Submit to Client" };
     case "approved":
-      return { bg: "#e5f4e8", fg: "#5ca16d", label: "Approved" };
+      return { bg: "#e5f4e8", fg: "#5ca16d", label: "Complete" };
     case "completed":
-      return { bg: "#efe7ff", fg: "#7f61d7", label: "Completed" };
+      return { bg: "#efe7ff", fg: "#7f61d7", label: "Internal Submit" };
     default:
       return { bg: "#f4f1ed", fg: "#8d857b", label: "To Do" };
   }
@@ -205,6 +205,7 @@ export function TasksScreen() {
   const roleLabel = user ? formatRole(user.role).toUpperCase() : "";
   const canManage = user ? canCreateTask(user.role) : false;
   const isDesigner = user?.role === "designer";
+  const isClient = user?.role === "client";
 
 
   const allTasks = useMemo<TaskRow[]>(() => {
@@ -271,9 +272,7 @@ export function TasksScreen() {
   const overdueCount = allTasks.filter(
     (task) => task.status !== "approved" && startOfDay(new Date(task.dueDate)) < today,
   ).length;
-  const completedCount = allTasks.filter(
-    (task) => task.status === "completed" || task.status === "approved",
-  ).length;
+  const completedCount = allTasks.filter((task) => task.status === "approved").length;
 
   const focusTasks = filteredTasks.filter((task) => task.status !== "approved").slice(0, 3);
   const upcomingTasks = [...filteredTasks].filter((task) => task.status !== "approved").slice(0, 3);
@@ -484,7 +483,7 @@ export function TasksScreen() {
                       aria-expanded={taskSelect === "status"}
                       onClick={() => setTaskSelect((current) => (current === "status" ? null : "status"))}
                     >
-                      <TaskSelectValue>{formatLabel(newTaskStatus)}</TaskSelectValue>
+                      <TaskSelectValue>{getTaskStatusLabel(newTaskStatus)}</TaskSelectValue>
                       <TaskSelectChevron $open={taskSelect === "status"}>
                         <IconChevronDown />
                       </TaskSelectChevron>
@@ -504,7 +503,7 @@ export function TasksScreen() {
                               setTaskSelect(null);
                             }}
                           >
-                            {formatLabel(option)}
+                            {getTaskStatusLabel(option)}
                           </TaskSelectOption>
                         ))}
                       </TaskSelectMenu>
@@ -760,7 +759,14 @@ export function TasksScreen() {
                     {rowContent}
                   </DesktopTaskButtonRow>
                 ) : (
-                  <DesktopTaskLinkRow key={task.id} href={`/projects/${task.projectId}`}>
+                  <DesktopTaskLinkRow
+                    key={task.id}
+                    href={
+                      isClient
+                        ? `/projects/${task.projectId}`
+                        : `/projects/${task.projectId}/tasks/${task.id}`
+                    }
+                  >
                     {rowContent}
                   </DesktopTaskLinkRow>
                 );
@@ -845,7 +851,14 @@ export function TasksScreen() {
                   {taskCardContent}
                 </MobileTaskButtonCard>
               ) : (
-                <MobileTaskLinkCard key={task.id} href={`/projects/${task.projectId}`}>
+                <MobileTaskLinkCard
+                  key={task.id}
+                  href={
+                    isClient
+                      ? `/projects/${task.projectId}`
+                      : `/projects/${task.projectId}/tasks/${task.id}`
+                  }
+                >
                   {taskCardContent}
                 </MobileTaskLinkCard>
               );
@@ -978,7 +991,7 @@ const Shell = styled.main`
 
   ${desktop} {
     display: flex;
-    align-items: stretch;
+    align-items: flex-start;
     padding: 8px;
     background: rgba(255, 255, 255, 0.58);
   }

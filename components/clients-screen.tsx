@@ -2,52 +2,21 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
-import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { FilterModal } from "@/components/filter-modal";
-import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
+import {
+  buildClientOrganizationRows,
+  getClientOrganizationMark,
+  getClientOrganizationStatusLabel,
+} from "@/lib/client-organizations";
 import { formatRole } from "@/lib/display";
-import { canCreateClient, canDeleteClient } from "@/lib/permissions";
+import { canCreateClient, getUserClientOrganizationIds } from "@/lib/permissions";
 
 type ClientFilter = "all" | "active" | "feedback" | "approvals" | "inactive";
 const PAGE_SIZE = 6;
-const POPUP_TASKS_PAGE_SIZE = 5;
-
-type ClientRow = {
-  id: string;
-  name: string;
-  email: string;
-  company: string;
-  projectCount: number;
-  lastActivityDate: string | null;
-  lastActivityLabel: string;
-  pendingCount: number;
-  pendingProjects: Array<{
-    id: string;
-    name: string;
-    status: "review" | "revision";
-    dueDate: string;
-  }>;
-  openTasks: Array<{
-    id: string;
-    title: string;
-    status: string;
-    dueDate: string;
-    priority: string;
-    projectId: string;
-    projectName: string;
-    assigneeName: string;
-  }>;
-  latestFeedback: Array<{
-    id: string;
-    body: string;
-    action: "approve" | "request_revision" | "comment";
-    createdAt: string;
-  }>;
-};
-
 const desktop = "@media (min-width: 768px)";
 
 const filterOptions: Array<{ key: ClientFilter; label: string }> = [
@@ -81,150 +50,86 @@ function formatShortDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function getProjectMark(name: string) {
-  const words = name.split(" ");
+function getClusterMark(label: string) {
+  const words = label
+    .split(/[\s&()/-]+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return "?";
+  }
+
   if (words.length === 1) {
-    return words[0].slice(0, 2).toUpperCase();
+    return words[0].slice(0, 1).toUpperCase();
   }
 
   return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
 }
 
-function formatTaskStatus(status: string) {
-  switch (status) {
-    case "in_progress":
-      return "In progress";
-    case "review":
-      return "Review";
-    case "approved":
-      return "Approved";
-    case "done":
-      return "Completed";
-    default:
-      return "To do";
-  }
-}
+function getClusterItems(labels: string[]) {
+  const visibleLabels = labels.slice(0, 4);
+  const overflowCount = Math.max(0, labels.length - visibleLabels.length);
 
-function formatPriority(priority: string) {
-  return priority.charAt(0).toUpperCase() + priority.slice(1);
+  return {
+    visibleLabels,
+    overflowCount,
+  };
 }
 
 export function ClientsScreen() {
-  const { state, user, deleteClient } = useAppState();
+  const router = useRouter();
+  const { state, user, createClientOrganization } = useAppState();
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ClientFilter>("all");
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [selectedClient, setSelectedClient] = useState<ClientRow | null>(null);
-  const [selectedTasksPage, setSelectedTasksPage] = useState(1);
-  const [showDeleteClientModal, setShowDeleteClientModal] = useState(false);
-  const [isDeletingClient, setIsDeletingClient] = useState(false);
+  const [showCreateOrganizationModal, setShowCreateOrganizationModal] = useState(false);
+  const [organizationName, setOrganizationName] = useState("");
+  const [organizationType, setOrganizationType] = useState<"internal" | "external">("external");
+  const [organizationStatus, setOrganizationStatus] = useState<"active" | "inactive">("active");
+  const [organizationPhone, setOrganizationPhone] = useState("");
+  const [organizationAddress, setOrganizationAddress] = useState("");
+  const [isCreatingOrganization, setIsCreatingOrganization] = useState(false);
+  const [openCreateSelect, setOpenCreateSelect] = useState<"type" | "status" | null>(null);
+
+  useEffect(() => {
+    if (isCreatingOrganization) {
+      setOpenCreateSelect(null);
+    }
+  }, [isCreatingOrganization]);
 
   const viewerRole = user?.role ?? "client";
   const roleLabel = formatRole(viewerRole).toUpperCase();
   const canManage = canCreateClient(viewerRole);
-  const canDelete = canDeleteClient(viewerRole);
-
-  const clients = useMemo<ClientRow[]>(() => {
-    const existingClients = state.users.filter((member) => member.role === "client");
-    const knownEmails = new Set(existingClients.map((member) => member.email.toLowerCase()));
-    const acceptedInviteClients = state.invitations
-      .filter(
-        (invitation) =>
-          invitation.role === "client" &&
-          invitation.status === "accepted" &&
-          !knownEmails.has(invitation.email.toLowerCase()),
-      )
-      .map((invitation) => ({
-        id: `accepted-invite:${invitation.id}`,
-        name: invitation.name,
-        email: invitation.email,
-        role: invitation.role,
-        company: "Client account",
-      }));
-
-    return [...existingClients, ...acceptedInviteClients]
-      .map((client) => {
-        const clientProjects = state.projects.filter((project) => project.clientId === client.id);
-        const staffById = new Map(state.users.map((member) => [member.id, member.name]));
-
-        const latestProject = [...clientProjects].sort(
-          (a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime(),
-        )[0];
-
-        const latestFeedback = clientProjects
-          .flatMap((project) =>
-            project.feedback.map((feedback) => ({
-              id: feedback.id,
-              body: feedback.body,
-              action: feedback.action,
-              createdAt: feedback.createdAt,
-            })),
-          )
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-        const pendingProjects = clientProjects
-          .filter(
-            (project): project is typeof project & { status: "review" | "revision" } =>
-              project.status === "review" || project.status === "revision",
-          )
-          .map((project) => ({
-            id: project.id,
-            name: project.name,
-            status: project.status,
-            dueDate: project.dueDate,
-          }));
-
-        const openTasks = clientProjects
-          .flatMap((project) =>
-            project.tasks
-              .filter((task) => task.clientVisible && task.status === "review")
-              .map((task) => ({
-                id: task.id,
-                title: task.title,
-                status: task.status,
-                dueDate: task.dueDate,
-                priority: task.priority,
-                projectId: project.id,
-                projectName: project.name,
-                assigneeName: staffById.get(task.assigneeId) ?? "Unassigned",
-              })),
-          )
-          .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-
-        return {
-          id: client.id,
-          name: client.name,
-          email: client.email,
-          company: client.company ?? "Client account",
-          projectCount: clientProjects.length,
-          lastActivityDate: latestFeedback[0]?.createdAt ?? latestProject?.dueDate ?? null,
-          lastActivityLabel:
-            latestFeedback[0]?.action === "approve"
-              ? "Logo concepts approved"
-              : latestFeedback[0]?.action === "request_revision"
-                ? "Feedback requested"
-              : latestProject
-                  ? `${latestProject.name} updated`
-                  : "No recent activity",
-          pendingCount: pendingProjects.length,
-          pendingProjects,
-          openTasks,
-          latestFeedback,
-        };
-      });
-  }, [state.invitations, state.projects, state.users]);
+  const clients = useMemo(() => buildClientOrganizationRows(state), [state]);
+  const viewerClientOrganizationIds = useMemo(
+    () => (user ? getUserClientOrganizationIds(user) : []),
+    [user],
+  );
+  const visibleClients = useMemo(
+    () =>
+      viewerRole === "client"
+        ? clients.filter((client) => Boolean(client.organizationId && viewerClientOrganizationIds.includes(client.organizationId)))
+        : clients,
+    [clients, viewerClientOrganizationIds, viewerRole],
+  );
 
   const filteredClients = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return clients.filter((client) => {
+    return visibleClients.filter((client) => {
       const matchesSearch =
         !q ||
         client.name.toLowerCase().includes(q) ||
         client.company.toLowerCase().includes(q) ||
-        client.email.toLowerCase().includes(q);
+        client.members.some(
+          (member) =>
+            member.name.toLowerCase().includes(q) ||
+            member.email.toLowerCase().includes(q) ||
+            (member.company ?? "").toLowerCase().includes(q),
+        ) ||
+        client.recentProjects.some((project) => project.name.toLowerCase().includes(q));
 
       const matchesFilter =
         filter === "all"
@@ -232,29 +137,23 @@ export function ClientsScreen() {
           : filter === "feedback"
             ? client.pendingProjects.some((project) => project.status === "review")
           : filter === "approvals"
-              ? client.pendingProjects.some((project) => project.status === "revision")
-              : filter === "active"
-                ? client.projectCount > 0 && client.pendingCount === 0
-                : client.projectCount === 0;
+            ? client.pendingProjects.some((project) => project.status === "revision")
+          : filter === "active"
+            ? client.status === "active"
+            : client.isUnassigned || client.status === "inactive";
 
       return matchesSearch && matchesFilter;
     });
-  }, [clients, filter, search]);
+  }, [filter, search, visibleClients]);
 
-  const totalCount = clients.length;
-  const activeCount = clients.filter((client) => client.projectCount > 0 && client.pendingCount === 0).length;
-  const pendingFeedbackCount = clients.filter((client) =>
+  const totalCount = visibleClients.length;
+  const activeCount = visibleClients.filter((client) => client.status === "active").length;
+  const pendingFeedbackCount = visibleClients.filter((client) =>
     client.pendingProjects.some((project) => project.status === "review"),
   ).length;
-  const approvalsCount = clients.filter((client) =>
+  const approvalsCount = visibleClients.filter((client) =>
     client.pendingProjects.some((project) => project.status === "revision"),
   ).length;
-
-  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSearch(searchDraft);
-    setCurrentPage(1);
-  };
 
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE));
   const paginatedClients = filteredClients.slice(
@@ -268,167 +167,198 @@ export function ClientsScreen() {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
 
-  useEffect(() => {
-    setSelectedTasksPage(1);
-  }, [selectedClient?.id]);
-
-  const selectedClientTaskPages = Math.max(
-    1,
-    Math.ceil((selectedClient?.openTasks.length ?? 0) / POPUP_TASKS_PAGE_SIZE),
-  );
-  const selectedClientTasks = (selectedClient?.openTasks ?? []).slice(
-    (selectedTasksPage - 1) * POPUP_TASKS_PAGE_SIZE,
-    selectedTasksPage * POPUP_TASKS_PAGE_SIZE,
-  );
-
   if (!user) {
     return null;
   }
 
   return (
     <Shell>
-      <ConfirmActionModal
-        open={showDeleteClientModal && Boolean(selectedClient)}
-        title="Delete client"
-        description={`This will remove ${selectedClient?.name ?? "this client"} from the workspace and unlink them from any existing projects.`}
-        confirmLabel="Delete client"
-        tone="danger"
-        busy={isDeletingClient}
-        onCancel={() => {
-          if (!isDeletingClient) {
-            setShowDeleteClientModal(false);
-          }
-        }}
-        onConfirm={async () => {
-          if (!selectedClient) {
-            return;
-          }
-
-          setIsDeletingClient(true);
-          try {
-            await deleteClient(selectedClient.id);
-            setShowDeleteClientModal(false);
-            setSelectedClient(null);
-          } finally {
-            setIsDeletingClient(false);
-          }
-        }}
-      />
-      {selectedClient ? (
-        <ClientDetailsOverlay onClick={() => setSelectedClient(null)}>
-          <ClientDetailsCard onClick={(event) => event.stopPropagation()}>
-            <DialogHeader>
+      {showCreateOrganizationModal ? (
+        <Overlay onClick={() => !isCreatingOrganization && setShowCreateOrganizationModal(false)}>
+          <ModalCard onClick={(event) => event.stopPropagation()}>
+            <ModalHeader>
               <div>
-                <PanelTitle>{selectedClient.company}</PanelTitle>
-                <ClientMeta>
-                  {selectedClient.name} · {selectedClient.email}
-                </ClientMeta>
+                <PanelTitle>Create Organization</PanelTitle>
+                <ClientMeta>Create the organization first. Liaison invites happen inside the organization detail page.</ClientMeta>
               </div>
-              <DialogHeaderActions>
-                <DatePill>{formatDate(selectedClient.lastActivityDate)}</DatePill>
-                <DialogCloseButton type="button" onClick={() => setSelectedClient(null)} aria-label="Close">
-                  <IconClose />
-                </DialogCloseButton>
-              </DialogHeaderActions>
-            </DialogHeader>
-            <DialogSection>
-              <DialogLabel>Pending items</DialogLabel>
-              {selectedClient.pendingProjects.length ? (
-                <DialogList>
-                  {selectedClient.pendingProjects.map((project) => (
-                    <DialogRow key={project.id}>
-                      <div>
-                        <DialogProjectName>{project.name}</DialogProjectName>
-                        <ClientMeta>
-                          {project.status === "revision" ? "Approval needed" : "Waiting feedback"} ·{" "}
-                          {formatShortDate(project.dueDate)}
-                        </ClientMeta>
-                      </div>
-                      <DialogLink href={`/projects/${project.id}`}>Open project</DialogLink>
-                    </DialogRow>
-                  ))}
-                </DialogList>
-              ) : (
-                <ClientMeta>No pending items for this client.</ClientMeta>
-              )}
-            </DialogSection>
-            <DialogSection>
-              <DialogLabel>Open tasks</DialogLabel>
-              {selectedClient.openTasks.length ? (
-                <>
-                  <DialogList>
-                    {selectedClientTasks.map((task) => (
-                      <DialogRow key={task.id}>
-                        <div>
-                          <DialogProjectName>{task.title}</DialogProjectName>
-                          <ClientMeta>
-                            {task.projectName} · {task.assigneeName} · {formatTaskStatus(task.status)} ·{" "}
-                            {formatPriority(task.priority)} · {formatShortDate(task.dueDate)}
-                          </ClientMeta>
-                        </div>
-                        <DialogLink href={`/projects/${task.projectId}`}>Open project</DialogLink>
-                      </DialogRow>
-                    ))}
-                  </DialogList>
-                  <DialogFooter>
-                    <span>
-                      Showing {(selectedTasksPage - 1) * POPUP_TASKS_PAGE_SIZE + 1} to{" "}
-                      {Math.min(selectedTasksPage * POPUP_TASKS_PAGE_SIZE, selectedClient.openTasks.length)} of{" "}
-                      {selectedClient.openTasks.length} tasks
-                    </span>
-                    <Pagination>
-                      <PageButton
+              <IconButton
+                type="button"
+                aria-label="Close"
+                onClick={() => !isCreatingOrganization && setShowCreateOrganizationModal(false)}
+              >
+                <IconClose />
+              </IconButton>
+            </ModalHeader>
+            <ModalForm
+              onSubmit={async (event) => {
+                event.preventDefault();
+                setIsCreatingOrganization(true);
+                try {
+                  const result = await createClientOrganization({
+                    name: organizationName,
+                    type: organizationType,
+                    status: organizationStatus,
+                    phone: organizationType === "external" ? organizationPhone : undefined,
+                    address: organizationType === "external" ? organizationAddress : undefined,
+                  });
+                  setShowCreateOrganizationModal(false);
+                  setOrganizationName("");
+                  setOrganizationPhone("");
+                  setOrganizationAddress("");
+                  setOpenCreateSelect(null);
+                  router.push(`/clients/${result.id}`);
+                } finally {
+                  setIsCreatingOrganization(false);
+                }
+              }}
+            >
+              <FloatingField className={organizationName ? "auth-field is-filled" : "auth-field"}>
+                <TextInput
+                  value={organizationName}
+                  onChange={(event) => setOrganizationName(event.target.value)}
+                  disabled={isCreatingOrganization}
+                  placeholder=" "
+                  required
+                />
+                <span>Organization name</span>
+              </FloatingField>
+              <FieldGrid>
+                <FloatingSelectField $filled $open={openCreateSelect === "type"}>
+                  <SelectTrigger
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded={openCreateSelect === "type"}
+                    disabled={isCreatingOrganization}
+                    onClick={() => {
+                      if (isCreatingOrganization) {
+                        return;
+                      }
+                      setOpenCreateSelect((current) => (current === "type" ? null : "type"));
+                    }}
+                  >
+                    <SelectValue>{organizationType === "internal" ? "Internal" : "External"}</SelectValue>
+                    <SelectChevron $open={openCreateSelect === "type"}>
+                      <IconChevronDown />
+                    </SelectChevron>
+                  </SelectTrigger>
+                  <FloatingLabel>Type</FloatingLabel>
+                  {openCreateSelect === "type" && !isCreatingOrganization ? (
+                    <SelectMenu role="listbox" aria-label="Organization type">
+                      <SelectOption
                         type="button"
-                        onClick={() => setSelectedTasksPage((page) => Math.max(1, page - 1))}
-                        disabled={selectedTasksPage === 1}
+                        role="option"
+                        aria-selected={organizationType === "external"}
+                        $active={organizationType === "external"}
+                        onClick={() => {
+                          setOrganizationType("external");
+                          setOpenCreateSelect(null);
+                        }}
                       >
-                        Last
-                      </PageButton>
-                      <PageButton $active type="button">
-                        {selectedTasksPage}
-                      </PageButton>
-                      <PageButton
+                        External
+                      </SelectOption>
+                      <SelectOption
                         type="button"
-                        onClick={() =>
-                          setSelectedTasksPage((page) => Math.min(selectedClientTaskPages, page + 1))
-                        }
-                        disabled={selectedTasksPage === selectedClientTaskPages}
+                        role="option"
+                        aria-selected={organizationType === "internal"}
+                        $active={organizationType === "internal"}
+                        onClick={() => {
+                          setOrganizationType("internal");
+                          setOrganizationPhone("");
+                          setOrganizationAddress("");
+                          setOpenCreateSelect(null);
+                        }}
                       >
-                        Next
-                      </PageButton>
-                    </Pagination>
-                  </DialogFooter>
-                </>
-              ) : (
-                <ClientMeta>No open tasks for this client.</ClientMeta>
-              )}
-            </DialogSection>
-            {canDelete && !selectedClient.id.startsWith("accepted-invite:") ? (
-              <DialogSection>
-                <DialogDangerButton type="button" onClick={() => setShowDeleteClientModal(true)}>
-                  Delete client
-                </DialogDangerButton>
-              </DialogSection>
-            ) : null}
-          </ClientDetailsCard>
-        </ClientDetailsOverlay>
+                        Internal
+                      </SelectOption>
+                    </SelectMenu>
+                  ) : null}
+                </FloatingSelectField>
+                <FloatingSelectField $filled $open={openCreateSelect === "status"}>
+                  <SelectTrigger
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded={openCreateSelect === "status"}
+                    disabled={isCreatingOrganization}
+                    onClick={() => {
+                      if (isCreatingOrganization) {
+                        return;
+                      }
+                      setOpenCreateSelect((current) => (current === "status" ? null : "status"));
+                    }}
+                  >
+                    <SelectValue>{organizationStatus === "active" ? "Active" : "Inactive"}</SelectValue>
+                    <SelectChevron $open={openCreateSelect === "status"}>
+                      <IconChevronDown />
+                    </SelectChevron>
+                  </SelectTrigger>
+                  <FloatingLabel>Status</FloatingLabel>
+                  {openCreateSelect === "status" && !isCreatingOrganization ? (
+                    <SelectMenu role="listbox" aria-label="Organization status">
+                      <SelectOption
+                        type="button"
+                        role="option"
+                        aria-selected={organizationStatus === "active"}
+                        $active={organizationStatus === "active"}
+                        onClick={() => {
+                          setOrganizationStatus("active");
+                          setOpenCreateSelect(null);
+                        }}
+                      >
+                        Active
+                      </SelectOption>
+                      <SelectOption
+                        type="button"
+                        role="option"
+                        aria-selected={organizationStatus === "inactive"}
+                        $active={organizationStatus === "inactive"}
+                        onClick={() => {
+                          setOrganizationStatus("inactive");
+                          setOpenCreateSelect(null);
+                        }}
+                      >
+                        Inactive
+                      </SelectOption>
+                    </SelectMenu>
+                  ) : null}
+                </FloatingSelectField>
+              </FieldGrid>
+              {organizationType === "external" ? (
+                <FieldGrid>
+                  <FloatingField className={organizationPhone ? "auth-field is-filled" : "auth-field"}>
+                    <TextInput
+                      type="tel"
+                      value={organizationPhone}
+                      onChange={(event) => setOrganizationPhone(event.target.value)}
+                      disabled={isCreatingOrganization}
+                      placeholder=" "
+                    />
+                    <span>Phone</span>
+                  </FloatingField>
+                  <FloatingField className={organizationAddress ? "auth-field is-filled" : "auth-field"}>
+                    <TextInput
+                      value={organizationAddress}
+                      onChange={(event) => setOrganizationAddress(event.target.value)}
+                      disabled={isCreatingOrganization}
+                      placeholder=" "
+                    />
+                    <span>Address</span>
+                  </FloatingField>
+                </FieldGrid>
+              ) : null}
+              <InviteButton type="submit" disabled={isCreatingOrganization}>
+                <span>{isCreatingOrganization ? "Creating..." : "Create Organization"}</span>
+              </InviteButton>
+            </ModalForm>
+          </ModalCard>
+        </Overlay>
       ) : null}
-      <InviteWorkspaceModal
-        open={showInviteModal}
-        onClose={() => setShowInviteModal(false)}
-        variant="client"
-      />
       <AppSidebar user={user} activeLabel="Clients" />
-
       <Content>
         <Header>
           <div>
             <Eyebrow>{roleLabel}</Eyebrow>
             <Title>Clients</Title>
-            <Subtitle>
-              Manage client accounts, track project relationships, monitor approvals, and review
-              client activity.
-            </Subtitle>
+            <Subtitle>Browse client organizations, then open one to manage liaisons and linked projects.</Subtitle>
           </div>
           <HeaderAvatarLink href="/profile" aria-label="Open profile">
             {user.name.slice(0, 1)}
@@ -438,12 +368,12 @@ export function ClientsScreen() {
         <Toolbar>
           <FilterModal
             open={showFilters}
-            title="Filter clients"
-            description="Adjust which client accounts are shown."
+            title="Filter client organizations"
+            description="Adjust which client organizations are shown."
             sections={[
               {
                 id: "filter",
-                label: "Client status",
+                label: "Organization status",
                 options: filterOptions.map((option) => ({
                   value: option.key,
                   label: option.label,
@@ -457,12 +387,18 @@ export function ClientsScreen() {
             }}
             onClose={() => setShowFilters(false)}
           />
-          <SearchControls onSubmit={handleSearchSubmit}>
+          <SearchControls
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault();
+              setSearch(searchDraft);
+              setCurrentPage(1);
+            }}
+          >
             <SearchWrap>
               <SearchInput
                 value={searchDraft}
                 onChange={(event) => setSearchDraft(event.target.value)}
-                placeholder="Search clients, companies, or contacts..."
+                placeholder="Search organizations, liaisons, or projects..."
               />
             </SearchWrap>
             <FilterMenuWrap>
@@ -484,14 +420,19 @@ export function ClientsScreen() {
             </SearchButton>
           </SearchControls>
 
-          {canManage ? (
-            <InviteButton type="button" onClick={() => setShowInviteModal(true)}>
-              <ActionIcon>
-                <IconPlus />
-              </ActionIcon>
-              <span>Invite Client</span>
-            </InviteButton>
-          ) : null}
+          <ToolbarActions>
+            {canManage ? (
+              <SecondaryActionLink href="/clients/liaisons">View All Liaisons</SecondaryActionLink>
+            ) : null}
+            {canManage ? (
+              <InviteButton type="button" onClick={() => setShowCreateOrganizationModal(true)}>
+                <ActionIcon>
+                  <IconPlus />
+                </ActionIcon>
+                <span>Create Organization</span>
+              </InviteButton>
+            ) : null}
+          </ToolbarActions>
         </Toolbar>
 
         <StatsRow>
@@ -502,8 +443,8 @@ export function ClientsScreen() {
             <StatCopy>
               <StatValue>{totalCount}</StatValue>
               <StatLabel>
-                <MobileLabel>Clients</MobileLabel>
-                <DesktopLabel>Total Clients</DesktopLabel>
+                <MobileLabel>Orgs</MobileLabel>
+                <DesktopLabel>Client Orgs</DesktopLabel>
               </StatLabel>
             </StatCopy>
           </StatCard>
@@ -539,7 +480,7 @@ export function ClientsScreen() {
               <StatValue>{activeCount}</StatValue>
               <StatLabel>
                 <MobileLabel>Active</MobileLabel>
-                <DesktopLabel>Active Clients</DesktopLabel>
+                <DesktopLabel>Active Orgs</DesktopLabel>
               </StatLabel>
             </StatCopy>
           </StatCard>
@@ -547,25 +488,66 @@ export function ClientsScreen() {
 
         <DesktopPanel>
           <TableHeader>
-            <span>Client</span>
+            <span>Organization</span>
+            <span>Liaisons</span>
             <span>Projects</span>
             <span>Last Activity</span>
             <span>Pending</span>
           </TableHeader>
-
           <TableBody>
             {paginatedClients.length ? (
               paginatedClients.map((client) => {
+                const liaisonCluster = getClusterItems(client.members.map((member) => member.name));
+
                 return (
-                  <DesktopRow key={client.id} onClick={() => setSelectedClient(client)}>
+                  <DesktopRow key={client.id} href={`/clients/${client.id}`}>
                     <ClientCell>
-                      <ClientMark>{getProjectMark(client.company)}</ClientMark>
+                      <ClientMark>{getClientOrganizationMark(client.name)}</ClientMark>
                       <ClientCopy>
-                        <ClientMeta>{client.company}</ClientMeta>
                         <ClientName>{client.name}</ClientName>
-                        <ClientMeta>{client.email}</ClientMeta>
+                        <InlinePills>
+                          <TypePill $type={client.type}>
+                            {client.type === "internal" ? "Internal" : "External"}
+                          </TypePill>
+                          {getClientOrganizationStatusLabel(client) ? (
+                            <PendingPill $active={client.status === "active"}>
+                              {getClientOrganizationStatusLabel(client)}
+                            </PendingPill>
+                          ) : null}
+                        </InlinePills>
                       </ClientCopy>
                     </ClientCell>
+                    <MetaColumn>
+                      {client.memberCount ? (
+                        <ClientCopy>
+                          <ClusterWrap aria-label={`${client.memberCount} liaisons`}>
+                            {liaisonCluster.visibleLabels.map((memberName, index) => (
+                              <ClusterBubble
+                                key={`${client.id}:${memberName}:${index}`}
+                                $index={index}
+                                title={memberName}
+                              >
+                                {getClusterMark(memberName)}
+                              </ClusterBubble>
+                            ))}
+                            {liaisonCluster.overflowCount > 0 ? (
+                              <ClusterBubble
+                                $index={liaisonCluster.visibleLabels.length}
+                                $tone="accent"
+                                title={`${liaisonCluster.overflowCount} more liaisons`}
+                              >
+                                +{liaisonCluster.overflowCount}
+                              </ClusterBubble>
+                            ) : null}
+                          </ClusterWrap>
+                          <ClientMeta>
+                            {client.memberCount === 1 ? "1 liaison" : `${client.memberCount} liaisons`}
+                          </ClientMeta>
+                        </ClientCopy>
+                      ) : (
+                        <ClientMeta>No liaisons</ClientMeta>
+                      )}
+                    </MetaColumn>
                     <CountCell>{client.projectCount}</CountCell>
                     <MetaColumn>
                       <DatePill>{formatDate(client.lastActivityDate)}</DatePill>
@@ -580,14 +562,14 @@ export function ClientsScreen() {
               })
             ) : (
               <EmptyState>
-                <strong>No clients found</strong>
+                <strong>No client organizations found</strong>
                 <p>Try another search term or adjust the selected filter.</p>
               </EmptyState>
             )}
           </TableBody>
           <TableFooter>
             <span>
-              Showing {rangeStart} to {rangeEnd} of {filteredClients.length} clients
+              Showing {rangeStart} to {rangeEnd} of {filteredClients.length} organizations
             </span>
             <Pagination>
               <PageButton
@@ -597,9 +579,7 @@ export function ClientsScreen() {
               >
                 Last
               </PageButton>
-              <PageButton $active type="button">
-                {currentPage}
-              </PageButton>
+              <PageButton $active type="button">{currentPage}</PageButton>
               <PageButton
                 type="button"
                 onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
@@ -614,19 +594,55 @@ export function ClientsScreen() {
         <MobileList>
           {paginatedClients.length ? (
             paginatedClients.map((client) => {
+              const liaisonCluster = getClusterItems(client.members.map((member) => member.name));
+
               return (
-                <MobileCard key={client.id} onClick={() => setSelectedClient(client)}>
+                <MobileCard key={client.id} href={`/clients/${client.id}`}>
                   <MobileTop>
-                    <ClientMark>{getProjectMark(client.company)}</ClientMark>
+                    <ClientMark>{getClientOrganizationMark(client.name)}</ClientMark>
                     <ClientCopy>
-                      <ClientMeta>{client.company}</ClientMeta>
                       <ClientName>{client.name}</ClientName>
-                      <ClientMeta>{client.email}</ClientMeta>
+                      <InlinePills>
+                        <TypePill $type={client.type}>
+                          {client.type === "internal" ? "Internal" : "External"}
+                        </TypePill>
+                        {getClientOrganizationStatusLabel(client) ? (
+                          <PendingPill $active={client.status === "active"}>
+                            {getClientOrganizationStatusLabel(client)}
+                          </PendingPill>
+                        ) : null}
+                      </InlinePills>
+                      {client.memberCount ? (
+                        <>
+                          <ClusterWrap aria-label={`${client.memberCount} liaisons`}>
+                            {liaisonCluster.visibleLabels.map((memberName, index) => (
+                              <ClusterBubble
+                                key={`${client.id}:${memberName}:${index}`}
+                                $index={index}
+                                title={memberName}
+                              >
+                                {getClusterMark(memberName)}
+                              </ClusterBubble>
+                            ))}
+                            {liaisonCluster.overflowCount > 0 ? (
+                              <ClusterBubble
+                                $index={liaisonCluster.visibleLabels.length}
+                                $tone="accent"
+                                title={`${liaisonCluster.overflowCount} more liaisons`}
+                              >
+                                +{liaisonCluster.overflowCount}
+                              </ClusterBubble>
+                            ) : null}
+                          </ClusterWrap>
+                          <ClientMeta>
+                            {client.memberCount === 1 ? "1 liaison" : `${client.memberCount} liaisons`}
+                          </ClientMeta>
+                        </>
+                      ) : (
+                        <ClientMeta>No liaisons</ClientMeta>
+                      )}
                       <ClientMeta>{client.projectCount} projects</ClientMeta>
                     </ClientCopy>
-                    <PendingPill $active={client.pendingCount > 0}>
-                      {client.pendingCount ? `${client.pendingCount} pending` : "Clear"}
-                    </PendingPill>
                   </MobileTop>
                   <MobileBottom>
                     <DatePill>{formatShortDate(client.lastActivityDate)}</DatePill>
@@ -640,7 +656,7 @@ export function ClientsScreen() {
             })
           ) : (
             <EmptyState>
-              <strong>No clients found</strong>
+              <strong>No client organizations found</strong>
               <p>Try another search term or adjust the selected filter.</p>
             </EmptyState>
           )}
@@ -663,7 +679,7 @@ const Shell = styled.main`
 
   ${desktop} {
     display: flex;
-    align-items: stretch;
+    align-items: flex-start;
     padding: 8px;
     background: rgba(255, 255, 255, 0.58);
   }
@@ -714,17 +730,9 @@ const Subtitle = styled.p`
   color: var(--color-text-muted);
   font-size: 12px;
   line-height: 1.45;
-
-  display: none;
-
-  ${desktop} {
-    display: block;
-    font-size: 0.86rem;
-  }
 `;
 
 const HeaderAvatarLink = styled(Link)`
-  position: relative;
   width: 42px;
   height: 42px;
   flex: 0 0 42px;
@@ -751,6 +759,12 @@ const Toolbar = styled.section`
   }
 `;
 
+const ToolbarActions = styled.div`
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+`;
+
 const SearchControls = styled.form`
   display: flex;
   align-items: stretch;
@@ -763,10 +777,6 @@ const SearchControls = styled.form`
 
 const SearchWrap = styled.div`
   flex: 1;
-
-  ${desktop} {
-    min-width: 0;
-  }
 `;
 
 const SearchInput = styled.input`
@@ -804,35 +814,6 @@ const SearchButton = styled(FilterButton)`
   color: #fff;
 `;
 
-const FilterPopup = styled.div`
-  ${cardSurface}
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  z-index: 10;
-  width: min(260px, calc(100vw - 48px));
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 18px;
-`;
-
-const FilterPopupTitle = styled.strong`
-  font-size: 0.9rem;
-  color: var(--color-text);
-`;
-
-const FilterSelect = styled.select`
-  width: 100%;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.96);
-  color: var(--color-text);
-`;
-
 const InviteButton = styled.button`
   min-height: 40px;
   display: inline-flex;
@@ -846,11 +827,25 @@ const InviteButton = styled.button`
   color: #fff;
   font-size: 0.9rem;
   font-weight: 700;
-  box-shadow: 0 14px 26px rgba(31, 68, 57, 0.16);
 
-  ${desktop} {
-    flex: 0 0 230px;
-  }
+ 
+`;
+
+const SecondaryActionLink = styled(Link)`
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 16px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
 `;
 
 const StatsRow = styled.section`
@@ -871,7 +866,6 @@ const StatsRow = styled.section`
 
 const StatCard = styled.article`
   ${cardSurface}
-  
   display: flex;
   gap: 10px;
   padding: 12px;
@@ -880,7 +874,6 @@ const StatCard = styled.article`
   ${desktop} {
     flex: 1;
     min-width: 0;
-    flex-direction: row;
     align-items: center;
     gap: 14px;
     padding: 18px 20px;
@@ -898,18 +891,18 @@ const StatIcon = styled.div<{ $tone: "green" | "gold" | "red" | "mint" }>`
     $tone === "green"
       ? "#dff1dd"
       : $tone === "gold"
-        ? "#fff0d5"
-        : $tone === "red"
-          ? "#ffe6e4"
-          : "#e7f5ea"};
+      ? "#fff0d5"
+      : $tone === "red"
+      ? "#ffe6e4"
+      : "#e7f5ea"};
   color: ${({ $tone }) =>
     $tone === "green"
       ? "#5ca16d"
       : $tone === "gold"
-        ? "#ca8a22"
-        : $tone === "red"
-          ? "#e06457"
-          : "#5ca16d"};
+      ? "#ca8a22"
+      : $tone === "red"
+      ? "#e06457"
+      : "#5ca16d"};
 
   svg {
     width: 18px;
@@ -979,6 +972,10 @@ const TableHeader = styled.div`
   }
 
   span:nth-child(2) {
+    flex: 1;
+  }
+
+  span:nth-child(3) {
     flex: 0 0 110px;
     text-align: center;
   }
@@ -1015,19 +1012,16 @@ const PageButton = styled.button<{ $active?: boolean }>`
   color: ${({ $active }) => ($active ? "#fff" : "var(--color-text)")};
   font-size: 0.9rem;
   font-weight: 700;
-
-  &:disabled {
-    opacity: 0.45;
-  }
 `;
 
-const DesktopRow = styled.article`
+const DesktopRow = styled(Link)`
   display: flex;
   align-items: center;
   gap: 18px;
   padding: 16px 18px;
   border-top: 1px solid rgba(230, 224, 215, 0.8);
   cursor: pointer;
+  text-decoration: none;
   transition: background 160ms ease, box-shadow 160ms ease;
 
   &:hover {
@@ -1043,6 +1037,19 @@ const ClientCell = styled.div`
   gap: 12px;
 `;
 
+const ClientMark = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
+  color: #8c7040;
+  font-size: 1rem;
+  font-weight: 700;
+  flex: 0 0 48px;
+`;
+
 const ClientCopy = styled.div`
   display: flex;
   flex-direction: column;
@@ -1052,6 +1059,7 @@ const ClientCopy = styled.div`
 
 const ClientName = styled.strong`
   font-size: 0.96rem;
+  color: var(--color-text);
 `;
 
 const ClientMeta = styled.p`
@@ -1059,6 +1067,12 @@ const ClientMeta = styled.p`
   color: var(--color-text-muted);
   font-size: 0.82rem;
   line-height: 1.4;
+`;
+
+const InlinePills = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 `;
 
 const MetaColumn = styled.div`
@@ -1075,68 +1089,6 @@ const CountCell = styled.div`
   font-size: 1.25rem;
   font-weight: 700;
   text-align: center;
-`;
-
-const MobileList = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-
-  ${desktop} {
-    display: none;
-  }
-`;
-
-const MobileCard = styled.article`
-  ${cardSurface}
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 20px;
-  cursor: pointer;
-`;
-
-const MobileTop = styled.div`
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-`;
-
-const MobileBottom = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-`;
-
-const ClientMark = styled.div`
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
-  color: #8c7040;
-  font-size: 1rem;
-  font-weight: 700;
-  flex: 0 0 48px;
-`;
-
-const ArrowWrap = styled.span`
-  width: 18px;
-  height: 18px;
-  color: var(--color-text-muted);
-
-  svg {
-    width: 100%;
-    height: 100%;
-  }
-`;
-
-const PanelTitle = styled.h2`
-  margin: 0;
-  font-size: 0.96rem;
 `;
 
 const Pill = styled.span`
@@ -1161,10 +1113,93 @@ const PendingPill = styled(Pill)<{ $active?: boolean }>`
   color: ${({ $active }) => ($active ? "#e06457" : "#5ca16d")};
 `;
 
-const ClientDetailsOverlay = styled.div`
+const TypePill = styled(Pill)<{ $type: "internal" | "external" }>`
+  background: ${({ $type }) => ($type === "internal" ? "#e6efff" : "#f4f1ed")};
+  color: ${({ $type }) => ($type === "internal" ? "#4770d8" : "#7f7468")};
+`;
+
+const ClusterWrap = styled.div`
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding-right: 8px;
+`;
+
+const ClusterBubble = styled.span<{ $index: number; $tone?: "default" | "accent" }>`
+  position: relative;
+  z-index: ${({ $index }) => 10 - $index};
+  width: 30px;
+  height: 30px;
+  margin-left: ${({ $index }) => ($index === 0 ? "0" : "-8px")};
+  display: inline-grid;
+  place-items: center;
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  border-radius: 999px;
+  background: ${({ $tone }) =>
+    $tone === "accent"
+      ? "#1f4339"
+      : "linear-gradient(145deg, #ede5d8, #f8f4ee)"};
+  color: ${({ $tone }) => ($tone === "accent" ? "#fff" : "#8c7040")};
+  font-size: 0.72rem;
+  font-weight: 700;
+  box-shadow: 0 6px 14px rgba(104, 84, 54, 0.12);
+  transition: transform 140ms ease, box-shadow 140ms ease, z-index 140ms ease;
+
+  &:hover {
+    z-index: 30;
+    transform: translateY(-7px);
+    box-shadow: 0 12px 22px rgba(104, 84, 54, 0.2);
+  }
+`;
+
+const MobileList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  ${desktop} {
+    display: none;
+  }
+`;
+
+const MobileCard = styled(Link)`
+  ${cardSurface}
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
+  text-decoration: none;
+`;
+
+const MobileTop = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+`;
+
+const MobileBottom = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+`;
+
+const ArrowWrap = styled.span`
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-muted);
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+`;
+
+const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1172,73 +1207,189 @@ const ClientDetailsOverlay = styled.div`
   background: rgba(21, 18, 13, 0.4);
 `;
 
-const ClientDetailsCard = styled.div`
+const ModalCard = styled.div`
   ${cardSurface}
-  width: min(540px, calc(100vw - 32px));
+  width: min(520px, calc(100vw - 32px));
   border-radius: 24px;
+  padding: 20px;
 `;
 
-const DialogHeader = styled.div`
+const ModalHeader = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 20px 20px 0;
+  margin-bottom: 16px;
 `;
 
-const DialogHeaderActions = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
+const PanelTitle = styled.h2`
+  margin: 0;
+  font-size: 0.96rem;
 `;
 
-const DialogSection = styled.div`
+const ModalForm = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px;
+  gap: 14px;
+`;
 
-  & + & {
-    padding-top: 0;
+const FloatingField = styled.label`
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+
+  span {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-muted);
+    font-size: 0.92rem;
+    pointer-events: none;
+    transition: all 140ms ease;
+    background: transparent;
+    padding: 0 4px;
+  }
+
+  &.is-filled span,
+  &:focus-within span {
+    top: 0;
+    transform: translateY(-50%);
+    font-size: 0.74rem;
+    color: #335c4f;
+    background: rgba(252, 249, 244, 0.96);
   }
 `;
 
-const DialogLabel = styled.strong`
-  font-size: 0.9rem;
-  color: var(--color-text);
-`;
-
-const DialogList = styled.div`
+const FloatingSelectField = styled.div<{ $filled?: boolean; $open?: boolean }>`
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  min-height: 48px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
 `;
 
-const DialogRow = styled.div`
+const FloatingLabel = styled.span`
+  position: absolute;
+  left: 12px;
+  top: 0;
+  transform: translateY(-50%);
+  padding: 0 4px;
+  background: rgba(252, 249, 244, 0.96);
+  color: #335c4f;
+  font-size: 0.74rem;
+  pointer-events: none;
+`;
+
+const SelectTrigger = styled.button`
+  width: 100%;
+  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+
+  &:disabled {
+    background: rgba(244, 241, 237, 0.92);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+  }
+`;
+
+const SelectValue = styled.span`
+  display: block;
+  min-width: 0;
+  font-size: 0.94rem;
+  line-height: 1.25;
+`;
+
+const SelectChevron = styled.span<{ $open?: boolean }>`
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  transform: rotate(${({ $open }) => ($open ? "180deg" : "0deg")});
+  transition: transform 140ms ease;
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+`;
+
+const SelectMenu = styled.div`
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow-md);
 `;
 
-const DialogProjectName = styled.strong`
-  display: block;
-  margin-bottom: 4px;
-  font-size: 0.9rem;
+const SelectOption = styled.button<{ $active?: boolean }>`
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: ${({ $active }) => ($active ? "rgba(31, 67, 57, 0.1)" : "transparent")};
+  color: ${({ $active }) => ($active ? "#1f4339" : "var(--color-text)")};
+  font-size: 0.92rem;
+  font-weight: ${({ $active }) => ($active ? 700 : 500)};
+  text-align: left;
 `;
 
-const DialogLink = styled(Link)`
+const FieldGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+
+  ${desktop} {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+`;
+
+const TextInput = styled.input`
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
   color: var(--color-text);
-  font-size: 0.84rem;
-  font-weight: 700;
-  text-decoration: none;
+  outline: none;
+
+  &:disabled {
+    background: rgba(244, 241, 237, 0.92);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+  }
 `;
 
-const DialogCloseButton = styled.button`
+const IconButton = styled.button`
   width: 34px;
   height: 34px;
   display: inline-flex;
@@ -1248,35 +1399,6 @@ const DialogCloseButton = styled.button`
   border-radius: 999px;
   background: #fff;
   color: var(--color-text);
-
-  svg {
-    width: 16px;
-    height: 16px;
-  }
-`;
-
-const DialogFooter = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-
-  ${desktop} {
-    gap: 16px;
-  }
-`;
-
-const DialogDangerButton = styled.button`
-  min-height: 40px;
-  padding: 0 16px;
-  border: 1px solid rgba(226, 100, 87, 0.24);
-  border-radius: 12px;
-  background: rgba(255, 236, 233, 0.8);
-  color: #d65c4c;
-  font-size: 0.86rem;
-  font-weight: 700;
 `;
 
 const ActionIcon = styled.span`
@@ -1341,18 +1463,10 @@ function IconUsers() {
   );
 }
 
-function IconFolder() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3.5 8.5h6l2-2H20a1 1 0 0 1 1 1v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-    </svg>
-  );
-}
-
 function IconComment() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 7.5A2.5 2.5 0 0 1 8.5 5h7A2.5 2.5 0 0 1 18 7.5v5A2.5 2.5 0 0 1 15.5 15H11l-4 3v-3H8.5A2.5 2.5 0 0 1 6 12.5z" />
+      <path d="M6 17.5 3.5 20V6.5A2.5 2.5 0 0 1 6 4h12a2.5 2.5 0 0 1 2.5 2.5v8A2.5 2.5 0 0 1 18 17H6z" />
     </svg>
   );
 }
@@ -1360,8 +1474,7 @@ function IconComment() {
 function IconShield() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3.8 18.5 6v5.8c0 4.1-2.8 7.1-6.5 8.4-3.7-1.3-6.5-4.3-6.5-8.4V6z" />
-      <path d="m9.5 12 1.7 1.8 3.5-3.8" />
+      <path d="M12 3.5 19 6v5.5c0 4.4-2.7 7.8-7 9-4.3-1.2-7-4.6-7-9V6z" />
     </svg>
   );
 }
@@ -1369,41 +1482,40 @@ function IconShield() {
 function IconSpark() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3v4" />
-      <path d="M12 17v4" />
-      <path d="M3 12h4" />
-      <path d="M17 12h4" />
-      <path d="m5.6 5.6 2.8 2.8" />
-      <path d="m15.6 15.6 2.8 2.8" />
-      <path d="m18.4 5.6-2.8 2.8" />
-      <path d="m8.4 15.6-2.8 2.8" />
-    </svg>
-  );
-}
-
-function IconClose() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <path d="M6 6l12 12M18 6 6 18" />
+      <path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
     </svg>
   );
 }
 
 function IconFilter() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 6h16" />
-      <path d="M7 12h10" />
-      <path d="M10 18h4" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16M7 12h10M10 17h4" />
     </svg>
   );
 }
 
 function IconArrowRight() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       <path d="M5 12h14" />
       <path d="m13 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+function IconChevronDown() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
+      <path d="M6 6 18 18M18 6 6 18" />
     </svg>
   );
 }

@@ -3,6 +3,16 @@ import { canInviteUsers } from "@/lib/permissions";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { Role } from "@/lib/types";
 
+function getClientOrganizationName(
+  organizationRelation: { name: string } | { name: string }[] | null | undefined,
+) {
+  if (Array.isArray(organizationRelation)) {
+    return organizationRelation[0]?.name ?? null;
+  }
+
+  return organizationRelation?.name ?? null;
+}
+
 export async function GET(request: NextRequest) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
@@ -25,7 +35,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("invitations")
-    .select("id, email, name, role, project_id, token_hash, status, expires_at, accepted_at, created_by, created_at, updated_at")
+    .select("id, email, name, role, project_id, client_organization_id, token_hash, status, expires_at, accepted_at, created_by, created_at, updated_at, client_organizations(name)")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -39,6 +49,14 @@ export async function GET(request: NextRequest) {
       name: invitation.name,
       role: invitation.role,
       projectId: invitation.project_id,
+      clientOrganizationId: invitation.client_organization_id,
+      clientOrganizationName: getClientOrganizationName(
+        invitation.client_organizations as
+          | { name: string }
+          | { name: string }[]
+          | null
+          | undefined,
+      ),
       tokenHash: invitation.token_hash ?? "",
       status: invitation.status,
       expiresAt: invitation.expires_at,

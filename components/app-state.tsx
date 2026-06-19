@@ -11,14 +11,12 @@ import type { SupabaseClient, User as AuthUser } from "@supabase/supabase-js";
 import { initialAppState } from "@/lib/mock-data";
 import { appMode } from "@/lib/config";
 import {
-  Comment,
   DemoState,
   FeedbackAction,
   FileVisibility,
   Invitation,
   InvitationStatus,
   Project,
-  ProjectActivity,
   ProjectActivityAction,
   ProjectStage,
   ProjectStatus,
@@ -31,6 +29,7 @@ import {
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   canAssignTask,
+  canCreateClient,
   canCreateProject,
   canCreateTask,
   canDeleteClient,
@@ -53,31 +52,98 @@ interface AppStateContextValue {
   login: (email: string, password?: string) => Promise<void>;
   logout: () => Promise<void>;
   createProject: (project: {
-    name: string;
-    imageUrl?: string | null;
+    projectRequestName: string;
+    requestedDate: string;
+    requestStatus: string;
+    departmentName: string;
+    contactPerson: string;
+    contactNumber: string;
+    projectType: string;
+    priorityLevel: string;
+    firstDraftDate: string;
+    finalDeliverableDate: string;
+    projectObjective: string;
+    projectBrief: string;
+    creativeAdvice: string;
     description: string;
-    category: string;
-    dueDate: string;
-    clientId: string;
+    referenceAttachmentUrl: string;
+    clientOrganizationId: string;
   }) => Promise<Project>;
+  bulkCreateProjects: (rows: Array<{
+    projectId: string;
+    requestedDate: string;
+    projectRequestName: string;
+    requestStatus: string;
+    departmentName: string;
+    contactPerson: string;
+    contactNumber: string;
+    projectType: string;
+    priorityLevel: string;
+    firstDraftDate: string;
+    finalDeliverableDate: string;
+    projectObjective: string;
+    projectBrief: string;
+    creativeAdvice: string;
+    description: string;
+    referenceAttachmentUrl: string;
+    clientOrganizationName: string;
+    primaryContactEmail?: string;
+  }>) => Promise<{ createdCount: number }>;
   updateProject: (
     projectId: string,
     project: {
-      name: string;
-      imageUrl?: string | null;
+      projectRequestName: string;
+      requestedDate: string;
+      requestStatus: string;
+      departmentName: string;
+      contactPerson: string;
+      contactNumber: string;
+      projectType: string;
+      priorityLevel: string;
+      firstDraftDate: string;
+      finalDeliverableDate: string;
+      projectObjective: string;
+      projectBrief: string;
+      creativeAdvice: string;
       description: string;
-      category: string;
-      dueDate: string;
-      clientId: string;
+      referenceAttachmentUrl: string;
+      clientOrganizationId: string;
     },
   ) => Promise<void>;
   deleteClient: (clientId: string) => Promise<void>;
+  updateClient: (
+    clientId: string,
+    client: {
+      name: string;
+      company?: string;
+      clientOrganizationId?: string | null;
+      addClientOrganizationId?: string | null;
+      removeClientOrganizationId?: string | null;
+      primaryClientOrganizationId?: string | null;
+    },
+  ) => Promise<void>;
+  createClientOrganization: (organization: {
+    name: string;
+    type: "internal" | "external";
+    status: "active" | "inactive";
+    phone?: string;
+    address?: string;
+  }) => Promise<{ id: string }>;
+  updateClientOrganization: (
+    organizationId: string,
+    organization: {
+      name: string;
+      type: "internal" | "external";
+      status: "active" | "inactive";
+      phone?: string;
+      address?: string;
+    },
+  ) => Promise<void>;
   updateTeamMemberRole: (memberId: string, role: Exclude<Role, "client">) => Promise<void>;
   deleteTeamMember: (memberId: string) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
   updateProjectWorkflow: (
     projectId: string,
-    status: ProjectStatus,
     stage: ProjectStage,
   ) => Promise<void>;
   createTask: (
@@ -101,6 +167,7 @@ interface AppStateContextValue {
       status: TaskStatus;
       dueDate: string;
       priority: TaskPriority;
+      completionScreenshotUrl?: string | null;
       clientVisible?: boolean;
       managerReviewStatus?: TaskManagerReviewStatus;
       activityNote?: string;
@@ -129,6 +196,7 @@ interface AppStateContextValue {
     email: string;
     role: Role;
     projectId: string | null;
+    clientOrganizationId?: string | null;
     expiresAt: string;
   }) => Promise<{ inviteLink: string; invitation: Invitation }>;
   revokeInvitation: (invitationId: string) => Promise<void>;
@@ -137,6 +205,9 @@ interface AppStateContextValue {
     token: string;
     name: string;
     password: string;
+    phone: string;
+    jobTitle?: string;
+    department?: string;
   }) => Promise<{ user: User | null }>;
 }
 
@@ -148,80 +219,9 @@ type ProfileRecord = {
   name: string;
   role: Role;
   company: string | null;
-  created_at: string;
-};
-
-type ProjectRecord = {
-  id: string;
-  name: string;
-  image_url: string | null;
-  client_id: string | null;
-  owner_id: string | null;
-  description: string | null;
-  category: string | null;
-  stage: string | null;
-  status: string | null;
-  due_date: string | null;
-  created_at: string;
-};
-
-type ProjectMemberRecord = {
-  project_id: string;
-  profile_id: string;
-  role: Role;
-};
-
-type TaskRecord = {
-  id: string;
-  project_id: string;
-  title: string;
-  assignee_id: string;
-  status: TaskStatus;
-  due_date: string;
-  priority: TaskPriority;
-  completion_screenshot_url: string | null;
-  client_visible: boolean;
-  manager_review_status: TaskManagerReviewStatus;
-  created_at: string;
-};
-
-type ProjectFileRecord = {
-  id: string;
-  project_id: string;
-  title: string;
-  version: string;
-  file_url: string | null;
-  uploaded_by: string;
-  created_at: string;
-  visibility: FileVisibility;
-  notes: string;
-};
-
-type ProjectCommentRecord = {
-  id: string;
-  project_id: string;
-  author_id: string;
-  body: string;
-  internal_only: boolean;
-  created_at: string;
-};
-
-type ProjectFeedbackRecord = {
-  id: string;
-  project_id: string;
-  author_id: string;
-  action: FeedbackAction;
-  body: string;
-  rating: number | null;
-  created_at: string;
-};
-
-type ProjectActivityRecord = {
-  id: string;
-  project_id: string;
-  actor_id: string | null;
-  action: ProjectActivityAction;
-  message: string;
+  phone: string | null;
+  job_title: string | null;
+  department: string | null;
   created_at: string;
 };
 
@@ -260,6 +260,39 @@ function ensureAuthorized(condition: boolean, message: string) {
     throw new Error(message);
   }
 }
+
+function areStringArraysEqual(left: string[] | undefined, right: string[] | undefined) {
+  const safeLeft = left ?? [];
+  const safeRight = right ?? [];
+  if (safeLeft.length !== safeRight.length) {
+    return false;
+  }
+
+  return safeLeft.every((value, index) => value === safeRight[index]);
+}
+
+function areUsersEqual(left: User | null, right: User | null) {
+  if (left === right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    left.id === right.id &&
+    left.email === right.email &&
+    left.name === right.name &&
+    left.role === right.role &&
+    left.company === right.company &&
+    left.phone === right.phone &&
+    left.jobTitle === right.jobTitle &&
+    left.department === right.department &&
+    left.clientOrganizationId === right.clientOrganizationId &&
+    areStringArraysEqual(left.clientOrganizationIds, right.clientOrganizationIds)
+  );
+}
 function getWorkspaceSupabase(): SupabaseClient {
   const supabase = getSupabaseBrowserClient();
 
@@ -273,51 +306,19 @@ function ensureInternalAssignee(users: User[], assigneeId: string) {
   return users.some((candidate) => candidate.id === assigneeId && candidate.role !== "client");
 }
 
-function ensureClientUser(users: User[], clientId: string) {
-  if (!clientId) {
+function ensureClientOrganizationExists(
+  clientOrganizations: DemoState["clientOrganizations"],
+  clientOrganizationId: string,
+) {
+  if (!clientOrganizationId) {
     return true;
   }
 
-  return users.some((candidate) => candidate.id === clientId && candidate.role === "client");
+  return clientOrganizations.some((organization) => organization.id === clientOrganizationId);
 }
 
 function isMissingRelationError(message: string | undefined) {
   return Boolean(message && message.includes('relation "project_activity" does not exist'));
-}
-
-function normalizeProjectStage(stage: string | null | undefined): ProjectStage {
-  switch (stage) {
-    case "concept":
-    case "design":
-    case "review":
-    case "delivery":
-      return stage;
-    default:
-      return "intake";
-  }
-}
-
-function normalizeProjectStatus(status: string | null | undefined): ProjectStatus {
-  switch (status) {
-    case "review":
-    case "approved":
-    case "revision":
-    case "done":
-      return status;
-    default:
-      return "active";
-  }
-}
-
-function toAppUser(profile: ProfileRecord): User {
-  return {
-    id: profile.id,
-    email: profile.email,
-    name: profile.name,
-    role: profile.role,
-    company: profile.company ?? undefined,
-    createdAt: profile.created_at,
-  };
 }
 
 async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
@@ -325,7 +326,7 @@ async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, name, role, company, created_at")
+    .select("id, email, name, role, company, phone, job_title, department, created_at")
     .eq("id", authUser.id)
     .maybeSingle();
 
@@ -345,28 +346,13 @@ async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
         "User"),
     role: profile?.role ?? ((authUser.user_metadata.role as Role | undefined) ?? "client"),
     company: profile?.company ?? undefined,
+    phone: profile?.phone ?? undefined,
+    jobTitle: profile?.job_title ?? undefined,
+    department: profile?.department ?? undefined,
+    clientOrganizationId: null,
+    clientOrganizationIds: [],
     createdAt: profile?.created_at,
   };
-}
-
-async function fetchRemoteInvitations(currentUser: User) {
-  if (!canInviteUsers(currentUser.role)) {
-    return [] as Invitation[];
-  }
-
-  const response = await fetch("/api/invitations/list", {
-    headers: {
-      "x-haus-user-id": currentUser.id,
-      "x-haus-user-role": currentUser.role,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to load invitations");
-  }
-
-  const payload = (await response.json()) as { invitations?: Invitation[] };
-  return payload.invitations ?? [];
 }
 
 async function getAccessToken() {
@@ -392,228 +378,22 @@ async function apiRequest<T>(input: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(errorPayload?.error ?? "Request failed");
+    const errorPayload = (await response.json().catch(() => null)) as {
+      error?: string;
+      details?: string[];
+    } | null;
+    const detailMessage =
+      errorPayload?.details && errorPayload.details.length > 0
+        ? `\n${errorPayload.details.join("\n")}`
+        : "";
+    throw new Error(`${errorPayload?.error ?? "Request failed"}${detailMessage}`);
   }
 
   return (await response.json()) as T;
 }
 
-async function fetchWorkspaceState(currentUser: User): Promise<DemoState> {
-  const supabase = getWorkspaceSupabase();
-
-  const [
-    profilesResult,
-    projectsResult,
-    invitations,
-  ] = await Promise.all([
-    supabase.from("profiles").select("id, email, name, role, company, created_at").order("created_at", { ascending: true }),
-    supabase
-      .from("projects")
-      .select("id, name, image_url, client_id, owner_id, description, category, stage, status, due_date, created_at")
-      .order("created_at", { ascending: false }),
-    fetchRemoteInvitations(currentUser),
-  ]);
-
-  if (profilesResult.error) {
-    throw new Error(profilesResult.error.message);
-  }
-
-  if (projectsResult.error) {
-    throw new Error(projectsResult.error.message);
-  }
-
-  const profiles = (profilesResult.data ?? []) as ProfileRecord[];
-  const projects = (projectsResult.data ?? []) as ProjectRecord[];
-  const projectIds = projects.map((project) => project.id);
-
-  const [
-    membersResult,
-    tasksResult,
-    filesResult,
-    commentsResult,
-    feedbackResult,
-    activityResult,
-  ] = projectIds.length
-    ? await Promise.all([
-        supabase
-          .from("project_members")
-          .select("project_id, profile_id, role")
-          .in("project_id", projectIds),
-        supabase
-          .from("tasks")
-          .select("id, project_id, title, assignee_id, status, due_date, priority, completion_screenshot_url, client_visible, manager_review_status, created_at")
-          .in("project_id", projectIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("project_files")
-          .select("id, project_id, title, version, file_url, uploaded_by, created_at, visibility, notes")
-          .in("project_id", projectIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("project_comments")
-          .select("id, project_id, author_id, body, internal_only, created_at")
-          .in("project_id", projectIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("project_feedback")
-          .select("id, project_id, author_id, action, body, rating, created_at")
-          .in("project_id", projectIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("project_activity")
-          .select("id, project_id, actor_id, action, message, created_at")
-          .in("project_id", projectIds)
-          .order("created_at", { ascending: false }),
-      ])
-    : [
-        { data: [], error: null },
-        { data: [], error: null },
-        { data: [], error: null },
-        { data: [], error: null },
-        { data: [], error: null },
-        { data: [], error: null },
-      ];
-
-  if (membersResult.error) {
-    throw new Error(membersResult.error.message);
-  }
-
-  if (tasksResult.error) {
-    throw new Error(tasksResult.error.message);
-  }
-
-  if (filesResult.error) {
-    throw new Error(filesResult.error.message);
-  }
-
-  if (commentsResult.error) {
-    throw new Error(commentsResult.error.message);
-  }
-
-  if (feedbackResult.error) {
-    throw new Error(feedbackResult.error.message);
-  }
-
-  if (activityResult.error && !isMissingRelationError(activityResult.error.message)) {
-    throw new Error(activityResult.error.message);
-  }
-
-  const members = (membersResult.data ?? []) as ProjectMemberRecord[];
-  const tasks = (tasksResult.data ?? []) as TaskRecord[];
-  const files = (filesResult.data ?? []) as ProjectFileRecord[];
-  const comments = (commentsResult.data ?? []) as ProjectCommentRecord[];
-  const feedback = (feedbackResult.data ?? []) as ProjectFeedbackRecord[];
-  const activities = isMissingRelationError(activityResult.error?.message)
-    ? []
-    : ((activityResult.data ?? []) as ProjectActivityRecord[]);
-
-  const staffIdsByProject = new Map<string, string[]>();
-  const tasksByProject = new Map<string, Project["tasks"]>();
-  const filesByProject = new Map<string, Project["files"]>();
-  const commentsByProject = new Map<string, Project["comments"]>();
-  const feedbackByProject = new Map<string, Project["feedback"]>();
-  const activityByProject = new Map<string, Project["activities"]>();
-
-  for (const membership of members) {
-    if (membership.role === "client") {
-      continue;
-    }
-
-    const current = staffIdsByProject.get(membership.project_id) ?? [];
-    current.push(membership.profile_id);
-    staffIdsByProject.set(membership.project_id, current);
-  }
-
-  for (const task of tasks) {
-    const current = tasksByProject.get(task.project_id) ?? [];
-      current.push({
-        id: task.id,
-        title: task.title,
-        assigneeId: task.assignee_id,
-        status: task.status,
-        dueDate: task.due_date,
-        priority: task.priority,
-        completionScreenshotUrl: task.completion_screenshot_url,
-        clientVisible: task.client_visible,
-        managerReviewStatus: task.manager_review_status,
-      });
-    tasksByProject.set(task.project_id, current);
-  }
-
-  for (const file of files) {
-    const current = filesByProject.get(file.project_id) ?? [];
-    current.push({
-      id: file.id,
-      title: file.title,
-      version: file.version,
-      uploadedBy: file.uploaded_by,
-      createdAt: file.created_at,
-      visibility: file.visibility,
-      notes: file.notes,
-    });
-    filesByProject.set(file.project_id, current);
-  }
-
-  for (const comment of comments) {
-    const current = commentsByProject.get(comment.project_id) ?? [];
-    current.push({
-      id: comment.id,
-      authorId: comment.author_id,
-      body: comment.body,
-      internalOnly: comment.internal_only,
-      createdAt: comment.created_at,
-    } satisfies Comment);
-    commentsByProject.set(comment.project_id, current);
-  }
-
-  for (const item of feedback) {
-    const current = feedbackByProject.get(item.project_id) ?? [];
-    current.push({
-      id: item.id,
-      authorId: item.author_id,
-      action: item.action,
-      body: item.body,
-      rating: item.rating,
-      createdAt: item.created_at,
-    });
-    feedbackByProject.set(item.project_id, current);
-  }
-
-  for (const item of activities) {
-    const current = activityByProject.get(item.project_id) ?? [];
-    current.push({
-      id: item.id,
-      actorId: item.actor_id,
-      action: item.action,
-      message: item.message,
-      createdAt: item.created_at,
-    } satisfies ProjectActivity);
-    activityByProject.set(item.project_id, current);
-  }
-
-  return {
-    users: profiles.map(toAppUser),
-    invitations,
-    projects: projects.map((project) => ({
-      id: project.id,
-      name: project.name,
-      imageUrl: project.image_url ?? null,
-      clientId: project.client_id ?? "",
-      ownerId: project.owner_id ?? currentUser.id,
-      description: project.description ?? "",
-      category: project.category ?? "",
-      stage: normalizeProjectStage(project.stage),
-      status: normalizeProjectStatus(project.status),
-      dueDate: project.due_date ?? "",
-      staffIds: staffIdsByProject.get(project.id) ?? [],
-      tasks: tasksByProject.get(project.id) ?? [],
-      files: filesByProject.get(project.id) ?? [],
-      comments: commentsByProject.get(project.id) ?? [],
-      feedback: feedbackByProject.get(project.id) ?? [],
-      activities: activityByProject.get(project.id) ?? [],
-    })),
-  };
+async function fetchWorkspaceState(): Promise<DemoState> {
+  return apiRequest<DemoState>("/api/workspace/state");
 }
 
 async function insertProjectActivity(
@@ -705,21 +485,27 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (!user) {
+    const currentUserId = user?.id;
+
+    if (!currentUserId) {
       setState(initialAppState);
       return;
     }
 
-    const currentUser = user;
     let cancelled = false;
 
     async function loadWorkspace() {
       try {
-        const nextState = await fetchWorkspaceState(currentUser);
+        const nextState = await fetchWorkspaceState();
         if (!cancelled) {
           setState(nextState);
+          const hydratedUser = nextState.users.find((profile) => profile.id === currentUserId) ?? null;
+          if (hydratedUser) {
+            setUser((current) => (areUsersEqual(current, hydratedUser) ? current : hydratedUser));
+          }
         }
-      } catch {
+      } catch (error) {
+        console.error("Failed to load workspace state", error);
         if (!cancelled) {
           setState(initialAppState);
         }
@@ -731,15 +517,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [ready, user]);
+  }, [ready, user?.id]);
 
   const refreshWorkspace = async (currentUser: User) => {
     if (appMode !== "supabase") {
       return;
     }
 
-    const nextState = await fetchWorkspaceState(currentUser);
+    const nextState = await fetchWorkspaceState();
     setState(nextState);
+    const hydratedUser = nextState.users.find((profile) => profile.id === currentUser.id) ?? currentUser;
+    setUser((current) => (areUsersEqual(current, hydratedUser) ? current : hydratedUser));
   };
 
   const login = async (email: string, password?: string) => {
@@ -778,8 +566,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Unauthorized");
     }
 
+    const resolvedClientOrganizationId = project.clientOrganizationId;
+
     ensureAuthorized(canCreateProject(user.role), "Only managers can create projects");
-    ensureAuthorized(ensureClientUser(state.users, project.clientId), "Project client must be a client user");
+    ensureAuthorized(
+      ensureClientOrganizationExists(state.clientOrganizations, resolvedClientOrganizationId),
+      "Project client organization must exist",
+    );
 
     if (appMode !== "supabase") {
       throw new Error("Mock mode is not enabled.");
@@ -787,20 +580,44 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const data = await apiRequest<{ id: string }>("/api/workspace/projects", {
       method: "POST",
-      body: JSON.stringify(project),
+      body: JSON.stringify({
+        ...project,
+        clientOrganizationId: resolvedClientOrganizationId,
+      }),
     });
 
     const createdProject: Project = {
       id: data.id,
-      name: project.name,
-      imageUrl: project.imageUrl?.trim() ? project.imageUrl.trim() : null,
-      clientId: project.clientId,
+      name: project.projectRequestName,
+      requestedDate: project.requestedDate,
+      requestStatus: project.requestStatus,
+      departmentName: project.departmentName || null,
+      projectRequestName: project.projectRequestName,
+      contactPerson: project.contactPerson,
+      contactNumber: project.contactNumber || null,
+      projectType: project.projectType,
+      priorityLevel: project.priorityLevel || null,
+      firstDraftDate: project.firstDraftDate || null,
+      finalDeliverableDate: project.finalDeliverableDate,
+      projectObjective: project.projectObjective || null,
+      projectBrief: project.projectBrief || null,
+      creativeAdvice: project.creativeAdvice || null,
+      referenceAttachmentUrl: project.referenceAttachmentUrl || null,
+      clientOrganizationId: resolvedClientOrganizationId || null,
+      primaryClientContactId: null,
       ownerId: user.id,
       description: project.description,
-      category: project.category,
-      stage: "intake",
-      status: "active",
-      dueDate: project.dueDate,
+      category: project.projectType,
+      stage: project.requestStatus as ProjectStage,
+      status:
+        project.requestStatus === "Complete"
+          ? "done"
+          : project.requestStatus === "Pending Review"
+            ? "review"
+            : project.requestStatus === "On Hold"
+              ? "revision"
+              : "active",
+      dueDate: project.finalDeliverableDate,
       staffIds: [],
       tasks: [],
       files: [],
@@ -813,13 +630,38 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return createdProject;
   };
 
+  const bulkCreateProjects: AppStateContextValue["bulkCreateProjects"] = async (rows) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    ensureAuthorized(canCreateProject(user.role), "Only managers can create projects");
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const data = await apiRequest<{ ok: true; createdCount: number }>("/api/workspace/projects/bulk", {
+      method: "POST",
+      body: JSON.stringify({ rows }),
+    });
+
+    await refreshWorkspace(user);
+    return { createdCount: data.createdCount };
+  };
+
   const updateProject: AppStateContextValue["updateProject"] = async (projectId, project) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
 
+    const resolvedClientOrganizationId = project.clientOrganizationId;
+
     ensureAuthorized(canEditProject(user.role), "Only managers can edit projects");
-    ensureAuthorized(ensureClientUser(state.users, project.clientId), "Project client must be a client user");
+    ensureAuthorized(
+      ensureClientOrganizationExists(state.clientOrganizations, resolvedClientOrganizationId),
+      "Project client organization must exist",
+    );
 
     if (appMode !== "supabase") {
       throw new Error("Mock mode is not enabled.");
@@ -827,7 +669,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     await apiRequest<{ ok: true }>(`/api/workspace/projects/${projectId}`, {
       method: "PATCH",
-      body: JSON.stringify(project),
+      body: JSON.stringify({
+        ...project,
+        clientOrganizationId: resolvedClientOrganizationId,
+      }),
     });
 
     await refreshWorkspace(user);
@@ -846,6 +691,65 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     await apiRequest<{ ok: true }>(`/api/workspace/clients/${clientId}`, {
       method: "DELETE",
+    });
+
+    await refreshWorkspace(user);
+  };
+
+  const updateClient: AppStateContextValue["updateClient"] = async (clientId, client) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    await apiRequest<{ ok: true }>(`/api/workspace/clients/${clientId}`, {
+      method: "PATCH",
+      body: JSON.stringify(client),
+    });
+
+    await refreshWorkspace(user);
+  };
+
+  const createClientOrganization: AppStateContextValue["createClientOrganization"] = async (
+    organization,
+  ) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    ensureAuthorized(canCreateClient(user.role), "Only managers can create organizations");
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const data = await apiRequest<{ id: string }>("/api/workspace/client-organizations", {
+      method: "POST",
+      body: JSON.stringify(organization),
+    });
+
+    await refreshWorkspace(user);
+    return data;
+  };
+
+  const updateClientOrganization: AppStateContextValue["updateClientOrganization"] = async (
+    organizationId,
+    organization,
+  ) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    await apiRequest<{ ok: true }>(`/api/workspace/client-organizations/${organizationId}`, {
+      method: "PATCH",
+      body: JSON.stringify(organization),
     });
 
     await refreshWorkspace(user);
@@ -908,7 +812,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const updateProjectWorkflow: AppStateContextValue["updateProjectWorkflow"] = async (
     projectId,
-    status,
     stage,
   ) => {
     if (!user) {
@@ -926,7 +829,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     await apiRequest<{ ok: true }>(`/api/workspace/projects/${projectId}/workflow`, {
       method: "POST",
-      body: JSON.stringify({ status, stage }),
+      body: JSON.stringify({ stage }),
     });
 
     await refreshWorkspace(user);
@@ -1132,6 +1035,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     ensureAuthorized(canInviteUsers(user.role), "Only managers can create invitations");
+    if (payload.role === "client") {
+      ensureAuthorized(
+        ensureClientOrganizationExists(state.clientOrganizations, payload.clientOrganizationId ?? ""),
+        "Client organization is required for client invites",
+      );
+    }
 
     if (appMode === "supabase") {
       const response = await fetch("/api/invitations/create", {
@@ -1165,6 +1074,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         name: derivedName,
         role: payload.role,
         projectId: payload.projectId,
+        clientOrganizationId: payload.clientOrganizationId ?? null,
+        clientOrganizationName:
+          state.clientOrganizations.find(
+            (organization) => organization.id === payload.clientOrganizationId,
+          )?.name ?? null,
         tokenHash: token,
         status: "pending",
         expiresAt: payload.expiresAt,
@@ -1224,6 +1138,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     token,
     name,
     password,
+    phone,
+    jobTitle,
+    department,
   }) => {
     if (appMode === "supabase") {
       const response = await fetch("/api/invitations/accept", {
@@ -1231,7 +1148,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ token, name, password }),
+        body: JSON.stringify({ token, name, password, phone, jobTitle, department }),
       });
 
       if (!response.ok) {
@@ -1266,9 +1183,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         user,
         login,
         logout,
-        createProject,
-        updateProject,
+    createProject,
+    bulkCreateProjects,
+    updateProject,
         deleteClient,
+        updateClient,
+        createClientOrganization,
+        updateClientOrganization,
         updateTeamMemberRole,
         deleteTeamMember,
         deleteProject,

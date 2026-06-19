@@ -18,24 +18,32 @@ type InviteWorkspaceModalProps = {
   open: boolean;
   onClose: () => void;
   variant: InviteVariant;
+  initialClientOrganizationId?: string;
+  lockClientOrganization?: boolean;
 };
 
 export function InviteWorkspaceModal({
   open,
   onClose,
   variant,
+  initialClientOrganizationId,
+  lockClientOrganization = false,
 }: InviteWorkspaceModalProps) {
-  const { createInvitation } = useAppState();
+  const { createInvitation, state } = useAppState();
   const roleFieldRef = useRef<HTMLDivElement | null>(null);
+  const organizationFieldRef = useRef<HTMLDivElement | null>(null);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("designer");
+  const [clientOrganizationId, setClientOrganizationId] = useState(initialClientOrganizationId ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [inviteLink, setInviteLink] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [roleOpen, setRoleOpen] = useState(false);
+  const [organizationOpen, setOrganizationOpen] = useState(false);
   const [dropdownDirection, setDropdownDirection] = useState<"up" | "down">("down");
   const [dropdownMaxHeight, setDropdownMaxHeight] = useState(220);
+  const clientOrganizations = state.clientOrganizations;
 
   const resolvedRole = variant === "client" ? "client" : role;
   const title = inviteLink
@@ -59,23 +67,37 @@ export function InviteWorkspaceModal({
   useEffect(() => {
     if (!open) {
       setRoleOpen(false);
+      setOrganizationOpen(false);
     }
   }, [open]);
 
   useEffect(() => {
-    if (!roleOpen) {
+    setClientOrganizationId(initialClientOrganizationId ?? "");
+  }, [initialClientOrganizationId, open]);
+
+  useEffect(() => {
+    if (!roleOpen && !organizationOpen) {
       return;
     }
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!roleFieldRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const outsideRole = !roleFieldRef.current?.contains(target);
+      const outsideOrganization = !organizationFieldRef.current?.contains(target);
+
+      if (outsideRole) {
         setRoleOpen(false);
+      }
+
+      if (outsideOrganization) {
+        setOrganizationOpen(false);
       }
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setRoleOpen(false);
+        setOrganizationOpen(false);
       }
     };
 
@@ -86,7 +108,7 @@ export function InviteWorkspaceModal({
       window.removeEventListener("mousedown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [roleOpen]);
+  }, [organizationOpen, roleOpen]);
 
   useLayoutEffect(() => {
     if (!roleOpen || !roleFieldRef.current) {
@@ -123,6 +145,11 @@ export function InviteWorkspaceModal({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (resolvedRole === "client" && !clientOrganizationId) {
+      setError("Client organization is required for client invites");
+      return;
+    }
+
     setSubmitting(true);
     setError("");
 
@@ -131,14 +158,17 @@ export function InviteWorkspaceModal({
         email,
         role: resolvedRole,
         projectId: null,
+        clientOrganizationId: resolvedRole === "client" ? clientOrganizationId : null,
         expiresAt,
       });
 
       setInviteLink(result.inviteLink);
       setEmail("");
       setRole("designer");
+      setClientOrganizationId(initialClientOrganizationId ?? "");
       setCopyState("idle");
       setRoleOpen(false);
+      setOrganizationOpen(false);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to create invite");
     } finally {
@@ -232,6 +262,68 @@ export function InviteWorkspaceModal({
                         {formatRole(option)}
                       </SelectOption>
                     ))}
+                  </SelectMenu>
+                ) : null}
+              </FloatingSelectField>
+            ) : null}
+
+            {resolvedRole === "client" ? (
+              <FloatingSelectField ref={organizationFieldRef} $filled={Boolean(clientOrganizationId)} $open={organizationOpen}>
+                <SelectTrigger
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={organizationOpen}
+                  onClick={() => {
+                    if (lockClientOrganization) {
+                      return;
+                    }
+
+                    setOrganizationOpen((current) => !current);
+                  }}
+                >
+                  <SelectValue>
+                    {clientOrganizations.find((organization) => organization.id === clientOrganizationId)?.name ??
+                      "Select client organization"}
+                  </SelectValue>
+                  <SelectChevron $open={organizationOpen}>
+                    <IconChevronDown />
+                  </SelectChevron>
+                </SelectTrigger>
+                <FieldLabel>Client Organization</FieldLabel>
+                {organizationOpen && !lockClientOrganization ? (
+                  <SelectMenu
+                    $direction={dropdownDirection}
+                    $maxHeight={dropdownMaxHeight}
+                    role="listbox"
+                    aria-label="Client organization"
+                  >
+                    {clientOrganizations.length ? (
+                      clientOrganizations.map((organization) => (
+                        <SelectOption
+                          key={organization.id}
+                          type="button"
+                          role="option"
+                          aria-selected={clientOrganizationId === organization.id}
+                          $active={clientOrganizationId === organization.id}
+                          onClick={() => {
+                            setClientOrganizationId(organization.id);
+                            setOrganizationOpen(false);
+                          }}
+                        >
+                          {organization.name}
+                        </SelectOption>
+                      ))
+                    ) : (
+                      <SelectOption
+                        type="button"
+                        role="option"
+                        aria-selected={false}
+                        $active={false}
+                        disabled
+                      >
+                        No client organizations available
+                      </SelectOption>
+                    )}
                   </SelectMenu>
                 ) : null}
               </FloatingSelectField>

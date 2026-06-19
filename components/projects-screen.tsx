@@ -33,7 +33,7 @@ const filterOptions: { key: FilterKey; label: string }[] = [
   { key: "done", label: "Completed" },
 ];
 
-const stageOrder = ["intake", "concept", "design", "review", "delivery"] as const;
+const stageOrder = ["Waiting List", "WIP", "Pending Review", "Complete"] as const;
 
 function formatDueDate(value: string) {
   if (!value) {
@@ -58,8 +58,32 @@ function formatShortDate(value: string) {
   }).format(new Date(value));
 }
 
-function getClientName(project: Project, userNames: Map<string, string>) {
-  return userNames.get(project.clientId) ?? "Unassigned client";
+function getClientOrganizationName(
+  project: Project,
+  organizationNames: Map<string, string>,
+  userNames: Map<string, string>,
+) {
+  if (project.clientOrganizationId) {
+    const organizationName = organizationNames.get(project.clientOrganizationId);
+    if (organizationName) {
+      return organizationName;
+    }
+  }
+
+  return project.contactPerson || "Unassigned client";
+}
+
+function getPrimaryContactLabel(project: Project, usersById: Map<string, { name: string; email: string }>) {
+  if (project.contactPerson || project.contactNumber) {
+    return [project.contactPerson, project.contactNumber].filter(Boolean).join(" · ");
+  }
+
+  const contact = project.primaryClientContactId ? usersById.get(project.primaryClientContactId) : null;
+  if (!contact) {
+    return "No primary contact";
+  }
+
+  return `${contact.name} · ${contact.email}`;
 }
 
 function getVisibleProjectProgress(project: Project, taskCount: number, doneCount: number) {
@@ -67,13 +91,7 @@ function getVisibleProjectProgress(project: Project, taskCount: number, doneCoun
     return 100;
   }
 
-  const stageWeight = {
-    intake: 20,
-    concept: 35,
-    design: 55,
-    review: 75,
-    delivery: 90,
-  }[project.stage];
+  const stageWeight = getStageWeight(project.stage);
 
   if (!taskCount) {
     return stageWeight;
@@ -83,8 +101,43 @@ function getVisibleProjectProgress(project: Project, taskCount: number, doneCoun
   return Math.max(stageWeight, ratio);
 }
 
+function getStageWeight(stage: Project["stage"]) {
+  switch (stage) {
+    case "Waiting List":
+    case "intake":
+      return 20;
+    case "WIP":
+    case "concept":
+      return 45;
+    case "design":
+      return 60;
+    case "Pending Review":
+    case "review":
+      return 80;
+    case "Complete":
+    case "delivery":
+      return 100;
+    case "On Hold":
+      return 55;
+    default:
+      return 35;
+  }
+}
+
 function getStageProgress(stage: Project["stage"]) {
-  const currentIndex = stageOrder.indexOf(stage);
+  const normalizedStage: (typeof stageOrder)[number] =
+    stage === "intake"
+      ? "Waiting List"
+      : stage === "concept" || stage === "design"
+        ? "WIP"
+        : stage === "review"
+          ? "Pending Review"
+          : stage === "delivery"
+            ? "Complete"
+            : stage === "On Hold"
+              ? "Pending Review"
+              : stage;
+  const currentIndex = stageOrder.indexOf(normalizedStage);
   return stageOrder.map((step, index) => ({
     key: step,
     active: index <= currentIndex,
@@ -139,8 +192,16 @@ export function ProjectsScreen() {
   // Keep hooks unconditionally called: ESLint rules-of-hooks
   const visibleProjects = state.projects.filter((project) => (user ? canViewProject(user, project) : false));
   const canManage = user ? canCreateProjectPermission(user.role) : false;
+  const organizationNames = useMemo(
+    () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization.name])),
+    [state.clientOrganizations],
+  );
   const userNames = useMemo(
     () => new Map(state.users.map((member) => [member.id, member.name])),
+    [state.users],
+  );
+  const usersById = useMemo(
+    () => new Map(state.users.map((member) => [member.id, { name: member.name, email: member.email }])),
     [state.users],
   );
   const roleLabel = user ? formatRole(user.role).toUpperCase() : "";
@@ -149,13 +210,15 @@ export function ProjectsScreen() {
     const loweredSearch = search.trim().toLowerCase();
     const nextProjects = visibleProjects.filter((project) => {
       const matchesFilter = filter === "all" ? true : project.status === filter;
-      const clientName = getClientName(project, userNames).toLowerCase();
+      const clientName = getClientOrganizationName(project, organizationNames, userNames).toLowerCase();
+      const primaryContact = getPrimaryContactLabel(project, usersById).toLowerCase();
       const matchesSearch =
         !loweredSearch ||
         project.name.toLowerCase().includes(loweredSearch) ||
         project.description.toLowerCase().includes(loweredSearch) ||
         project.category.toLowerCase().includes(loweredSearch) ||
-        clientName.includes(loweredSearch);
+        clientName.includes(loweredSearch) ||
+        primaryContact.includes(loweredSearch);
 
       return matchesFilter && matchesSearch;
     });
@@ -167,7 +230,7 @@ export function ProjectsScreen() {
 
       return new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime();
     });
-  }, [filter, search, sort, userNames, visibleProjects]);
+  }, [filter, organizationNames, search, sort, userNames, usersById, visibleProjects]);
 
   const pageSize = 4;
   const totalProjects = filteredProjects.length;
@@ -315,14 +378,15 @@ export function ProjectsScreen() {
 
               return (
                 <ProjectRow key={project.id} href={`/projects/${project.id}`}>
-                  <ProjectMark $imageUrl={project.imageUrl ?? null}>
-                    {project.imageUrl ? null : getProjectMark(project)}
-                  </ProjectMark>
+                  <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
+                  <ProjectMark>{getProjectMark(project)}</ProjectMark>
 
                   <ProjectSummary>
                     <SummaryTitle>{project.name}</SummaryTitle>
-                    <SummaryLine>{getClientName(project, userNames)}</SummaryLine>
-                    <SummaryLine>{project.category}</SummaryLine>
+                    <SummaryLine>
+                      Client Organization: {getClientOrganizationName(project, organizationNames, userNames)}
+                    </SummaryLine>
+                    <SummaryLine>Primary Contact: {getPrimaryContactLabel(project, usersById)}</SummaryLine>
                   </ProjectSummary>
 
                   <MetaColumn $grow>
@@ -402,9 +466,8 @@ export function ProjectsScreen() {
 
               return (
                 <MobileProjectCard key={project.id} href={`/projects/${project.id}`}>
-                  <MobileProjectMark $imageUrl={project.imageUrl ?? null}>
-                    {project.imageUrl ? null : getProjectMark(project)}
-                  </MobileProjectMark>
+                  <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
+                  <MobileProjectMark>{getProjectMark(project)}</MobileProjectMark>
                   <MobileCopy>
                     <MobileTitleRow>
                       <MobileTitle>{project.name}</MobileTitle>
@@ -415,7 +478,9 @@ export function ProjectsScreen() {
                       </StatusPill>
                     </MobileTitleRow>
                     <MobileInfoRow>
-                      <MobileClientName>{getClientName(project, userNames)}</MobileClientName>
+                      <MobileClientName>
+                        {getClientOrganizationName(project, organizationNames, userNames)}
+                      </MobileClientName>
                       <MobileMetaText>Due {formatShortDate(project.dueDate)}</MobileMetaText>
                     </MobileInfoRow>
                     <MobileProgressGroup>
@@ -494,7 +559,7 @@ const PageShell = styled.main`
 
   ${desktop} {
     display: flex;
-    align-items: stretch;
+    align-items: flex-start;
     padding: 8px;
     background: rgba(255, 255, 255, 0.58);
   }
@@ -813,12 +878,24 @@ const DesktopList = styled.section`
 
 const ProjectRow = styled(Link)`
   ${cardSurface}
+  position: relative;
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 22px 20px;
+  padding: 34px 20px 22px;
   border-radius: 24px;
   text-decoration: none;
+`;
+
+const ProjectIdBadge = styled.span`
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  color: var(--color-text-light);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 `;
 
 const markSurface = css`
@@ -829,19 +906,13 @@ const markSurface = css`
   font-weight: 600;
 `;
 
-const ProjectMark = styled.div<{ $imageUrl?: string | null }>`
+const ProjectMark = styled.div`
   ${markSurface}
   width: 76px;
   height: 76px;
   flex: 0 0 76px;
   border-radius: 18px;
   font-size: 1.6rem;
-  background:
-    ${({ $imageUrl }) =>
-      $imageUrl
-        ? `center / cover no-repeat url("${$imageUrl}")`
-        : "linear-gradient(145deg, #ede5d8, #f8f4ee)"};
-  color: ${({ $imageUrl }) => ($imageUrl ? "transparent" : "#8c7040")};
 `;
 
 const ProjectSummary = styled.div`
@@ -1043,27 +1114,22 @@ const MobileList = styled.section`
 
 const MobileProjectCard = styled(Link)`
   ${cardSurface}
+  position: relative;
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
-  padding: 10px 12px;
+  padding: 26px 12px 10px;
   border-radius: 18px;
   text-decoration: none;
 `;
 
-const MobileProjectMark = styled.div<{ $imageUrl?: string | null }>`
+const MobileProjectMark = styled.div`
   ${markSurface}
   width: 50px;
   height: 50px;
   border-radius: 14px;
   font-size: 1rem;
-  background:
-    ${({ $imageUrl }) =>
-      $imageUrl
-        ? `center / cover no-repeat url("${$imageUrl}")`
-        : "linear-gradient(145deg, #ede5d8, #f8f4ee)"};
-  color: ${({ $imageUrl }) => ($imageUrl ? "transparent" : "#8c7040")};
 `;
 
 const MobileCopy = styled.div`

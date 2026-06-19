@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { appConfig } from "@/lib/config";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
+const allowedMimeTypes = ["image/webp"];
+
 export async function POST(request: NextRequest) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
@@ -15,29 +17,15 @@ export async function POST(request: NextRequest) {
   const file = formData.get("file");
 
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Image file is required" }, { status: 400 });
+    return NextResponse.json({ error: "Organization image file is required" }, { status: 400 });
   }
 
-  if (file.type !== "image/webp") {
+  if (!allowedMimeTypes.includes(file.type)) {
     return NextResponse.json({ error: "Only optimized WebP uploads are supported" }, { status: 400 });
   }
 
-  const bucket = appConfig.projectImagesBucket;
-  const existingBuckets = await supabase.storage.listBuckets();
-  if (!existingBuckets.data?.some((candidate) => candidate.name === bucket)) {
-    const { error: createBucketError } = await supabase.storage.createBucket(bucket, {
-      public: true,
-      fileSizeLimit: 5 * 1024 * 1024,
-      allowedMimeTypes: ["image/webp"],
-    });
-
-    if (createBucketError && !createBucketError.message.toLowerCase().includes("already exists")) {
-      return NextResponse.json({ error: createBucketError.message }, { status: 500 });
-    }
-  }
-
-  const extension = "webp";
-  const path = `projects/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+  const bucket = appConfig.organizationProfileImagesBucket;
+  const path = `organizations/${Date.now()}-${crypto.randomUUID()}.webp`;
   const arrayBuffer = await file.arrayBuffer();
 
   const { error: uploadError } = await supabase.storage.from(bucket).upload(path, arrayBuffer, {
