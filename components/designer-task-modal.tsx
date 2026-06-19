@@ -25,6 +25,14 @@ type DesignerTaskModalTask = {
   status: TaskStatus;
   completionScreenshotUrl?: string | null;
   managerReviewStatus?: TaskManagerReviewStatus;
+  feedbackEntries?: {
+    id: string;
+    source: "internal" | "client";
+    author: string;
+    body: string;
+    createdAt: string;
+    rating?: number | null;
+  }[];
 };
 
 type Props = {
@@ -166,6 +174,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
   const selectedVersion = versionOptions.find((option) => option.id === selectedVersionId) ?? versionOptions[0] ?? null;
   const displayedAssets = selectedVersion?.isCurrent ? allAssets : (selectedVersion?.assets ?? []);
   const isViewingCurrentVersion = selectedVersion?.isCurrent ?? false;
+  const versionFeedbackEntries = task?.feedbackEntries ?? [];
 
   useEffect(() => {
     if (!task) {
@@ -465,6 +474,42 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
                   ))}
                 </SubmittedAssetsScroller>
               </SubmittedAssetsPanel>
+            ) : null}
+
+            {versionFeedbackEntries.length > 0 ? (
+              <FeedbackPanel>
+                <UploadHeader>
+                  <UploadLabel>Feedback</UploadLabel>
+                  <UploadCount>{versionFeedbackEntries.length} item{versionFeedbackEntries.length === 1 ? "" : "s"}</UploadCount>
+                </UploadHeader>
+                <FeedbackList>
+                  {versionFeedbackEntries.map((entry) => (
+                    <FeedbackItem key={entry.id}>
+                      <FeedbackRow>
+                        <strong>{entry.author}</strong>
+                        <FeedbackPill $source={entry.source}>
+                          {entry.source === "internal" ? "Internal Feedback" : "Client Feedback"}
+                        </FeedbackPill>
+                      </FeedbackRow>
+                      <FeedbackMeta>
+                        {new Intl.DateTimeFormat("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        }).format(new Date(entry.createdAt))}
+                      </FeedbackMeta>
+                      {entry.rating ? (
+                        <FeedbackStars>
+                          {Array.from({ length: 5 }, (_, index) => (
+                            <FeedbackStar key={index} $filled={index < entry.rating!}>★</FeedbackStar>
+                          ))}
+                        </FeedbackStars>
+                      ) : null}
+                      <FeedbackBody>{entry.body}</FeedbackBody>
+                    </FeedbackItem>
+                  ))}
+                </FeedbackList>
+              </FeedbackPanel>
             ) : null}
 
             {!isLocked && isViewingCurrentVersion ? (
@@ -1022,6 +1067,80 @@ const LinkAddButton = styled.button`
   font-size: 0.92rem;
   font-weight: 800;
   white-space: nowrap;
+`;
+
+const FeedbackPanel = styled.div`
+  display: grid;
+  gap: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(251, 250, 247, 0.88);
+  padding: 12px;
+`;
+
+const FeedbackList = styled.div`
+  display: grid;
+  gap: 10px;
+`;
+
+const FeedbackItem = styled.div`
+  display: grid;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(235, 229, 221, 0.95);
+
+  &:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+`;
+
+const FeedbackRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  strong {
+    color: #2e2a27;
+    font-size: 0.86rem;
+  }
+`;
+
+const FeedbackPill = styled.span<{ $source: "internal" | "client" }>`
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: ${({ $source }) => ($source === "internal" ? "#eef3f0" : "#e6efff")};
+  color: ${({ $source }) => ($source === "internal" ? "#214f39" : "#4770d8")};
+  font-size: 0.74rem;
+  font-weight: 800;
+`;
+
+const FeedbackMeta = styled.span`
+  color: #7d7266;
+  font-size: 0.76rem;
+`;
+
+const FeedbackStars = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 2px;
+`;
+
+const FeedbackStar = styled.span<{ $filled?: boolean }>`
+  color: ${({ $filled }) => ($filled ? "#ca8a22" : "#ddd4c9")};
+  font-size: 0.9rem;
+  line-height: 1;
+`;
+
+const FeedbackBody = styled.p`
+  margin: 0;
+  color: #433b34;
+  font-size: 0.84rem;
+  line-height: 1.5;
 `;
 
 function IconChevronDown() {

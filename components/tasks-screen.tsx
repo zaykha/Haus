@@ -43,6 +43,14 @@ type TaskRow = {
   completionScreenshotUrl?: string | null;
   rawStatus: TaskStatus;
   managerReviewStatus?: TaskManagerReviewStatus;
+  feedbackEntries?: {
+    id: string;
+    source: "internal" | "client";
+    author: string;
+    body: string;
+    createdAt: string;
+    rating?: number | null;
+  }[];
 };
 
 const tablet = "@media (min-width: 768px) and (max-width: 1099px)";
@@ -231,9 +239,35 @@ export function TasksScreen() {
           completionScreenshotUrl: task.completionScreenshotUrl ?? null,
           rawStatus: task.status,
           managerReviewStatus: task.managerReviewStatus,
+          feedbackEntries: [
+            ...project.feedback.map((item) => ({
+              id: item.id,
+              source:
+                state.users.find((candidate) => candidate.id === item.authorId)?.role === "client"
+                  ? ("client" as const)
+                  : ("internal" as const),
+              author:
+                state.users.find((candidate) => candidate.id === item.authorId)?.name ??
+                (state.users.find((candidate) => candidate.id === item.authorId)?.role === "client"
+                  ? "Client"
+                  : "Team member"),
+              body: item.body,
+              createdAt: item.createdAt,
+              rating: item.rating,
+            })),
+            ...project.comments
+              .filter((comment) => comment.internalOnly)
+              .map((comment) => ({
+                id: comment.id,
+                source: "internal" as const,
+                author: userNames.get(comment.authorId) ?? "Team member",
+                body: comment.body,
+                createdAt: comment.createdAt,
+              })),
+          ].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
         })),
     );
-  }, [isDesigner, user, userNames, visibleProjects]);
+  }, [isDesigner, state.users, user, userNames, visibleProjects]);
 
 
   const filteredTasks = useMemo(() => {
@@ -362,6 +396,7 @@ export function TasksScreen() {
                 status: activeDesignerTask.rawStatus,
                 completionScreenshotUrl: activeDesignerTask.completionScreenshotUrl ?? null,
                 managerReviewStatus: activeDesignerTask.managerReviewStatus,
+                feedbackEntries: activeDesignerTask.feedbackEntries ?? [],
               }
             : null
         }

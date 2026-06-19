@@ -63,6 +63,24 @@ type FeedbackRow = {
   createdAt: string;
 };
 
+type InternalNoteRow = {
+  id: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+};
+
+type VersionFeedbackEntry = {
+  id: string;
+  source: "internal" | "client";
+  authorId: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  rating?: number | null;
+  action?: FeedbackAction;
+};
+
 const EMPTY_PROJECT: Project = {
   id: "",
   name: "",
@@ -330,6 +348,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [feedbackBody, setFeedbackBody] = useState("");
   const [feedbackRating, setFeedbackRating] = useState(5);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
   const projectRecord = useMemo(
     () => state.projects.find((candidate) => candidate.id === projectId) ?? null,
@@ -376,7 +395,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const canEditDetails = user ? canEditProject(user.role) : false;
   const canRemoveProject = user ? canDeleteProject(user.role) : false;
   const canManageTasks = user ? canCreateTask(user.role) : false;
-  const canManageVersions = user ? canUploadFiles(user.role) : false;
+  const canManageVersions = user ? canUploadFiles(user.role) && user.role !== "designer" : false;
   const canLeaveClientFeedback = user?.role === "client";
   const projectStatusTone = getProjectStatusTone(project.stage);
   const visibleFiles =
@@ -511,6 +530,13 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   );
 
   const latestVersion = visibleFiles[0] ?? null;
+  const selectedVersion =
+    visibleFiles.find((file) => file.id === selectedVersionId) ?? latestVersion ?? null;
+  const selectedVersionIndex = selectedVersion
+    ? visibleFiles.findIndex((file) => file.id === selectedVersion.id)
+    : -1;
+  const selectedVersionWindowEnd =
+    selectedVersionIndex > 0 ? visibleFiles[selectedVersionIndex - 1]?.createdAt ?? null : null;
   const referenceAttachments = useMemo(
     () => parseReferenceAttachments(project.referenceAttachmentUrl),
     [project.referenceAttachmentUrl],
@@ -518,8 +544,93 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const feedbackRows = [...project.feedback].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   ) as FeedbackRow[];
-  const latestFeedback = feedbackRows[0] ?? null;
+  const internalNoteRows = useMemo(
+    () =>
+      project.comments
+        .filter((comment) => comment.internalOnly)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .map(
+          (comment): InternalNoteRow => ({
+            id: comment.id,
+            authorId: comment.authorId,
+            body: comment.body,
+            createdAt: comment.createdAt,
+          }),
+        ),
+    [project.comments],
+  );
+  const versionClientFeedback = useMemo(() => {
+    if (!selectedVersion) {
+      return feedbackRows;
+    }
+
+    const start = new Date(selectedVersion.createdAt).getTime();
+    const end = selectedVersionWindowEnd ? new Date(selectedVersionWindowEnd).getTime() : Number.POSITIVE_INFINITY;
+
+    return feedbackRows.filter((item) => {
+      const createdAt = new Date(item.createdAt).getTime();
+      return createdAt >= start && createdAt < end;
+    });
+  }, [feedbackRows, selectedVersion, selectedVersionWindowEnd]);
+  const versionInternalNotes = useMemo(() => {
+    if (!selectedVersion) {
+      return internalNoteRows;
+    }
+
+    const start = new Date(selectedVersion.createdAt).getTime();
+    const end = selectedVersionWindowEnd ? new Date(selectedVersionWindowEnd).getTime() : Number.POSITIVE_INFINITY;
+
+    return internalNoteRows.filter((item) => {
+      const createdAt = new Date(item.createdAt).getTime();
+      return createdAt >= start && createdAt < end;
+    });
+  }, [internalNoteRows, selectedVersion, selectedVersionWindowEnd]);
+  const versionFeedbackEntries = useMemo(() => {
+    const clientEntries = versionClientFeedback.map(
+      (item): VersionFeedbackEntry => ({
+        id: item.id,
+        source:
+          state.users.find((candidate) => candidate.id === item.authorId)?.role === "client"
+            ? "client"
+            : "internal",
+        authorId: item.authorId,
+        authorName:
+          state.users.find((candidate) => candidate.id === item.authorId)?.name ??
+          primaryClientContact?.name ??
+          clientOrganization?.name ??
+          "Client",
+        body: item.body,
+        createdAt: item.createdAt,
+        rating: item.rating,
+        action: item.action,
+      }),
+    );
+    const internalEntries = versionInternalNotes.map(
+      (item): VersionFeedbackEntry => ({
+        id: item.id,
+        source: "internal",
+        authorId: item.authorId,
+        authorName: state.users.find((candidate) => candidate.id === item.authorId)?.name ?? "Team member",
+        body: item.body,
+        createdAt: item.createdAt,
+      }),
+    );
+
+    return [...clientEntries, ...internalEntries].sort(
+      (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+    );
+  }, [
+    clientOrganization?.name,
+    primaryClientContact?.name,
+    state.users,
+    versionClientFeedback,
+    versionInternalNotes,
+  ]);
   const workflowTimelineIndex = getWorkflowTimelineIndex(project.stage);
+
+  useEffect(() => {
+    setSelectedVersionId(latestVersion?.id ?? null);
+  }, [latestVersion?.id]);
 
   const recentActivity = useMemo<ActivityItem[]>(() => {
     const items = [...project.activities]
@@ -867,6 +978,14 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 status: activeDesignerTask.status,
                 completionScreenshotUrl: activeDesignerTask.completionScreenshotUrl ?? null,
                 managerReviewStatus: activeDesignerTask.managerReviewStatus,
+                feedbackEntries: versionFeedbackEntries.map((entry) => ({
+                  id: entry.id,
+                  source: entry.source,
+                  author: entry.authorName,
+                  body: entry.body,
+                  createdAt: entry.createdAt,
+                  rating: entry.rating,
+                })),
               }
             : null
         }
@@ -2152,29 +2271,33 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                     <VersionPreview>{getProjectInitial(project.name)}</VersionPreview>
                     <VersionCopy>
                       <VersionHeadingRow>
-                        <strong>{latestVersion.title}</strong>
+                        <strong>{selectedVersion?.title ?? latestVersion.title}</strong>
                         <Badge style={{ background: "rgba(244, 241, 237, 1)", color: "#7f7468" }}>
-                          {latestVersion.version}
+                          {selectedVersion?.version ?? latestVersion.version}
                         </Badge>
                       </VersionHeadingRow>
                       <VersionMeta>
                         Updated by{" "}
-                        {state.users.find((candidate) => candidate.id === latestVersion.uploadedBy)?.name ??
+                        {state.users.find((candidate) => candidate.id === (selectedVersion?.uploadedBy ?? latestVersion.uploadedBy))?.name ??
                           "Team member"}{" "}
-                        on {formatDate(latestVersion.createdAt)}
+                        on {formatDate(selectedVersion?.createdAt ?? latestVersion.createdAt)}
                       </VersionMeta>
                       <VersionMeta>
-                        {latestVersion.visibility === "client" ? "Client visible" : "Internal only"}
+                        {(selectedVersion?.visibility ?? latestVersion.visibility) === "client" ? "Client visible" : "Internal only"}
                       </VersionMeta>
                     </VersionCopy>
                   </VersionHero>
                   <VersionNotes>
-                    {latestVersion.notes?.trim() || "No notes added for this version yet."}
+                    {selectedVersion?.notes?.trim() || latestVersion.notes?.trim() || "No notes added for this version yet."}
                   </VersionNotes>
-                  {visibleFiles.slice(1, 4).length ? (
+                  {visibleFiles.length > 1 ? (
                     <VersionHistoryList>
-                      {visibleFiles.slice(1, 4).map((file) => (
-                        <VersionHistoryItem key={file.id}>
+                      {visibleFiles.slice(0, 4).map((file) => (
+                        <VersionHistoryItem
+                          key={file.id}
+                          $active={selectedVersion?.id === file.id}
+                          onClick={() => setSelectedVersionId(file.id)}
+                        >
                           <strong>{file.title}</strong>
                           <span>
                             {file.version} · {formatShortDate(file.createdAt)}
@@ -2191,83 +2314,48 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
             <WorkspaceCard className="panel">
               <PanelHeader>
-                <h2>Client Feedback</h2>
-                {/* {canLeaveClientFeedback ? (
-                  <InlineActionButton type="button" onClick={() => setShowFeedbackPanel(true)}>
-                    Rate latest
-                  </InlineActionButton>
-                ) : null} */}
+                <h2>Feedback</h2>
               </PanelHeader>
-              {latestFeedback ? (
-                <>
-                  <FeedbackHero>
-                    <ActivityAvatar>
-                      {getUserInitial(
-                        state.users.find((candidate) => candidate.id === latestFeedback.authorId)?.name ??
-                          primaryClientContact?.name ??
-                          clientOrganization?.name ??
-                          "C",
-                      )}
-                    </ActivityAvatar>
-                    <div>
-                      <ActivityLine>
-                        <strong>
-                          {state.users.find((candidate) => candidate.id === latestFeedback.authorId)?.name ??
-                            primaryClientContact?.name ??
-                            clientOrganization?.name ??
-                            "Client"}
-                        </strong>
-                        <Badge
-                          style={{
-                            background: getFeedbackTone(latestFeedback.action).bg,
-                            color: getFeedbackTone(latestFeedback.action).fg,
-                          }}
-                        >
-                          {getFeedbackTone(latestFeedback.action).label}
-                        </Badge>
-                      </ActivityLine>
-                      <VersionMeta>{formatDate(latestFeedback.createdAt)}</VersionMeta>
-                      {latestFeedback.rating ? (
-                        <RatingReadout>
-                          {Array.from({ length: 5 }, (_, index) => (
-                            <Star key={index} $filled={index < latestFeedback.rating!}>
-                              ★
-                            </Star>
-                          ))}
-                        </RatingReadout>
-                      ) : null}
-                    </div>
-                  </FeedbackHero>
-                  <VersionNotes>{latestFeedback.body}</VersionNotes>
-                  {feedbackRows.slice(1, 4).length ? (
-                    <ActivityList>
-                      {feedbackRows.slice(1, 4).map((item) => {
-                        const tone = getFeedbackTone(item.action);
-                        const author = state.users.find((candidate) => candidate.id === item.authorId);
-                        return (
-                          <ActivityItemCard key={item.id}>
-                            <ActivityAvatar>
-                              {getUserInitial(
-                                author?.name ?? primaryClientContact?.name ?? clientOrganization?.name ?? "C",
-                              )}
-                            </ActivityAvatar>
-                            <div>
-                              <ActivityLine>
-                                <strong>
-                                  {author?.name ?? primaryClientContact?.name ?? clientOrganization?.name ?? "Client"}
-                                </strong>
-                                <span>{tone.label}</span>
-                              </ActivityLine>
-                              <ActivityMeta>{item.body}</ActivityMeta>
-                            </div>
-                          </ActivityItemCard>
-                        );
-                      })}
-                    </ActivityList>
-                  ) : null}
-                </>
+              {versionFeedbackEntries.length ? (
+                <ActivityList>
+                  {versionFeedbackEntries.slice(0, 4).map((item) => {
+                    const tone =
+                      item.source === "client" && item.action
+                        ? getFeedbackTone(item.action)
+                        : { bg: "#eef3f0", fg: "#214f39", label: "Internal Feedback" };
+                    return (
+                      <ActivityItemCard key={item.id}>
+                        <ActivityAvatar>{getUserInitial(item.authorName)}</ActivityAvatar>
+                        <div>
+                          <ActivityLine>
+                            <strong>{item.authorName}</strong>
+                            <Badge
+                              style={{
+                                background: item.source === "internal" ? "#eef3f0" : tone.bg,
+                                color: item.source === "internal" ? "#214f39" : tone.fg,
+                              }}
+                            >
+                              {item.source === "internal" ? "Internal Feedback" : "Client Feedback"}
+                            </Badge>
+                          </ActivityLine>
+                          <VersionMeta>{formatDate(item.createdAt)}</VersionMeta>
+                          {item.rating ? (
+                            <RatingReadout>
+                              {Array.from({ length: 5 }, (_, index) => (
+                                <Star key={index} $filled={index < item.rating!}>
+                                  ★
+                                </Star>
+                              ))}
+                            </RatingReadout>
+                          ) : null}
+                          <ActivityMeta>{item.body}</ActivityMeta>
+                        </div>
+                      </ActivityItemCard>
+                    );
+                  })}
+                </ActivityList>
               ) : (
-                <EmptyState>No client feedback yet.</EmptyState>
+                <EmptyState>No feedback for this version yet.</EmptyState>
               )}
             </WorkspaceCard>
           </WorkspaceSection>
@@ -4001,21 +4089,26 @@ const VersionHistoryList = styled.div`
   gap: 8px;
 `;
 
-const VersionHistoryItem = styled.div`
+const VersionHistoryItem = styled.button<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   gap: 10px;
-  padding-top: 8px;
+  padding: 10px 0 0;
+  border: 0;
   border-top: 1px solid rgba(235, 229, 221, 0.95);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
 
   strong {
-    color: #2e2a27;
+    color: ${({ $active }) => ($active ? "#214f39" : "#2e2a27")};
     font-size: 0.86rem;
   }
 
   span {
-    color: #7d7266;
+    color: ${({ $active }) => ($active ? "#214f39" : "#7d7266")};
     font-size: 0.8rem;
     white-space: nowrap;
   }

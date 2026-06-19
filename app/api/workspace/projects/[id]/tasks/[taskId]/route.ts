@@ -219,6 +219,19 @@ export async function PATCH(
       nextReviewStatus === "revision_requested"
     ) {
       await updateProjectRequestStatusIfAllowed(supabase, id, "WIP");
+      if (revisionNote) {
+        const { error: feedbackError } = await supabase.from("project_feedback").insert({
+          project_id: id,
+          author_id: user.id,
+          body: revisionNote,
+          action: "comment",
+          rating: null,
+        });
+
+        if (feedbackError) {
+          return NextResponse.json({ error: feedbackError.message }, { status: 500 });
+        }
+      }
       await logProjectActivity(
         supabase,
         id,
