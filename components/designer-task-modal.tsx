@@ -632,9 +632,11 @@ const LoadingOverlay = styled.div`
 const ModalCard = styled.section`
   ${cardSurface}
   width: min(100%, 620px);
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
   gap: 18px;
+  overflow-y: auto;
   padding: 22px;
   border-radius: 26px;
 `;

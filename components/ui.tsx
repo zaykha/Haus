@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { PropsWithChildren, useMemo } from "react";
 import { useAppState } from "@/components/app-state";
 import { getPrimaryNavItems } from "@/lib/navigation";
-import { getVisibleTasksForUser } from "@/lib/permissions";
+import { getAttentionTaskCount } from "@/lib/task-attention";
 
 export function Shell({ children }: PropsWithChildren) {
   return (
@@ -22,15 +22,12 @@ export function BottomNav() {
   const pathname = usePathname();
   const { user, state } = useAppState();
   const taskBadgeCount = useMemo(() => {
-    if (!user || user.role !== "designer") {
+    if (!user) {
       return 0;
     }
-
-    return state.projects
-      .flatMap((project) => getVisibleTasksForUser(user, project))
-      .filter((task) => task.assigneeId === user.id && (task.status === "todo" || task.status === "in_progress"))
-      .length;
+    return getAttentionTaskCount(user, state.projects);
   }, [state.projects, user]);
+  const badgeLabel = user?.role === "client" ? "Projects" : "Tasks";
 
   const items = getPrimaryNavItems(user?.role).map((item) => ({
     ...item,
@@ -60,7 +57,7 @@ export function BottomNav() {
         >
           <span className="nav-icon" aria-hidden="true">
             {item.icon}
-            {item.label === "Tasks" && taskBadgeCount > 0 ? (
+            {item.label === badgeLabel && taskBadgeCount > 0 ? (
               <span className="nav-badge">{taskBadgeCount > 99 ? "99+" : taskBadgeCount}</span>
             ) : null}
           </span>

@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { CustomDatePicker } from "@/components/custom-date-picker";
+import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { useAppState } from "@/components/app-state";
 import { formatLabel, getTaskStatusLabel } from "@/lib/display";
 import { canEditTask, canViewProject } from "@/lib/permissions";
@@ -40,7 +41,8 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   const [status, setStatus] = useState<TaskStatus>("todo");
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("medium");
-  const [reviewAction, setReviewAction] = useState<"submit" | "revise">("submit");
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [showReviseModal, setShowReviseModal] = useState(false);
   const [revisionComment, setRevisionComment] = useState("");
   const [error, setError] = useState("");
 
@@ -133,7 +135,8 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
     setStatus(task.status);
     setDueDate(task.dueDate ?? project.dueDate);
     setPriority(task.priority ?? "medium");
-    setReviewAction("submit");
+    setShowSubmitConfirm(false);
+    setShowReviseModal(false);
     setRevisionComment("");
     setError("");
     setSelectOpen(null);
@@ -182,8 +185,33 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
     }
   };
 
-  const handleManagerAction = async () => {
-    if (reviewAction === "revise" && !revisionComment.trim()) {
+  const handleManagerSubmit = async () => {
+    setIsSaving(true);
+    setError("");
+
+    try {
+      await updateTask(project.id, task.id, {
+        title,
+        assigneeId,
+        status: "review",
+        dueDate,
+        priority,
+        completionScreenshotUrl: task.completionScreenshotUrl ?? null,
+        clientVisible: true,
+        managerReviewStatus: "ready_for_client",
+      });
+      setShowSubmitConfirm(false);
+      setRevisionComment("");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to update task.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleManagerRevise = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!revisionComment.trim()) {
       setError("Add revision feedback before sending the task back.");
       return;
     }
@@ -195,21 +223,18 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
       await updateTask(project.id, task.id, {
         title,
         assigneeId,
-        status: reviewAction === "submit" ? "review" : "in_progress",
+        status: "in_progress",
         dueDate,
         priority,
         completionScreenshotUrl: task.completionScreenshotUrl ?? null,
-        clientVisible: reviewAction === "submit",
-        managerReviewStatus: reviewAction === "submit" ? "ready_for_client" : "revision_requested",
-        activityNote: reviewAction === "revise" ? revisionComment.trim() : undefined,
+        clientVisible: false,
+        managerReviewStatus: "revision_requested",
+        activityNote: revisionComment.trim(),
       });
-      if (reviewAction === "revise") {
-        router.push(`/projects/${project.id}`);
-        return;
-      }
-      if (reviewAction === "submit") {
-        setRevisionComment("");
-      }
+      setShowReviseModal(false);
+      setRevisionComment("");
+      router.push(`/projects/${project.id}`);
+      return;
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to update task.");
     } finally {
@@ -245,6 +270,59 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
             <PreviewImage src={previewAsset} alt={`${task.title} deliverable preview`} />
           </PreviewFrame>
         </PreviewOverlay>
+      ) : null}
+      <ConfirmActionModal
+        open={showSubmitConfirm}
+        title="Submit to client"
+        description="This will send the current deliverables to the client for review."
+        confirmLabel="Submit to client"
+        busy={isSaving}
+        onCancel={() => {
+          if (!isSaving) {
+            setShowSubmitConfirm(false);
+          }
+        }}
+        onConfirm={handleManagerSubmit}
+      />
+      {showReviseModal ? (
+        <ReviewModalOverlay onClick={() => (isSaving ? null : setShowReviseModal(false))}>
+          <ReviewModalCard onClick={(event) => event.stopPropagation()}>
+            <PanelHeader>
+              <PanelTitle>Send revision</PanelTitle>
+              <ModalClose
+                type="button"
+                onClick={() => {
+                  if (!isSaving) {
+                    setShowReviseModal(false);
+                  }
+                }}
+                aria-label="Close"
+              >
+                <IconClose />
+              </ModalClose>
+            </PanelHeader>
+            <ReviewModalDescription>
+              Add revision feedback for the designer before sending this task back to work in progress.
+            </ReviewModalDescription>
+            <EditForm onSubmit={handleManagerRevise}>
+              <FieldStack>
+                <FieldLabel>Revision feedback</FieldLabel>
+                <TaskTextArea
+                  value={revisionComment}
+                  onChange={(event) => setRevisionComment(event.target.value)}
+                  rows={5}
+                  placeholder="Explain what needs to be changed before this can be resubmitted."
+                />
+              </FieldStack>
+              {error ? <InlineError>{error}</InlineError> : null}
+              <ActionRow>
+                <button className="primary-button" type="submit" disabled={isSaving}>
+                  {isSaving ? "Sending..." : "Send revision"}
+                </button>
+              </ActionRow>
+            </EditForm>
+          </ReviewModalCard>
+        </ReviewModalOverlay>
       ) : null}
       <AppSidebar user={user} activeLabel="Projects" />
       <Content>
@@ -419,47 +497,48 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
                   ? "Submitted deliverables"
                   : "Deliverables"}
               </PanelTitle>
-              {task.status === "review" && task.managerReviewStatus === "ready_for_client" ? (
-                <PanelMetaPill>Visible to client</PanelMetaPill>
-              ) : null}
+              <DeliverablesHeaderActions>
+                {task.status === "review" && task.managerReviewStatus === "ready_for_client" ? (
+                  <PanelMetaPill>Visible to client</PanelMetaPill>
+                ) : null}
+                {versionOptions.length > 1 ? (
+                  <VersionSelectWrap>
+                    <TaskFloatingSelect $filled $open={versionOpen}>
+                      <CompactSelectTrigger
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={versionOpen}
+                        onClick={() => setVersionOpen((current) => !current)}
+                      >
+                        <CompactSelectValue>{selectedVersion?.label ?? "Select version"}</CompactSelectValue>
+                        <TaskSelectChevron $open={versionOpen}>
+                          <IconChevronDown />
+                        </TaskSelectChevron>
+                      </CompactSelectTrigger>
+                      {versionOpen ? (
+                        <TaskSelectMenu role="listbox" aria-label="Version">
+                          {versionOptions.map((option) => (
+                            <TaskSelectOption
+                              key={option.id}
+                              type="button"
+                              role="option"
+                              aria-selected={selectedVersionId === option.id}
+                              $active={selectedVersionId === option.id}
+                              onClick={() => {
+                                setSelectedVersionId(option.id);
+                                setVersionOpen(false);
+                              }}
+                            >
+                              {option.label}
+                            </TaskSelectOption>
+                          ))}
+                        </TaskSelectMenu>
+                      ) : null}
+                    </TaskFloatingSelect>
+                  </VersionSelectWrap>
+                ) : null}
+              </DeliverablesHeaderActions>
             </PanelHeader>
-            {versionOptions.length > 1 ? (
-              <TaskFormField>
-                <TaskFloatingSelect $filled $open={versionOpen}>
-                  <TaskSelectTrigger
-                    type="button"
-                    aria-haspopup="listbox"
-                    aria-expanded={versionOpen}
-                    onClick={() => setVersionOpen((current) => !current)}
-                  >
-                    <TaskSelectValue>{selectedVersion?.label ?? "Select version"}</TaskSelectValue>
-                    <TaskSelectChevron $open={versionOpen}>
-                      <IconChevronDown />
-                    </TaskSelectChevron>
-                  </TaskSelectTrigger>
-                  <TaskFloatingLabel>Version</TaskFloatingLabel>
-                  {versionOpen ? (
-                    <TaskSelectMenu role="listbox" aria-label="Version">
-                      {versionOptions.map((option) => (
-                        <TaskSelectOption
-                          key={option.id}
-                          type="button"
-                          role="option"
-                          aria-selected={selectedVersionId === option.id}
-                          $active={selectedVersionId === option.id}
-                          onClick={() => {
-                            setSelectedVersionId(option.id);
-                            setVersionOpen(false);
-                          }}
-                        >
-                          {option.label}
-                        </TaskSelectOption>
-                      ))}
-                    </TaskSelectMenu>
-                  ) : null}
-                </TaskFloatingSelect>
-              </TaskFormField>
-            ) : null}
             {task.status === "review" && task.managerReviewStatus === "ready_for_client" ? (
               <PanelCaption>
                 These are the exact files currently under client review.
@@ -544,56 +623,19 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
           <Panel>
             <PanelTitle>Manager review</PanelTitle>
             <ReviewActions>
-              <ReviewActionButton
-                type="button"
-                $active={reviewAction === "submit"}
-                onClick={() => {
-                  setReviewAction("submit");
-                  setError("");
-                }}
-              >
+              <ReviewActionButton type="button" onClick={() => {
+                setError("");
+                setShowSubmitConfirm(true);
+              }}>
                 Submit to client
               </ReviewActionButton>
-              <ReviewActionButton
-                type="button"
-                $active={reviewAction === "revise"}
-                onClick={() => {
-                  setReviewAction("revise");
-                  setError("");
-                }}
-              >
+              <ReviewActionButton type="button" onClick={() => {
+                setError("");
+                setShowReviseModal(true);
+              }}>
                 Revise
               </ReviewActionButton>
             </ReviewActions>
-
-            {reviewAction === "revise" ? (
-              <FieldStack>
-                <FieldLabel>Revision feedback</FieldLabel>
-                <TaskTextArea
-                  value={revisionComment}
-                  onChange={(event) => setRevisionComment(event.target.value)}
-                  rows={5}
-                  placeholder="Explain what needs to be changed before this can be resubmitted."
-                />
-              </FieldStack>
-            ) : null}
-
-            {error ? <InlineError>{error}</InlineError> : null}
-
-            <ActionRow>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={handleManagerAction}
-                disabled={reviewAction === "submit" && task.status === "review"}
-              >
-                {reviewAction === "submit"
-                  ? task.status === "review"
-                    ? "Awaiting client review"
-                    : "Submit to client"
-                  : "Send revision"}
-              </button>
-            </ActionRow>
           </Panel>
         ) : null}
       </Content>
@@ -711,6 +753,14 @@ const PanelHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+`;
+
+const DeliverablesHeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 `;
 
 const PanelMetaPill = styled.span`
@@ -883,6 +933,19 @@ const TaskSelectTrigger = styled.button`
   text-align: left;
 `;
 
+const CompactSelectTrigger = styled(TaskSelectTrigger)`
+  width: auto;
+  min-width: 180px;
+  padding: 10px 14px;
+  align-items: center;
+  border-radius: 12px;
+  font-size: 0.9rem;
+
+  @media (max-width: 767px) {
+    width: 100%;
+  }
+`;
+
 const TaskFloatingLabel = styled.span`
   position: absolute;
   left: 16px;
@@ -901,6 +964,22 @@ const TaskSelectValue = styled.span`
   color: var(--color-text);
   font-size: 16px;
   line-height: 1.2;
+`;
+
+const CompactSelectValue = styled(TaskSelectValue)`
+  font-size: 0.9rem;
+`;
+
+const VersionSelectWrap = styled.div`
+  min-width: 180px;
+
+  ${TaskFloatingLabel} {
+    display: none;
+  }
+
+  @media (max-width: 767px) {
+    width: 100%;
+  }
 `;
 
 const TaskSelectChevron = styled.span<{ $open?: boolean }>`
@@ -1128,6 +1207,52 @@ const PreviewCloseButton = styled.button`
   svg {
     width: 20px;
     height: 20px;
+  }
+`;
+
+const ReviewModalOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 170;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(28, 29, 28, 0.36);
+  backdrop-filter: blur(8px);
+`;
+
+const ReviewModalCard = styled.section`
+  ${cardSurface}
+  width: min(100%, 520px);
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 24px;
+`;
+
+const ReviewModalDescription = styled.p`
+  margin: -8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+`;
+
+const ModalClose = styled.button`
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--color-text);
+  flex: 0 0 40px;
+
+  svg {
+    width: 18px;
+    height: 18px;
   }
 `;
 

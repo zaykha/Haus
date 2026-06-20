@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppNavLabel, getPrimaryNavItems } from "@/lib/navigation";
-import { getVisibleTasksForUser } from "@/lib/permissions";
+import { getAttentionTaskCount } from "@/lib/task-attention";
 import { User } from "@/lib/types";
 
 const tablet = "@media (min-width: 768px) and (max-width: 1099px)";
@@ -24,15 +24,9 @@ export function AppSidebar({
 }) {
   const { state } = useAppState();
   const taskBadgeCount = useMemo(() => {
-    if (user.role !== "designer") {
-      return 0;
-    }
-
-    return state.projects
-      .flatMap((project) => getVisibleTasksForUser(user, project))
-      .filter((task) => task.assigneeId === user.id && (task.status === "todo" || task.status === "in_progress"))
-      .length;
+    return getAttentionTaskCount(user, state.projects);
   }, [state.projects, user]);
+  const badgeLabel: SidebarLabel = user.role === "client" ? "Projects" : "Tasks";
   const navItems: Array<{
     label: SidebarLabel;
     href: string;
@@ -63,7 +57,7 @@ export function AppSidebar({
               <SidebarIcon>{item.icon}</SidebarIcon>
               <SidebarLabelRow>
                 <span>{item.label}</span>
-                {item.label === "Tasks" && taskBadgeCount > 0 ? (
+                {item.label === badgeLabel && taskBadgeCount > 0 ? (
                   <TaskBadge>{taskBadgeCount > 99 ? "99+" : taskBadgeCount}</TaskBadge>
                 ) : null}
               </SidebarLabelRow>

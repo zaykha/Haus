@@ -7,6 +7,7 @@ import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
 import { FilterModal } from "@/components/filter-modal";
 import { canCreateProject as canCreateProjectPermission, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
+import { getAttentionTasksForProject } from "@/lib/task-attention";
 import { formatProjectStage, formatRole } from "@/lib/display";
 import { Project, ProjectStatus } from "@/lib/types";
 
@@ -347,10 +348,14 @@ export function ProjectsScreen() {
               const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
               const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
               const contactNumberLabel = project.contactNumber?.trim() || "No contact number";
+              const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
 
               return (
-                <ProjectRow key={project.id} href={`/projects/${project.id}`}>
+                <ProjectRow key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
                   <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
+                  {attentionCount > 0 ? (
+                    <ProjectAttentionBadge>{attentionCount > 99 ? "99+" : attentionCount}</ProjectAttentionBadge>
+                  ) : null}
                   <ProjectMark>{getProjectMark(project)}</ProjectMark>
 
                   <ProjectSummary>
@@ -418,6 +423,7 @@ export function ProjectsScreen() {
           {mobileProjects.length ? (
             mobileProjects.map((project) => {
               const visibleTasks = user ? getVisibleTasksForUser(user, project) : [];
+              const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
               const progress = getVisibleProjectProgress(
                 project,
                 visibleTasks.length,
@@ -428,8 +434,11 @@ export function ProjectsScreen() {
               );
 
               return (
-                <MobileProjectCard key={project.id} href={`/projects/${project.id}`}>
+                <MobileProjectCard key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
                   <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
+                  {attentionCount > 0 ? (
+                    <ProjectAttentionBadge>{attentionCount > 99 ? "99+" : attentionCount}</ProjectAttentionBadge>
+                  ) : null}
                   <MobileProjectMark>{getProjectMark(project)}</MobileProjectMark>
                   <MobileCopy>
                     <MobileTitleRow>
@@ -837,7 +846,7 @@ const DesktopList = styled.section`
   }
 `;
 
-const ProjectRow = styled(Link)`
+const ProjectRow = styled(Link)<{ $attention?: boolean }>`
   ${cardSurface}
   position: relative;
   display: flex;
@@ -846,6 +855,9 @@ const ProjectRow = styled(Link)`
   padding: 34px 20px 22px;
   border-radius: 24px;
   text-decoration: none;
+  border-color: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)")};
+  box-shadow: ${({ $attention }) =>
+    $attention ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)" : "var(--shadow-sm)"};
 `;
 
 const ProjectIdBadge = styled.span`
@@ -857,6 +869,24 @@ const ProjectIdBadge = styled.span`
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+`;
+
+const ProjectAttentionBadge = styled.span`
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #d94b4b;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
 `;
 
 const markSurface = css`
@@ -1074,7 +1104,7 @@ const MobileList = styled.section`
   }
 `;
 
-const MobileProjectCard = styled(Link)`
+const MobileProjectCard = styled(Link)<{ $attention?: boolean }>`
   ${cardSurface}
   position: relative;
   display: grid;
@@ -1084,6 +1114,9 @@ const MobileProjectCard = styled(Link)`
   padding: 26px 12px 10px;
   border-radius: 18px;
   text-decoration: none;
+  border-color: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)")};
+  box-shadow: ${({ $attention }) =>
+    $attention ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)" : "var(--shadow-sm)"};
 `;
 
 const MobileProjectMark = styled.div`

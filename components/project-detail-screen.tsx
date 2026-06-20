@@ -16,15 +16,16 @@ import {
   canDeleteTask,
   canEditProject,
   canEditTask,
-  canViewProject,
   getUserClientOrganizationIds,
   getVisibleTasksForUser,
 } from "@/lib/permissions";
 import {
+  getCurrentTaskCompletionLabel,
   getTaskCompletionLabel,
   isTaskCompletionImage,
   isTaskCompletionLink,
   parseTaskCompletionAssets,
+  parseTaskCompletionState,
 } from "@/lib/task-completion-assets";
 import {
   FeedbackAction,
@@ -39,6 +40,7 @@ import {
   formatProjectStage,
   getTaskStatusLabel,
 } from "@/lib/display";
+import { taskNeedsAttention } from "@/lib/task-attention";
 
 const workflowTimelineStages: ProjectStage[] = ["Waiting List", "WIP", "Pending Review", "Complete"];
 const desktop = "@media (min-width: 1100px)";
@@ -78,6 +80,22 @@ type VersionFeedbackEntry = {
   createdAt: string;
   rating?: number | null;
   action?: FeedbackAction;
+};
+
+type DeliverableVersionOption = {
+  id: string;
+  label: string;
+  assets: string[];
+  createdAt: string;
+  versionKind: "current" | "history";
+};
+
+type DeliverableTaskOption = {
+  taskId: string;
+  taskTitle: string;
+  assigneeId: string;
+  versionOptions: DeliverableVersionOption[];
+  latestActivityAt: string;
 };
 
 const EMPTY_PROJECT: Project = {
@@ -279,6 +297,7 @@ function canClientOpenTask(task: Project["tasks"][number]) {
 export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const router = useRouter();
   const {
+    ready,
     state,
     user,
     updateProject,
@@ -340,14 +359,21 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [feedbackAction, setFeedbackAction] = useState<FeedbackAction>("comment");
   const [feedbackBody, setFeedbackBody] = useState("");
   const [feedbackRating, setFeedbackRating] = useState(5);
+  const [feedbackDecisionSelectOpen, setFeedbackDecisionSelectOpen] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<string | null>(null);
+  const [deliverableTaskSelectOpen, setDeliverableTaskSelectOpen] = useState(false);
+  const [deliverableVersionSelectOpen, setDeliverableVersionSelectOpen] = useState(false);
+  const [selectedDeliverableTaskId, setSelectedDeliverableTaskId] = useState<string | null>(null);
+  const [selectedDeliverableVersionId, setSelectedDeliverableVersionId] = useState<string | null>(null);
+  const [selectedDeliverableAssetIndex, setSelectedDeliverableAssetIndex] = useState(0);
 
   const projectRecord = useMemo(
     () => state.projects.find((candidate) => candidate.id === projectId) ?? null,
     [projectId, state.projects],
   );
-  const canAccessProject = Boolean(user && projectRecord && canViewProject(user, projectRecord));
+  const canAccessProject = Boolean(user && projectRecord);
   const project = projectRecord ?? EMPTY_PROJECT;
 
   const userNames = useMemo(
@@ -620,9 +646,85 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   ]);
   const workflowTimelineIndex = getWorkflowTimelineIndex(project.stage);
 
+  const deliverableTaskOptions = useMemo<DeliverableTaskOption[]>(() => {
+    return taskRows
+      .map((task) => {
+        const completionState = parseTaskCompletionState(task.completionScreenshotUrl ?? null);
+        const historyOptions = completionState.history
+          .slice()
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+          .map((snapshot) => ({
+            id: snapshot.id,
+            label: snapshot.label,
+            assets: snapshot.assets,
+            createdAt: snapshot.createdAt,
+            versionKind: "history" as const,
+          }));
+        const currentVersionLabel = getCurrentTaskCompletionLabel(completionState);
+        const currentSnapshot = historyOptions.find((option) => option.id === currentVersionLabel) ?? null;
+        const currentAssets = parseTaskCompletionAssets(task.completionScreenshotUrl ?? null);
+        const versionOptions = [
+          ...(currentAssets.length > 0
+            ? [
+                {
+                  id: "current",
+                  label: `${currentVersionLabel}${currentSnapshot ? " (Current)" : ""}`,
+                  assets: currentAssets,
+                  createdAt: currentSnapshot?.createdAt ?? task.createdAt ?? new Date(0).toISOString(),
+                  versionKind: "current" as const,
+                },
+              ]
+            : []),
+          ...historyOptions.filter((option) => option.id !== currentVersionLabel || currentAssets.length === 0),
+        ];
+
+        if (versionOptions.length === 0) {
+          return null;
+        }
+
+        return {
+          taskId: task.id,
+          taskTitle: task.title,
+          assigneeId: task.assigneeId,
+          versionOptions,
+          latestActivityAt: versionOptions[0]?.createdAt ?? task.createdAt ?? new Date(0).toISOString(),
+        };
+      })
+      .filter((option): option is DeliverableTaskOption => Boolean(option))
+      .sort((left, right) => right.latestActivityAt.localeCompare(left.latestActivityAt));
+  }, [taskRows]);
+
+  const selectedDeliverableTask =
+    deliverableTaskOptions.find((task) => task.taskId === selectedDeliverableTaskId) ?? deliverableTaskOptions[0] ?? null;
+  const selectedDeliverableVersion =
+    selectedDeliverableTask?.versionOptions.find((option) => option.id === selectedDeliverableVersionId) ??
+    selectedDeliverableTask?.versionOptions[0] ??
+    null;
+  const selectedDeliverableAssets = selectedDeliverableVersion?.assets ?? [];
+  const selectedDeliverableAsset = selectedDeliverableAssets[selectedDeliverableAssetIndex] ?? null;
+
   useEffect(() => {
     setSelectedVersionId(latestVersion?.id ?? null);
   }, [latestVersion?.id]);
+
+  useEffect(() => {
+    const nextTaskId = deliverableTaskOptions[0]?.taskId ?? null;
+    setSelectedDeliverableTaskId((current) =>
+      current && deliverableTaskOptions.some((task) => task.taskId === current) ? current : nextTaskId,
+    );
+  }, [deliverableTaskOptions]);
+
+  useEffect(() => {
+    const nextVersionId = selectedDeliverableTask?.versionOptions[0]?.id ?? null;
+    setSelectedDeliverableVersionId((current) =>
+      current && selectedDeliverableTask?.versionOptions.some((option) => option.id === current) ? current : nextVersionId,
+    );
+    setSelectedDeliverableAssetIndex(0);
+  }, [selectedDeliverableTask]);
+
+  useEffect(() => {
+    setSelectedDeliverableAssetIndex(0);
+  }, [selectedDeliverableVersionId]);
 
   const recentActivity = useMemo<ActivityItem[]>(() => {
     const items = [...project.activities]
@@ -756,6 +858,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
       setFeedbackAction("approve");
       setFeedbackBody("");
       setFeedbackRating(5);
+      setFeedbackDecisionSelectOpen(false);
       setShowFeedbackPanel(false);
       setEditingTaskId(null);
     } catch (error) {
@@ -900,7 +1003,17 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     : null;
   const editingTaskAssets = editingTask ? parseTaskCompletionAssets(editingTask.completionScreenshotUrl) : [];
 
-  if (!user || !projectRecord || !canAccessProject) {
+  if (!ready || !user) {
+    return (
+      <main className="page-stack">
+        <section className="panel">
+          <p>Loading project...</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!projectRecord || !canAccessProject) {
     return (
       <main className="page-stack">
         <section className="panel">
@@ -913,6 +1026,26 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
   return (
     <>
+      {previewAsset ? (
+        <PreviewOverlay
+          role="dialog"
+          aria-modal="true"
+          aria-label="Deliverable preview"
+          onClick={() => setPreviewAsset(null)}
+        >
+          <PreviewCloseButton
+            type="button"
+            aria-label="Close preview"
+            onClick={() => setPreviewAsset(null)}
+          >
+            <IconClose />
+          </PreviewCloseButton>
+          <PreviewFrame onClick={(event) => event.stopPropagation()}>
+            <PreviewImage src={previewAsset} alt="Deliverable preview" />
+          </PreviewFrame>
+        </PreviewOverlay>
+      ) : null}
+
       {isUpdatingProject || isUpdatingTask || isCreatingTask || isSubmittingFeedback ? (
         <TaskUpdateLoadingOverlay role="status" aria-live="polite">
           <div className="auth-loading-card">
@@ -1243,30 +1376,58 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               </ModalClose>
             </ModalHeader>
             <InlineForm onSubmit={handleFeedbackSubmit}>
-              <label className="field">
-                <span>Decision</span>
-                <select
-                  value={feedbackAction}
+              <TaskFloatingSelect $filled $open={feedbackDecisionSelectOpen}>
+                <TaskSelectTrigger
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={feedbackDecisionSelectOpen}
                   disabled={isSubmittingFeedback}
-                  onChange={(event) => {
-                    const nextAction = event.target.value as "approve" | "request_revision";
-                    setFeedbackAction(nextAction);
-                    setEditingTaskError("");
+                  onClick={() =>
+                    setFeedbackDecisionSelectOpen((current) => (current ? false : true))
+                  }
+                >
+                  <TaskSelectValue>
+                    {feedbackAction === "request_revision" ? "Request revision" : "Approve"}
+                  </TaskSelectValue>
+                  <TaskSelectChevron $open={feedbackDecisionSelectOpen}>
+                    <IconChevronDown />
+                  </TaskSelectChevron>
+                </TaskSelectTrigger>
+                <TaskFloatingLabel>Decision</TaskFloatingLabel>
+                {feedbackDecisionSelectOpen ? (
+                  <TaskSelectMenu role="listbox" aria-label="Decision">
+                    {[
+                      { value: "approve" as const, label: "Approve" },
+                      { value: "request_revision" as const, label: "Request revision" },
+                    ].map((option) => (
+                      <TaskSelectOption
+                        key={option.value}
+                        type="button"
+                        role="option"
+                        aria-selected={feedbackAction === option.value}
+                        $active={feedbackAction === option.value}
+                        onClick={() => {
+                          setFeedbackAction(option.value);
+                          setEditingTaskError("");
+                          setFeedbackDecisionSelectOpen(false);
 
-                    if (nextAction === "approve") {
-                      setFeedbackBody("");
-                    }
-                  }}>
-                  <option value="approve">Approve</option>
-                  <option value="request_revision">Request revision</option>
-                </select>
-              </label>
+                          if (option.value === "approve") {
+                            setFeedbackBody("");
+                          }
+                        }}
+                      >
+                        {option.label}
+                      </TaskSelectOption>
+                    ))}
+                  </TaskSelectMenu>
+                ) : null}
+              </TaskFloatingSelect>
 
               <PriorityField>
                 <MetaLabel>Rating</MetaLabel>
-                <RatingChips>
+                <RatingStarsRow aria-label="Rating">
                   {[1, 2, 3, 4, 5].map((rating) => (
-                    <RatingChip
+                    <RatingStarButton
                       key={rating}
                       type="button"
                       disabled={isSubmittingFeedback}
@@ -1274,23 +1435,18 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                       onClick={() => setFeedbackRating(rating)}
                       aria-label={`Rate ${rating} star${rating === 1 ? "" : "s"}`}
                     >
-                      <RatingChipStars aria-hidden="true">
-                        {Array.from({ length: 5 }, (_, index) => (
-                          <Star key={index} $filled={index < rating}>
-                            ★
-                          </Star>
-                        ))}
-                      </RatingChipStars>
-                    </RatingChip>
+                      <Star aria-hidden="true" $filled={rating <= feedbackRating}>
+                        ★
+                      </Star>
+                    </RatingStarButton>
                   ))}
-                </RatingChips>
-                <RatingSelection>{feedbackRating} / 5</RatingSelection>
+                </RatingStarsRow>
               </PriorityField>
 
               {feedbackAction === "request_revision" ? (
                 <label className="field">
                   <span>Revision comment</span>
-                  <textarea
+                  <FeedbackTextarea
                     value={feedbackBody}
                     disabled={isSubmittingFeedback}
                     onChange={(event) => setFeedbackBody(event.target.value)}
@@ -1302,7 +1458,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               ) : (
                 <label className="field">
                   <span>Comment</span>
-                  <textarea
+                  <FeedbackTextarea
                     value={feedbackBody}
                     disabled={isSubmittingFeedback}
                     onChange={(event) => setFeedbackBody(event.target.value)}
@@ -1435,12 +1591,18 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                     {editingTaskAssets.map((asset) => (
                       <TaskDeliveryAssetCard key={asset}>
                         {isTaskCompletionImage(asset) ? (
-                          <TaskDeliveryPreviewWrap>
-                            <TaskDeliveryPreview
-                              src={asset}
-                              alt={`${getTaskCompletionLabel(asset)} for ${editingTask.title}`}
-                            />
-                          </TaskDeliveryPreviewWrap>
+                          <TaskDeliveryPreviewButton
+                            type="button"
+                            onClick={() => setPreviewAsset(asset)}
+                            aria-label={`Preview ${getTaskCompletionLabel(asset)}`}
+                          >
+                            <TaskDeliveryPreviewWrap>
+                              <TaskDeliveryPreview
+                                src={asset}
+                                alt={`${getTaskCompletionLabel(asset)} for ${editingTask.title}`}
+                              />
+                            </TaskDeliveryPreviewWrap>
+                          </TaskDeliveryPreviewButton>
                         ) : (
                           <TaskDeliveryFileCard href={asset} target="_blank" rel="noreferrer">
                             {isTaskCompletionLink(asset) ? <IconLink /> : <IconFile />}
@@ -1573,12 +1735,18 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 {editingTaskAssets.map((asset) => (
                   <TaskDeliveryAssetCard key={asset}>
                     {isTaskCompletionImage(asset) ? (
-                      <TaskDeliveryPreviewWrap>
-                        <TaskDeliveryPreview
-                          src={asset}
-                          alt={`${getTaskCompletionLabel(asset)} for ${editingTask.title}`}
-                        />
-                      </TaskDeliveryPreviewWrap>
+                      <TaskDeliveryPreviewButton
+                        type="button"
+                        onClick={() => setPreviewAsset(asset)}
+                        aria-label={`Preview ${getTaskCompletionLabel(asset)}`}
+                      >
+                        <TaskDeliveryPreviewWrap>
+                          <TaskDeliveryPreview
+                            src={asset}
+                            alt={`${getTaskCompletionLabel(asset)} for ${editingTask.title}`}
+                          />
+                        </TaskDeliveryPreviewWrap>
+                      </TaskDeliveryPreviewButton>
                     ) : (
                       <TaskDeliveryFileCard href={asset} target="_blank" rel="noreferrer">
                         {isTaskCompletionLink(asset) ? <IconLink /> : <IconFile />}
@@ -1597,31 +1765,58 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 return handleFeedbackSubmit(formEvent);
               }}
             >
-              <label className="field">
-                <span>Decision</span>
-                <select
-                  value={feedbackAction === "request_revision" ? "request_revision" : "approve"}
+              <TaskFloatingSelect $filled $open={feedbackDecisionSelectOpen}>
+                <TaskSelectTrigger
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={feedbackDecisionSelectOpen}
                   disabled={isSubmittingFeedback}
-                  onChange={(event) => {
-                    const nextAction = event.target.value as "approve" | "request_revision";
-                    setFeedbackAction(nextAction);
-                    setEditingTaskError("");
-
-                    if (nextAction === "approve") {
-                      setFeedbackBody("");
-                    }
-                  }}
+                  onClick={() =>
+                    setFeedbackDecisionSelectOpen((current) => (current ? false : true))
+                  }
                 >
-                  <option value="approve">Approve</option>
-                  <option value="request_revision">Request revision</option>
-                </select>
-              </label>
+                  <TaskSelectValue>
+                    {feedbackAction === "request_revision" ? "Request revision" : "Approve"}
+                  </TaskSelectValue>
+                  <TaskSelectChevron $open={feedbackDecisionSelectOpen}>
+                    <IconChevronDown />
+                  </TaskSelectChevron>
+                </TaskSelectTrigger>
+                <TaskFloatingLabel>Decision</TaskFloatingLabel>
+                {feedbackDecisionSelectOpen ? (
+                  <TaskSelectMenu role="listbox" aria-label="Decision">
+                    {[
+                      { value: "approve" as const, label: "Approve" },
+                      { value: "request_revision" as const, label: "Request revision" },
+                    ].map((option) => (
+                      <TaskSelectOption
+                        key={option.value}
+                        type="button"
+                        role="option"
+                        aria-selected={feedbackAction === option.value}
+                        $active={feedbackAction === option.value}
+                        onClick={() => {
+                          setFeedbackAction(option.value);
+                          setEditingTaskError("");
+                          setFeedbackDecisionSelectOpen(false);
+
+                          if (option.value === "approve") {
+                            setFeedbackBody("");
+                          }
+                        }}
+                      >
+                        {option.label}
+                      </TaskSelectOption>
+                    ))}
+                  </TaskSelectMenu>
+                ) : null}
+              </TaskFloatingSelect>
 
               <PriorityField>
                 <MetaLabel>Rating</MetaLabel>
-                <RatingChips>
+                <RatingStarsRow aria-label="Rating">
                   {[1, 2, 3, 4, 5].map((rating) => (
-                    <RatingChip
+                    <RatingStarButton
                       key={rating}
                       type="button"
                       disabled={isSubmittingFeedback}
@@ -1629,23 +1824,18 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                       onClick={() => setFeedbackRating(rating)}
                       aria-label={`Rate ${rating} star${rating === 1 ? "" : "s"}`}
                     >
-                      <RatingChipStars aria-hidden="true">
-                        {Array.from({ length: 5 }, (_, index) => (
-                          <Star key={index} $filled={index < rating}>
-                            ★
-                          </Star>
-                        ))}
-                      </RatingChipStars>
-                    </RatingChip>
+                      <Star aria-hidden="true" $filled={rating <= feedbackRating}>
+                        ★
+                      </Star>
+                    </RatingStarButton>
                   ))}
-                </RatingChips>
-                <RatingSelection>{feedbackRating} / 5</RatingSelection>
+                </RatingStarsRow>
               </PriorityField>
 
               {feedbackAction === "request_revision" ? (
                 <label className="field">
                   <span>Revision comment</span>
-                  <textarea
+                  <FeedbackTextarea
                     value={feedbackBody}
                     disabled={isSubmittingFeedback}
                     onChange={(event) => setFeedbackBody(event.target.value)}
@@ -1659,7 +1849,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               {feedbackAction === "approve" ? (
                 <label className="field">
                   <span>Comment (optional)</span>
-                  <textarea
+                  <FeedbackTextarea
                     value={feedbackBody}
                     disabled={isSubmittingFeedback}
                     onChange={(event) => setFeedbackBody(event.target.value)}
@@ -2055,10 +2245,12 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   const isDone = task.status === "done";
                   const canManageThisTask = canEditTask(user.role);
                   const canOpenDesignerTask = user.role === "designer" && task.assignee?.id === user.id;
+                  const needsAttention = taskNeedsAttention(user, project, task);
 
                   return (
                     <TaskRowBlock key={task.id}>
                       <TaskTableRow
+                        $attention={needsAttention}
                         $interactive={canManageThisTask || canOpenDesignerTask || (user.role === "client" && canClientOpenTask(task))}
                         onClick={() => {
                           if (user.role === "client" && canClientOpenTask(task)) {
@@ -2114,10 +2306,12 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   const canManageThisTask = canEditTask(user.role);
                   const canOpenDesignerTask = user.role === "designer" && task.assignee?.id === user.id;
                   const isDone = task.status === "done";
+                  const needsAttention = taskNeedsAttention(user, project, task);
 
                   return (
                   <MobileTaskCard
                       key={task.id}
+                      $attention={needsAttention}
                       $interactive={canManageThisTask || canOpenDesignerTask || (user.role === "client" && canClientOpenTask(task))}
                       onClick={() => {
                         if (user.role === "client" && canClientOpenTask(task)) {
@@ -2177,50 +2371,157 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               <PanelHeader>
                 <h2>Latest Version</h2>
               </PanelHeader>
-              {latestVersion ? (
+              {selectedDeliverableTask && selectedDeliverableVersion && selectedDeliverableAsset ? (
                 <>
+                  <VersionControls>
+                    {deliverableTaskOptions.length > 1 ? (
+                      <TaskFloatingSelect $filled $open={deliverableTaskSelectOpen}>
+                        <VersionSelectTrigger
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={deliverableTaskSelectOpen}
+                          onClick={() => setDeliverableTaskSelectOpen((current) => !current)}
+                        >
+                          <TaskSelectValue>{selectedDeliverableTask.taskTitle}</TaskSelectValue>
+                          <TaskSelectChevron $open={deliverableTaskSelectOpen}>
+                            <IconChevronDown />
+                          </TaskSelectChevron>
+                        </VersionSelectTrigger>
+                        <TaskFloatingLabel>Task</TaskFloatingLabel>
+                        {deliverableTaskSelectOpen ? (
+                          <TaskSelectMenu role="listbox" aria-label="Task">
+                            {deliverableTaskOptions.map((option) => (
+                              <TaskSelectOption
+                                key={option.taskId}
+                                type="button"
+                                role="option"
+                                aria-selected={selectedDeliverableTask.taskId === option.taskId}
+                                $active={selectedDeliverableTask.taskId === option.taskId}
+                                onClick={() => {
+                                  setSelectedDeliverableTaskId(option.taskId);
+                                  setDeliverableTaskSelectOpen(false);
+                                }}
+                              >
+                                {option.taskTitle}
+                              </TaskSelectOption>
+                            ))}
+                          </TaskSelectMenu>
+                        ) : null}
+                      </TaskFloatingSelect>
+                    ) : null}
+                    {selectedDeliverableTask.versionOptions.length > 1 ? (
+                      <TaskFloatingSelect $filled $open={deliverableVersionSelectOpen}>
+                        <VersionSelectTrigger
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={deliverableVersionSelectOpen}
+                          onClick={() => setDeliverableVersionSelectOpen((current) => !current)}
+                        >
+                          <TaskSelectValue>{selectedDeliverableVersion.label}</TaskSelectValue>
+                          <TaskSelectChevron $open={deliverableVersionSelectOpen}>
+                            <IconChevronDown />
+                          </TaskSelectChevron>
+                        </VersionSelectTrigger>
+                        <TaskFloatingLabel>Version</TaskFloatingLabel>
+                        {deliverableVersionSelectOpen ? (
+                          <TaskSelectMenu role="listbox" aria-label="Version">
+                            {selectedDeliverableTask.versionOptions.map((option) => (
+                              <TaskSelectOption
+                                key={option.id}
+                                type="button"
+                                role="option"
+                                aria-selected={selectedDeliverableVersion.id === option.id}
+                                $active={selectedDeliverableVersion.id === option.id}
+                                onClick={() => {
+                                  setSelectedDeliverableVersionId(option.id);
+                                  setDeliverableVersionSelectOpen(false);
+                                }}
+                              >
+                                {option.label}
+                              </TaskSelectOption>
+                            ))}
+                          </TaskSelectMenu>
+                        ) : null}
+                      </TaskFloatingSelect>
+                    ) : null}
+                  </VersionControls>
                   <VersionHero>
-                    <VersionPreview>{getProjectInitial(project.name)}</VersionPreview>
+                    <VersionAssetRail>
+                      {selectedDeliverableAssets.length > 1 ? (
+                        <VersionAssetChevron
+                          type="button"
+                          onClick={() =>
+                            setSelectedDeliverableAssetIndex((current) =>
+                              current === 0 ? selectedDeliverableAssets.length - 1 : current - 1,
+                            )
+                          }
+                          aria-label="Previous file"
+                        >
+                          <IconChevronLeft />
+                        </VersionAssetChevron>
+                      ) : null}
+                      <VersionPreviewButton
+                        type="button"
+                        onClick={() => (isTaskCompletionImage(selectedDeliverableAsset) ? setPreviewAsset(selectedDeliverableAsset) : undefined)}
+                        disabled={!isTaskCompletionImage(selectedDeliverableAsset)}
+                        aria-label={
+                          isTaskCompletionImage(selectedDeliverableAsset)
+                            ? `Preview ${getTaskCompletionLabel(selectedDeliverableAsset)}`
+                            : undefined
+                        }
+                      >
+                        {isTaskCompletionImage(selectedDeliverableAsset) ? (
+                          <VersionPreviewImage
+                            src={selectedDeliverableAsset}
+                            alt={getTaskCompletionLabel(selectedDeliverableAsset)}
+                          />
+                        ) : (
+                          <VersionFilePreview>
+                            {isTaskCompletionLink(selectedDeliverableAsset) ? <IconLink /> : <IconFile />}
+                            <strong>{getTaskCompletionLabel(selectedDeliverableAsset)}</strong>
+                          </VersionFilePreview>
+                        )}
+                      </VersionPreviewButton>
+                      {selectedDeliverableAssets.length > 1 ? (
+                        <VersionAssetChevron
+                          type="button"
+                          onClick={() =>
+                            setSelectedDeliverableAssetIndex((current) =>
+                              current === selectedDeliverableAssets.length - 1 ? 0 : current + 1,
+                            )
+                          }
+                          aria-label="Next file"
+                        >
+                          <IconChevronRight />
+                        </VersionAssetChevron>
+                      ) : null}
+                    </VersionAssetRail>
                     <VersionCopy>
                       <VersionHeadingRow>
-                        <strong>{selectedVersion?.title ?? latestVersion.title}</strong>
+                        <strong>{selectedDeliverableTask.taskTitle}</strong>
                         <Badge style={{ background: "rgba(244, 241, 237, 1)", color: "#7f7468" }}>
-                          {selectedVersion?.version ?? latestVersion.version}
+                          {selectedDeliverableVersion.label}
                         </Badge>
                       </VersionHeadingRow>
                       <VersionMeta>
                         Updated by{" "}
-                        {state.users.find((candidate) => candidate.id === (selectedVersion?.uploadedBy ?? latestVersion.uploadedBy))?.name ??
+                        {state.users.find((candidate) => candidate.id === selectedDeliverableTask.assigneeId)?.name ??
                           "Team member"}{" "}
-                        on {formatDate(selectedVersion?.createdAt ?? latestVersion.createdAt)}
+                        on {formatDate(selectedDeliverableVersion.createdAt)}
                       </VersionMeta>
                       <VersionMeta>
-                        {(selectedVersion?.visibility ?? latestVersion.visibility) === "client" ? "Client visible" : "Internal only"}
+                        File {selectedDeliverableAssetIndex + 1} of {selectedDeliverableAssets.length}
                       </VersionMeta>
                     </VersionCopy>
                   </VersionHero>
                   <VersionNotes>
-                    {selectedVersion?.notes?.trim() || latestVersion.notes?.trim() || "No notes added for this version yet."}
+                    {selectedDeliverableVersion.versionKind === "current"
+                      ? "Current deliverables for this task version."
+                      : "Archived deliverables for this task version."}
                   </VersionNotes>
-                  {visibleFiles.length > 1 ? (
-                    <VersionHistoryList>
-                      {visibleFiles.slice(0, 4).map((file) => (
-                        <VersionHistoryItem
-                          key={file.id}
-                          $active={selectedVersion?.id === file.id}
-                          onClick={() => setSelectedVersionId(file.id)}
-                        >
-                          <strong>{file.title}</strong>
-                          <span>
-                            {file.version} · {formatShortDate(file.createdAt)}
-                          </span>
-                        </VersionHistoryItem>
-                      ))}
-                    </VersionHistoryList>
-                  ) : null}
                 </>
               ) : (
-                <EmptyState>No project version has been published yet.</EmptyState>
+                <EmptyState>No task deliverables have been published yet.</EmptyState>
               )}
             </WorkspaceCard>
 
@@ -2364,8 +2665,7 @@ const Shell = styled.main`
     align-items: flex-start;
     padding: 8px;
     background: rgba(255, 255, 255, 0.58);
-    height: 100vh;
-    overflow: hidden;
+    min-height: 100vh;
   }
 `;
 
@@ -2376,8 +2676,6 @@ const Content = styled.section`
 
   ${desktop} {
     flex: 1;
-    overflow-y: auto;
-    scrollbar-gutter: stable;
     padding: 14px 16px 16px;
     border-radius: 0 22px 22px 0;
     background:
@@ -3511,12 +3809,15 @@ const TaskRowBlock = styled.div`
   border-top: 1px solid rgba(235, 229, 221, 0.95);
 `;
 
-const TaskTableRow = styled.div<{ $interactive?: boolean }>`
+const TaskTableRow = styled.div<{ $interactive?: boolean; $attention?: boolean }>`
   display: grid;
   grid-template-columns: 24px minmax(0, 1.75fr) minmax(0, 1.15fr) 118px 96px 116px;
   gap: 10px;
   align-items: center;
   padding: 12px 0;
+  padding-inline: 10px;
+  border-radius: 14px;
+  background: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.08)" : "transparent")};
   cursor: ${({ $interactive }) => ($interactive ? "pointer" : "default")};
 
   ${({ $interactive }) =>
@@ -3524,6 +3825,15 @@ const TaskTableRow = styled.div<{ $interactive?: boolean }>`
       ? css`
           &:hover {
             background: rgba(244, 241, 237, 0.46);
+          }
+        `
+      : ""}
+
+  ${({ $interactive, $attention }) =>
+    $interactive && $attention
+      ? css`
+          &:hover {
+            background: rgba(217, 75, 75, 0.12);
           }
         `
       : ""}
@@ -3675,6 +3985,14 @@ const TaskDeliveryAssetCard = styled.div`
   gap: 8px;
 `;
 
+const TaskDeliveryPreviewButton = styled.button`
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+  text-align: left;
+`;
+
 const TaskDeliveryPreview = styled.img`
   width: 100%;
   max-height: 260px;
@@ -3766,10 +4084,11 @@ const MobileTaskList = styled.div`
   }
 `;
 
-const MobileTaskCard = styled.article<{ $interactive?: boolean }>`
-  border: 1px solid rgba(235, 229, 221, 0.95);
+const MobileTaskCard = styled.article<{ $interactive?: boolean; $attention?: boolean }>`
+  border: 1px solid
+    ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.42)" : "rgba(235, 229, 221, 0.95)")};
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.92);
+  background: ${({ $attention }) => ($attention ? "rgba(255, 244, 244, 0.96)" : "rgba(255, 255, 255, 0.92)")};
   padding: 12px;
   display: grid;
   gap: 10px;
@@ -3780,6 +4099,15 @@ const MobileTaskCard = styled.article<{ $interactive?: boolean }>`
       ? css`
           &:hover {
             background: rgba(244, 241, 237, 0.5);
+          }
+        `
+      : ""}
+
+  ${({ $interactive, $attention }) =>
+    $interactive && $attention
+      ? css`
+          &:hover {
+            background: rgba(255, 239, 239, 0.98);
           }
         `
       : ""}
@@ -3940,14 +4268,20 @@ const WorkspaceCard = styled.section`
   border-radius: 20px;
   padding: 14px;
   display: grid;
+  align-content: start;
   gap: 12px;
 `;
 
 const VersionHero = styled.div`
-  display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 12px;
   align-items: start;
+
+  @media (max-width: 767px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 `;
 
 const VersionPreview = styled.div`
@@ -3996,6 +4330,92 @@ const VersionNotes = styled.p`
   line-height: 1.55;
 `;
 
+const VersionControls = styled.div`
+  display: grid;
+  gap: 12px;
+
+  ${desktop} {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+`;
+
+const VersionSelectTrigger = styled(TaskSelectTrigger)`
+  min-height: 0;
+  padding: 14px 16px 10px;
+
+  @media (max-width: 767px) {
+    min-height: 0;
+    padding: 14px 14px 10px;
+  }
+`;
+
+const VersionAssetRail = styled.div`
+  margin:  10px auto;
+  border: 1px solid grey;
+  padding: 5px;
+  border-radius: 10px;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+`;
+
+const VersionAssetChevron = styled.button`
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #6f6458;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+`;
+
+const VersionPreviewButton = styled.button`
+  padding: 0;
+  border: 0;
+  background: transparent;
+  min-width: 0;
+  cursor: ${({ disabled }) => (disabled ? "default" : "zoom-in")};
+`;
+
+const VersionPreviewImage = styled.img`
+  width: 100%;
+  max-height: 240px;
+  display: block;
+  object-fit: cover;
+  border-radius: 18px;
+`;
+
+const VersionFilePreview = styled.div`
+  ${cardSurface}
+  min-height: 200px;
+  padding: 18px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  text-align: center;
+  color: #4a4038;
+
+  strong {
+    font-size: 0.94rem;
+    overflow-wrap: anywhere;
+  }
+
+  svg {
+    width: 24px;
+    height: 24px;
+    color: #8d6520;
+  }
+`;
+
 const VersionHistoryList = styled.div`
   display: grid;
   gap: 8px;
@@ -4033,42 +4453,32 @@ const FeedbackHero = styled.div`
   align-items: start;
 `;
 
-const RatingChips = styled.div`
+const RatingStarsRow = styled.div`
   display: flex;
   flex-wrap: nowrap;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  align-items: center;
+  gap: 6px;
 `;
 
-const RatingChip = styled.button<{ $active?: boolean }>`
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 10px;
-  border-radius: 14px;
-  border: 1px solid ${({ $active }) => ($active ? "#214f39" : "rgba(33, 79, 57, 0.18)")};
-  background: ${({ $active }) => ($active ? "rgba(33, 79, 57, 0.12)" : "rgba(255, 255, 255, 0.96)")};
-  color: #214f39;
+const RatingStarButton = styled.button<{ $active?: boolean }>`
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: ${({ $active }) => ($active ? "#ca8a22" : "#ddd4c9")};
 
   &:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
-`;
 
-const RatingChipStars = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-`;
-
-const RatingSelection = styled.span`
-  color: var(--color-text-muted);
-  font-size: 0.82rem;
-  font-weight: 600;
+  &:hover span {
+    color: #ca8a22;
+  }
 `;
 
 const RatingReadout = styled.div`
@@ -4080,8 +4490,61 @@ const RatingReadout = styled.div`
 
 const Star = styled.span<{ $filled?: boolean }>`
   color: ${({ $filled }) => ($filled ? "#ca8a22" : "#ddd4c9")};
-  font-size: 0.92rem;
+  font-size: 1.5rem;
   line-height: 1;
+`;
+
+const FeedbackTextarea = styled.textarea`
+  resize: none;
+`;
+
+const PreviewOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(20, 18, 16, 0.72);
+  backdrop-filter: blur(12px);
+`;
+
+const PreviewFrame = styled.div`
+  max-width: min(1200px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  display: grid;
+  place-items: center;
+`;
+
+const PreviewImage = styled.img`
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 40px);
+  border-radius: 18px;
+  object-fit: contain;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.35);
+`;
+
+const PreviewCloseButton = styled.button`
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 221;
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  backdrop-filter: blur(10px);
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
 `;
 
 const ModalBackdrop = styled.div`
@@ -4114,7 +4577,9 @@ const ModalCard = styled.section`
 `;
 
 const TaskPopupCard = styled(ModalCard)`
-  overflow: visible;
+  max-height: 80vh;
+  overflow-x: visible;
+  overflow-y: auto;
 `;
 
 const ModalHeader = styled.div`
@@ -4221,6 +4686,14 @@ function IconChevronLeft() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
+function IconChevronRight() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m9 18 6-6-6-6" />
     </svg>
   );
 }

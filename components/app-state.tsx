@@ -336,6 +336,27 @@ async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
   }
 
   const profile = data as ProfileRecord | null;
+  const role = profile?.role ?? ((authUser.user_metadata.role as Role | undefined) ?? "client");
+  let clientOrganizationIds: string[] = [];
+
+  if (role === "client") {
+    const { data: liaisonRows, error: liaisonError } = await supabase
+      .from("client_organization_liaisons")
+      .select("client_organization_id, is_primary")
+      .eq("profile_id", authUser.id);
+
+    if (liaisonError && !liaisonError.message.includes('relation "client_organization_liaisons" does not exist')) {
+      throw new Error(liaisonError.message);
+    }
+
+    clientOrganizationIds = ((liaisonRows ?? []) as Array<{
+      client_organization_id: string;
+      is_primary: boolean;
+    }>)
+      .slice()
+      .sort((left, right) => Number(right.is_primary) - Number(left.is_primary))
+      .map((liaison) => liaison.client_organization_id);
+  }
 
   return {
     id: authUser.id,
@@ -345,13 +366,13 @@ async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
       ((authUser.user_metadata.name as string | undefined) ??
         authUser.email?.split("@")[0] ??
         "User"),
-    role: profile?.role ?? ((authUser.user_metadata.role as Role | undefined) ?? "client"),
+    role,
     company: profile?.company ?? undefined,
     phone: profile?.phone ?? undefined,
     jobTitle: profile?.job_title ?? undefined,
     department: profile?.department ?? undefined,
-    clientOrganizationId: null,
-    clientOrganizationIds: [],
+    clientOrganizationId: clientOrganizationIds[0] ?? null,
+    clientOrganizationIds,
     createdAt: profile?.created_at,
   };
 }
