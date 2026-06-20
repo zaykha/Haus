@@ -329,7 +329,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
           <ModalHeader>
             <div>
               <ModalTitle>{isLocked ? "Task status" : "Update task"}</ModalTitle>
-              <ModalDescription>
+              <ModalDescription $hideOnMobile={isLocked}>
                 {isLocked
                   ? getCompletionMessage(task.managerReviewStatus)
                   : "Move your task forward and attach completion screenshots, files, or links when it reaches internal submit."}
@@ -614,7 +614,7 @@ const ModalBackdrop = styled.div`
   inset: 0;
   z-index: 95;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 20px;
   background: rgba(28, 29, 28, 0.36);
@@ -653,11 +653,15 @@ const ModalTitle = styled.h2`
   font-size: 1.08rem;
 `;
 
-const ModalDescription = styled.p`
+const ModalDescription = styled.p<{ $hideOnMobile?: boolean }>`
   margin: 6px 0 0;
   color: var(--color-text-muted);
   font-size: 0.88rem;
   line-height: 1.5;
+
+  @media (max-width: 767px) {
+    display: ${({ $hideOnMobile }) => ($hideOnMobile ? "none" : "block")};
+  }
 `;
 
 const ModalClose = styled.button`
@@ -671,6 +675,11 @@ const ModalClose = styled.button`
   background: rgba(255, 255, 255, 0.88);
   color: var(--color-text);
   flex: 0 0 40px;
+  @media (max-width: 767px) {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+  }
 `;
 
 const InlineForm = styled.form`

@@ -1112,18 +1112,27 @@ export function ClientOrganizationDetailScreen({
               <>
                 {canManage && organization.organizationId ? (
                   <PrimaryActionLink href={`/projects/new?clientOrganizationId=${organization.organizationId}`}>
-                    Create Project
+                    <ButtonIcon aria-hidden="true">
+                      <IconPlusMini />
+                    </ButtonIcon>
+                    Project
                   </PrimaryActionLink>
+                ) : null}         
+                {canManage ? (
+                  <PrimaryButton type="button" onClick={() => setShowInviteModal(true)}>
+                    <ButtonIcon aria-hidden="true">
+                      <IconPlusMini />
+                    </ButtonIcon>
+                    Liaison
+                  </PrimaryButton>
                 ) : null}
                 {canEditOrganization ? (
                   <SecondaryButton type="button" onClick={() => setShowEditModal(true)}>
-                    Edit Organization
+                    <ButtonIcon aria-hidden="true">
+                      <IconPenMini />
+                    </ButtonIcon>
+                    Edit
                   </SecondaryButton>
-                ) : null}
-                {canManage ? (
-                  <PrimaryButton type="button" onClick={() => setShowInviteModal(true)}>
-                    Invite Liaison
-                  </PrimaryButton>
                 ) : null}
               </>
             ) : null}
@@ -1398,12 +1407,23 @@ const Header = styled.header`
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+
+  @media (max-width: 767px) {
+    align-items: center;
+    gap: 0;
+  }
 `;
 
 const HeaderActions = styled.div`
   display: flex;
   align-items: center;
   gap: 10px;
+
+  @media (max-width: 767px) {
+    width: 100%;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
 `;
 
 const Eyebrow = styled.p`
@@ -1414,6 +1434,10 @@ const Eyebrow = styled.p`
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
 `;
 
 const BackLink = styled(Link)`
@@ -1422,6 +1446,10 @@ const BackLink = styled(Link)`
   color: var(--color-text-muted);
   font-size: 0.86rem;
   text-decoration: none;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
 `;
 
 const Title = styled.h1`
@@ -1429,6 +1457,10 @@ const Title = styled.h1`
   font-size: clamp(1.28rem, 2.5vw, 1.72rem);
   line-height: 1;
   letter-spacing: -0.04em;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
 `;
 
 const Subtitle = styled.p`
@@ -1436,6 +1468,10 @@ const Subtitle = styled.p`
   color: var(--color-text-muted);
   font-size: 12px;
   line-height: 1.45;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
 `;
 
 const ClientHomeWelcome = styled.p`
@@ -1459,6 +1495,10 @@ const HeaderAvatarLink = styled(Link)`
   color: #fff;
   font-weight: 700;
   text-decoration: none;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
 `;
 
 const HeroCard = styled.section`
@@ -1524,9 +1564,13 @@ const TypePill = styled(Pill)<{ $type: "internal" | "external" }>`
 `;
 
 const StatGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  display: none;
+
+  ${desktop} {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
 `;
 
 const StatCard = styled.div`
@@ -1784,6 +1828,14 @@ const PrimaryButton = styled.button`
   color: #fff;
   font-size: 0.9rem;
   font-weight: 700;
+
+  @media (max-width: 767px) {
+    flex: 1 1 0;
+    min-height: 34px;
+    gap: 6px;
+    padding: 0 10px;
+    font-size: 0.76rem;
+  }
 `;
 
 const PrimaryActionLink = styled(Link)`
@@ -1800,10 +1852,22 @@ const PrimaryActionLink = styled(Link)`
   font-size: 0.9rem;
   font-weight: 700;
   text-decoration: none;
+
+  @media (max-width: 767px) {
+    flex: 1 1 0;
+    min-height: 34px;
+    gap: 6px;
+    padding: 0 10px;
+    font-size: 0.76rem;
+  }
 `;
 
 const SecondaryButton = styled.button`
   min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   padding: 0 16px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 10px;
@@ -1811,10 +1875,31 @@ const SecondaryButton = styled.button`
   color: var(--color-text);
   font-size: 0.9rem;
   font-weight: 700;
+
+  @media (max-width: 767px) {
+    flex: 1 1 0;
+    min-height: 34px;
+    gap: 6px;
+    padding: 0 10px;
+    font-size: 0.76rem;
+  }
 `;
 
 const SecondaryDangerButton = styled(SecondaryButton)`
   color: #d25545;
+`;
+
+const ButtonIcon = styled.span`
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
 `;
 
 const LinkButton = styled.button`
@@ -2432,6 +2517,24 @@ function IconChevronDown() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function IconPlusMini() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function IconPenMini() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m4 20 4.5-1 9.2-9.2a2.1 2.1 0 0 0-3-3L5.5 16 4 20Z" />
+      <path d="m13.5 7.5 3 3" />
     </svg>
   );
 }

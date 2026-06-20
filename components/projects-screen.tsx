@@ -6,6 +6,8 @@ import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
 import { FilterModal } from "@/components/filter-modal";
+import { ListScreenSkeleton } from "@/components/page-skeletons";
+import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { canCreateProject as canCreateProjectPermission, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { getAttentionTasksForProject } from "@/lib/task-attention";
 import { formatProjectStage, formatRole } from "@/lib/display";
@@ -33,8 +35,6 @@ const filterOptions: { key: FilterKey; label: string }[] = [
   { key: "revision", label: "Revision" },
   { key: "done", label: "Completed" },
 ];
-
-const stageOrder = ["Waiting List", "WIP", "Pending Review", "Complete"] as const;
 
 function formatDueDate(value: string) {
   if (!value) {
@@ -87,70 +87,12 @@ function getPrimaryContactLabel(project: Project, usersById: Map<string, { name:
   return `${contact.name} · ${contact.email}`;
 }
 
-function getVisibleProjectProgress(project: Project, taskCount: number, doneCount: number) {
-  if (project.status === "done") {
-    return 100;
-  }
-
-  const stageWeight = getStageWeight(project.stage);
-
-  if (!taskCount) {
-    return stageWeight;
-  }
-
-  const ratio = Math.round((doneCount / taskCount) * 100);
-  return Math.max(stageWeight, ratio);
-}
-
-function getStageWeight(stage: Project["stage"]) {
-  switch (stage) {
-    case "Waiting List":
-    case "intake":
-      return 20;
-    case "WIP":
-    case "concept":
-      return 45;
-    case "design":
-      return 60;
-    case "Pending Review":
-    case "review":
-      return 80;
-    case "Complete":
-    case "delivery":
-      return 100;
-    case "On Hold":
-      return 55;
-    default:
-      return 35;
-  }
-}
-
-function getStageProgress(stage: Project["stage"]) {
-  const normalizedStage: (typeof stageOrder)[number] =
-    stage === "intake"
-      ? "Waiting List"
-      : stage === "concept" || stage === "design"
-        ? "WIP"
-        : stage === "review"
-          ? "Pending Review"
-          : stage === "delivery"
-            ? "Complete"
-            : stage === "On Hold"
-              ? "Pending Review"
-              : stage;
-  const currentIndex = stageOrder.indexOf(normalizedStage);
-  return stageOrder.map((step, index) => ({
-    key: step,
-    active: index <= currentIndex,
-  }));
-}
-
 function getProjectMark(project: Project) {
   return project.name.trim().charAt(0).toUpperCase() || "P";
 }
 
 export function ProjectsScreen() {
-  const { state, user } = useAppState();
+  const { ready, state, user } = useAppState();
   const [currentPage, setCurrentPage] = useState(1);
   const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
   const [searchDraft, setSearchDraft] = useState("");
@@ -250,6 +192,10 @@ export function ProjectsScreen() {
     observer.observe(node);
     return () => observer.disconnect();
   }, [user, filteredProjects.length]);
+
+  if (!ready) {
+    return <ListScreenSkeleton title="Projects" />;
+  }
 
   return (
     <PageShell>
@@ -370,11 +316,7 @@ export function ProjectsScreen() {
                   <MetaColumn $grow>
                     <MetaLabel>Stage</MetaLabel>
                     <MetaStrong>{formatProjectStage(project.stage)}</MetaStrong>
-                    <StageDots>
-                      {getStageProgress(project.stage).map((step) => (
-                        <StageDot key={step.key} $active={step.active} />
-                      ))}
-                    </StageDots>
+                    <ProjectStageProgress stage={project.stage} size="sm" />
                   </MetaColumn>
 
                   <MetaColumn>
@@ -422,16 +364,7 @@ export function ProjectsScreen() {
         <MobileList>
           {mobileProjects.length ? (
             mobileProjects.map((project) => {
-              const visibleTasks = user ? getVisibleTasksForUser(user, project) : [];
               const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
-              const progress = getVisibleProjectProgress(
-                project,
-                visibleTasks.length,
-                visibleTasks.filter(
-                  (task) =>
-                    task.status === "done" || task.status === "review" || task.status === "approved",
-                ).length,
-              );
 
               return (
                 <MobileProjectCard key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
@@ -453,12 +386,7 @@ export function ProjectsScreen() {
                       <SummaryPill>{project.contactPerson?.trim() || "No primary contact"}</SummaryPill>
                       <SummaryPill>{project.contactNumber?.trim() || "No contact number"}</SummaryPill>
                     </MobilePillRow>
-                    <MobileProgressGroup>
-                      <MobileProgressBar>
-                        <MobileProgressFill style={{ width: `${progress}%` }} />
-                      </MobileProgressBar>
-                      <MobileProgressText>{progress}%</MobileProgressText>
-                    </MobileProgressGroup>
+                    <ProjectStageProgress stage={project.stage} size="sm" />
                   </MobileCopy>
                 </MobileProjectCard>
               );
@@ -957,20 +885,6 @@ const MetaStrong = styled.strong`
   font-size: 0.92rem;
 `;
 
-const StageDots = styled.div`
-  display: flex;
-  gap: 8px;
-  padding-top: 2px;
-`;
-
-const StageDot = styled.span<{ $active: boolean }>`
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  border: 1px solid ${({ $active }) => ($active ? "#222" : "#e2dad0")};
-  background: ${({ $active }) => ($active ? "#222" : "#ece7df")};
-`;
-
 const AvatarStack = styled.div`
   display: flex;
   align-items: center;
@@ -1184,33 +1098,6 @@ const MobileMetaText = styled.span`
   font-size: 0.72rem;
   font-weight: 500;
   line-height: 1.2;
-`;
-
-const MobileProgressGroup = styled.div`
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-`;
-
-const MobileProgressBar = styled.div`
-  height: 4px;
-  border-radius: 999px;
-  background: #ece7df;
-  overflow: hidden;
-`;
-
-const MobileProgressFill = styled.div`
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #83c37d, #4f8f5e);
-`;
-
-const MobileProgressText = styled.span`
-  color: var(--color-text);
-  font-size: 0.72rem;
-  line-height: 1;
-  font-weight: 700;
 `;
 
 const MobileStagePill = styled.span`

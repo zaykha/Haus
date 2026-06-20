@@ -8,6 +8,7 @@ import { useAppState } from "@/components/app-state";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { FilterModal } from "@/components/filter-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
+import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { canDeleteTeamMember, canInviteUsers, canUpdateTeamRole } from "@/lib/permissions";
 import { Role, TaskPriority, TaskStatus } from "@/lib/types";
 import { formatRole, getTaskStatusLabel } from "@/lib/display";
@@ -31,6 +32,7 @@ type MemberRow = {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: Role;
   company?: string;
   joinedAt?: string | null;
@@ -83,7 +85,7 @@ function formatPriority(priority: TaskPriority) {
 }
 
 export function TeamScreen() {
-  const { state, user, revokeInvitation, updateTeamMemberRole, deleteTeamMember } = useAppState();
+  const { ready, state, user, revokeInvitation, updateTeamMemberRole, deleteTeamMember } = useAppState();
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
@@ -130,6 +132,7 @@ export function TeamScreen() {
           id: `accepted-invite:${invitation.id}`,
           name: invitation.name,
           email: invitation.email,
+          phone: undefined,
           role: invitation.role,
           company: "Haus",
           createdAt: invitation.acceptedAt ?? invitation.createdAt,
@@ -314,6 +317,10 @@ export function TeamScreen() {
     (selectedTaskPage - 1) * MEMBER_TASKS_PAGE_SIZE,
     selectedTaskPage * MEMBER_TASKS_PAGE_SIZE,
   );
+
+  if (!ready) {
+    return <ListScreenSkeleton title="Team" />;
+  }
 
   if (!user) {
     return null;
@@ -756,17 +763,17 @@ export function TeamScreen() {
               const roleTone = getRoleTone(member.role);
               return (
                 <MobileCard key={member.id} onClick={() => setSelectedMember(member)}>
+                  <MobileJoinedMeta>
+                    Joined {member.joinedAt ? formatShortDate(member.joinedAt) : "—"}
+                  </MobileJoinedMeta>
                   <MobileCardRow>
                     <Avatar>{member.name.slice(0, 1)}</Avatar>
                     <MemberCopy>
                       <MemberName>{member.name}</MemberName>
-                      <MemberEmail>{member.email}</MemberEmail>
+                      <MemberEmail>{member.phone?.trim() || member.company || "No contact number"}</MemberEmail>
                       <Pill style={{ background: roleTone.bg, color: roleTone.fg }}>
                         {formatRole(member.role)}
                       </Pill>
-                      <InvitationMeta>
-                        Joined {member.joinedAt ? formatShortDate(member.joinedAt) : "—"}
-                      </InvitationMeta>
                     </MemberCopy>
                   </MobileCardRow>
                 </MobileCard>
@@ -899,17 +906,11 @@ const Subtitle = styled.p`
 `;
 
 const StatsRow = styled.section`
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
+  display: none;
 
   ${desktop} {
+    display: flex;
+    gap: 10px;
     overflow: visible;
   }
 `;
@@ -1265,6 +1266,20 @@ const MemberEmail = styled.p`
   line-height: 1.4;
 `;
 
+const MobileJoinedMeta = styled.p`
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  line-height: 1;
+
+  ${desktop} {
+    display: none;
+  }
+`;
+
 const RoleCell = styled.div`
   flex: 1;
 `;
@@ -1327,6 +1342,7 @@ const MobileList = styled.section`
 
 const MobileCard = styled.article`
   ${cardSurface}
+  position: relative;
   display: flex;
   flex-direction: column;
   padding: 16px;

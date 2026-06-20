@@ -239,7 +239,7 @@ textarea:focus {
 }
 
 .auth-logo {
-  width: min(220px, 68vw);
+  width: min(158px, 52vw);
   height: auto;
   display: block;
 }

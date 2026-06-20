@@ -335,7 +335,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
           <HeaderActions>
             <ActionButton type="button" onClick={() => setIsEditing((current) => !current)}>
               <IconPencil />
-              {isEditing ? "Cancel edit" : "Edit task"}
+              {isEditing ? "Cancel" : "Edit"}
             </ActionButton>
           </HeaderActions>
         </Header>
@@ -718,6 +718,10 @@ const Subtitle = styled.p`
   color: var(--color-text-muted);
   font-size: 0.9rem;
   line-height: 1.5;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
 `;
 
 const ActionButton = styled.button`

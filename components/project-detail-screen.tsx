@@ -313,6 +313,9 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [showCreateTaskPanel, setShowCreateTaskPanel] = useState(false);
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
   const [showReferencePanel, setShowReferencePanel] = useState(false);
+  const [mobileWorkspacePanel, setMobileWorkspacePanel] = useState<
+    "summary" | "version" | "feedback" | "activity" | null
+  >(null);
   const [heroDetailPanel, setHeroDetailPanel] = useState<"brief" | "objective" | "advice" | null>(null);
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   const [showWorkspaceTools, setShowWorkspaceTools] = useState(false);
@@ -738,6 +741,10 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
     return items.slice(0, 4);
   }, [project.activities, userNames]);
+  const referenceAttachmentCount = referenceAttachments.length;
+  const deliverableIndicatorCount = deliverableTaskOptions.length;
+  const feedbackIndicatorCount = versionFeedbackEntries.length;
+  const recentActivityCount = recentActivity.length;
 
   const totalTasks = taskRows.length;
   const completedTasks = taskRows.filter(
@@ -1139,6 +1146,280 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               <EmptyState>No reference files have been attached yet.</EmptyState>
             )}
           </ModalCard>
+        </ModalBackdrop>
+      ) : null}
+
+      {mobileWorkspacePanel ? (
+        <ModalBackdrop onClick={() => setMobileWorkspacePanel(null)}>
+          <TaskPopupCard onClick={(event) => event.stopPropagation()}>
+            <ModalHeader>
+              <div>
+                <ModalTitle>
+                  {mobileWorkspacePanel === "summary"
+                    ? "Project Summary"
+                    : mobileWorkspacePanel === "version"
+                      ? "Latest Version"
+                      : mobileWorkspacePanel === "feedback"
+                        ? "Feedback"
+                        : "Recent Activity"}
+                </ModalTitle>
+                <ModalDescription>
+                  {mobileWorkspacePanel === "summary"
+                    ? "Project progress and task breakdown."
+                    : mobileWorkspacePanel === "version"
+                      ? "Latest deliverables for this project."
+                      : mobileWorkspacePanel === "feedback"
+                        ? "Version feedback history for this project."
+                        : "Latest updates and actions on this project."}
+                </ModalDescription>
+              </div>
+              <ModalClose type="button" onClick={() => setMobileWorkspacePanel(null)} aria-label="Close">
+                <IconClose />
+              </ModalClose>
+            </ModalHeader>
+
+            {mobileWorkspacePanel === "summary" ? (
+              <SummaryList>
+                <SummaryRow>
+                  <span>Total Tasks</span>
+                  <strong>{totalTasks}</strong>
+                </SummaryRow>
+                <SummaryRow>
+                  <span>Completed</span>
+                  <strong>{completedTasks} ({completionPercent}%)</strong>
+                </SummaryRow>
+                <SummaryRow>
+                  <span>Open Tasks</span>
+                  <strong>{openTasks}</strong>
+                </SummaryRow>
+                <SummaryRow>
+                  <span>Overdue Tasks</span>
+                  <SummaryDanger>{overdueTasks}</SummaryDanger>
+                </SummaryRow>
+              </SummaryList>
+            ) : null}
+
+            {mobileWorkspacePanel === "version" ? (
+              selectedDeliverableTask && selectedDeliverableVersion && selectedDeliverableAsset ? (
+                <>
+                  <VersionControls>
+                    {deliverableTaskOptions.length > 1 ? (
+                      <TaskFloatingSelect $filled $open={deliverableTaskSelectOpen}>
+                        <VersionSelectTrigger
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={deliverableTaskSelectOpen}
+                          onClick={() => setDeliverableTaskSelectOpen((current) => !current)}
+                        >
+                          <TaskSelectValue>{selectedDeliverableTask.taskTitle}</TaskSelectValue>
+                          <TaskSelectChevron $open={deliverableTaskSelectOpen}>
+                            <IconChevronDown />
+                          </TaskSelectChevron>
+                        </VersionSelectTrigger>
+                        <TaskFloatingLabel>Task</TaskFloatingLabel>
+                        {deliverableTaskSelectOpen ? (
+                          <TaskSelectMenu role="listbox" aria-label="Task">
+                            {deliverableTaskOptions.map((option) => (
+                              <TaskSelectOption
+                                key={option.taskId}
+                                type="button"
+                                role="option"
+                                aria-selected={selectedDeliverableTask.taskId === option.taskId}
+                                $active={selectedDeliverableTask.taskId === option.taskId}
+                                onClick={() => {
+                                  setSelectedDeliverableTaskId(option.taskId);
+                                  setDeliverableTaskSelectOpen(false);
+                                }}
+                              >
+                                {option.taskTitle}
+                              </TaskSelectOption>
+                            ))}
+                          </TaskSelectMenu>
+                        ) : null}
+                      </TaskFloatingSelect>
+                    ) : null}
+                    {selectedDeliverableTask.versionOptions.length > 1 ? (
+                      <TaskFloatingSelect $filled $open={deliverableVersionSelectOpen}>
+                        <VersionSelectTrigger
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={deliverableVersionSelectOpen}
+                          onClick={() => setDeliverableVersionSelectOpen((current) => !current)}
+                        >
+                          <TaskSelectValue>{selectedDeliverableVersion.label}</TaskSelectValue>
+                          <TaskSelectChevron $open={deliverableVersionSelectOpen}>
+                            <IconChevronDown />
+                          </TaskSelectChevron>
+                        </VersionSelectTrigger>
+                        <TaskFloatingLabel>Version</TaskFloatingLabel>
+                        {deliverableVersionSelectOpen ? (
+                          <TaskSelectMenu role="listbox" aria-label="Version">
+                            {selectedDeliverableTask.versionOptions.map((option) => (
+                              <TaskSelectOption
+                                key={option.id}
+                                type="button"
+                                role="option"
+                                aria-selected={selectedDeliverableVersion.id === option.id}
+                                $active={selectedDeliverableVersion.id === option.id}
+                                onClick={() => {
+                                  setSelectedDeliverableVersionId(option.id);
+                                  setDeliverableVersionSelectOpen(false);
+                                }}
+                              >
+                                {option.label}
+                              </TaskSelectOption>
+                            ))}
+                          </TaskSelectMenu>
+                        ) : null}
+                      </TaskFloatingSelect>
+                    ) : null}
+                  </VersionControls>
+                  <VersionHero>
+                    <VersionAssetRail>
+                      {selectedDeliverableAssets.length > 1 ? (
+                        <VersionAssetChevron
+                          type="button"
+                          onClick={() =>
+                            setSelectedDeliverableAssetIndex((current) =>
+                              current === 0 ? selectedDeliverableAssets.length - 1 : current - 1,
+                            )
+                          }
+                          aria-label="Previous file"
+                        >
+                          <IconChevronLeft />
+                        </VersionAssetChevron>
+                      ) : null}
+                      <VersionPreviewButton
+                        type="button"
+                        onClick={() => (isTaskCompletionImage(selectedDeliverableAsset) ? setPreviewAsset(selectedDeliverableAsset) : undefined)}
+                        disabled={!isTaskCompletionImage(selectedDeliverableAsset)}
+                        aria-label={
+                          isTaskCompletionImage(selectedDeliverableAsset)
+                            ? `Preview ${getTaskCompletionLabel(selectedDeliverableAsset)}`
+                            : undefined
+                        }
+                      >
+                        {isTaskCompletionImage(selectedDeliverableAsset) ? (
+                          <VersionPreviewImage
+                            src={selectedDeliverableAsset}
+                            alt={getTaskCompletionLabel(selectedDeliverableAsset)}
+                          />
+                        ) : (
+                          <VersionFilePreview>
+                            {isTaskCompletionLink(selectedDeliverableAsset) ? <IconLink /> : <IconFile />}
+                            <strong>{getTaskCompletionLabel(selectedDeliverableAsset)}</strong>
+                          </VersionFilePreview>
+                        )}
+                      </VersionPreviewButton>
+                      {selectedDeliverableAssets.length > 1 ? (
+                        <VersionAssetChevron
+                          type="button"
+                          onClick={() =>
+                            setSelectedDeliverableAssetIndex((current) =>
+                              current === selectedDeliverableAssets.length - 1 ? 0 : current + 1,
+                            )
+                          }
+                          aria-label="Next file"
+                        >
+                          <IconChevronRight />
+                        </VersionAssetChevron>
+                      ) : null}
+                    </VersionAssetRail>
+                    <VersionCopy>
+                      <VersionHeadingRow>
+                        <strong>{selectedDeliverableTask.taskTitle}</strong>
+                        <Badge style={{ background: "rgba(244, 241, 237, 1)", color: "#7f7468" }}>
+                          {selectedDeliverableVersion.label}
+                        </Badge>
+                      </VersionHeadingRow>
+                      <VersionMeta>
+                        Updated by{" "}
+                        {state.users.find((candidate) => candidate.id === selectedDeliverableTask.assigneeId)?.name ??
+                          "Team member"}{" "}
+                        on {formatDate(selectedDeliverableVersion.createdAt)}
+                      </VersionMeta>
+                      <VersionMeta>
+                        File {selectedDeliverableAssetIndex + 1} of {selectedDeliverableAssets.length}
+                      </VersionMeta>
+                    </VersionCopy>
+                  </VersionHero>
+                  <VersionNotes>
+                    {selectedDeliverableVersion.versionKind === "current"
+                      ? "Current deliverables for this task version."
+                      : "Archived deliverables for this task version."}
+                  </VersionNotes>
+                </>
+              ) : (
+                <EmptyState>No task deliverables have been published yet.</EmptyState>
+              )
+            ) : null}
+
+            {mobileWorkspacePanel === "feedback" ? (
+              versionFeedbackEntries.length ? (
+                <ActivityList>
+                  {versionFeedbackEntries.map((item) => {
+                    const tone =
+                      item.source === "client" && item.action
+                        ? getFeedbackTone(item.action)
+                        : { bg: "#eef3f0", fg: "#214f39", label: "Internal Feedback" };
+                    return (
+                      <ActivityItemCard key={item.id}>
+                        <ActivityAvatar>{getUserInitial(item.authorName)}</ActivityAvatar>
+                        <div>
+                          <ActivityLine>
+                            <strong>{item.authorName}</strong>
+                            <Badge
+                              style={{
+                                background: item.source === "internal" ? "#eef3f0" : tone.bg,
+                                color: item.source === "internal" ? "#214f39" : tone.fg,
+                              }}
+                            >
+                              {item.source === "internal" ? "Internal Feedback" : "Client Feedback"}
+                            </Badge>
+                          </ActivityLine>
+                          <VersionMeta>{formatDate(item.createdAt)}</VersionMeta>
+                          {item.rating ? (
+                            <RatingReadout>
+                              {Array.from({ length: 5 }, (_, index) => (
+                                <Star key={index} $filled={index < item.rating!}>
+                                  ★
+                                </Star>
+                              ))}
+                            </RatingReadout>
+                          ) : null}
+                          <ActivityMeta>{item.body}</ActivityMeta>
+                        </div>
+                      </ActivityItemCard>
+                    );
+                  })}
+                </ActivityList>
+              ) : (
+                <EmptyState>No feedback for this version yet.</EmptyState>
+              )
+            ) : null}
+
+            {mobileWorkspacePanel === "activity" ? (
+              recentActivity.length ? (
+                <ActivityList>
+                  {recentActivity.map((item) => (
+                    <ActivityItemCard key={item.id}>
+                      <ActivityAvatar>{getUserInitial(item.actor)}</ActivityAvatar>
+                      <div>
+                        <ActivityText>
+                          <strong>{item.actor}</strong> {item.detail}
+                        </ActivityText>
+                        <ActivityMeta>
+                          {formatShortDate(item.createdAt)} · {formatTime(item.createdAt)}
+                        </ActivityMeta>
+                      </div>
+                    </ActivityItemCard>
+                  ))}
+                </ActivityList>
+              ) : (
+                <EmptyState>No recent activity yet.</EmptyState>
+              )
+            ) : null}
+          </TaskPopupCard>
         </ModalBackdrop>
       ) : null}
 
@@ -1952,6 +2233,47 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                     {project.priorityLevel}
                   </Badge>
                 ) : null}
+                <MobileWorkspaceIconRow>
+                  <MobileWorkspaceIconButton
+                    type="button"
+                    aria-label="Open reference files"
+                    onClick={() => setShowReferencePanel(true)}
+                  >
+                    <IconAttachment />
+                    {referenceAttachmentCount ? <ReferenceCount>{referenceAttachmentCount}</ReferenceCount> : null}
+                  </MobileWorkspaceIconButton>
+                  <MobileWorkspaceIconButton
+                    type="button"
+                    aria-label="Open project summary"
+                    onClick={() => setMobileWorkspacePanel("summary")}
+                  >
+                    <IconDocument />
+                  </MobileWorkspaceIconButton>
+                  <MobileWorkspaceIconButton
+                    type="button"
+                    aria-label="Open latest version"
+                    onClick={() => setMobileWorkspacePanel("version")}
+                  >
+                    <IconTarget />
+                    {deliverableIndicatorCount ? <ReferenceCount>{deliverableIndicatorCount}</ReferenceCount> : null}
+                  </MobileWorkspaceIconButton>
+                  <MobileWorkspaceIconButton
+                    type="button"
+                    aria-label="Open feedback"
+                    onClick={() => setMobileWorkspacePanel("feedback")}
+                  >
+                    <IconSpark />
+                    {feedbackIndicatorCount ? <ReferenceCount>{feedbackIndicatorCount}</ReferenceCount> : null}
+                  </MobileWorkspaceIconButton>
+                  <MobileWorkspaceIconButton
+                    type="button"
+                    aria-label="Open recent activity"
+                    onClick={() => setMobileWorkspacePanel("activity")}
+                  >
+                    <IconBellMini />
+                    {recentActivityCount ? <ReferenceCount>{recentActivityCount}</ReferenceCount> : null}
+                  </MobileWorkspaceIconButton>
+                </MobileWorkspaceIconRow>
                 <ReferenceTrigger
                   type="button"
                   onClick={() => setShowReferencePanel(true)}
@@ -2213,7 +2535,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
         {canManageTasks ? (
           <PrimaryActionButton type="button" onClick={() => setShowCreateTaskPanel((current) => !current)}>
             <IconPlus />
-            Create Task
+            Task
           </PrimaryActionButton>
         ) : null}
       </MobileActionRow>
@@ -2575,7 +2897,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
         </MainColumn>
 
         <SideColumn>
-          <SummaryCard className="panel">
+          <SummaryCard className="panel summary-desktop-only">
             <PanelHeader>
               <h2>Project Summary</h2>
             </PanelHeader>
@@ -2597,10 +2919,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 <SummaryDanger>{overdueTasks}</SummaryDanger>
               </SummaryRow>
             </SummaryList>
-            <SummaryLink as={Link} href="/tasks">
-              View all tasks
-              <IconArrowRight />
-            </SummaryLink>
           </SummaryCard>
 
           <SummaryCard className="panel">
@@ -2956,6 +3274,16 @@ const HeroUtilityRow = styled.div`
   }
 `;
 
+const MobileWorkspaceIconRow = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  ${desktop} {
+    display: none;
+  }
+`;
+
 const ProjectIdTag = styled.span`
   color: var(--color-text-light);
   font-size: 0.62rem;
@@ -3008,8 +3336,7 @@ const ReferenceTrigger = styled.button`
   }
 
   @media (max-width: 767px) {
-    width: 100%;
-    justify-content: flex-start;
+    display: none;
   }
 `;
 
@@ -3028,6 +3355,30 @@ const ReferenceCount = styled.span`
   color: #fff;
   font-size: 0.68rem;
   font-weight: 700;
+`;
+
+const MobileWorkspaceIconButton = styled.button`
+  ${outlineButton}
+  position: relative;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #2e2a27;
+
+  svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  ${desktop} {
+    display: none;
+  }
 `;
 
 const DesktopMetaGrid = styled.div`
@@ -4157,6 +4508,16 @@ const SummaryCard = styled.section`
   padding: 16px;
   display: grid;
   gap: 14px;
+
+  &.summary-desktop-only {
+    display: none;
+  }
+
+  ${desktop} {
+    &.summary-desktop-only {
+      display: grid;
+    }
+  }
 `;
 
 const SummaryList = styled.div`
@@ -4869,6 +5230,15 @@ function IconSpark() {
       <path d="M2 12h4" />
       <path d="m4.93 4.93 2.83 2.83" />
       <circle cx="12" cy="12" r="3.5" />
+    </svg>
+  );
+}
+
+function IconBellMini() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 17H5.8A1.8 1.8 0 0 1 4 15.2c0-.4.1-.8.4-1.1L6 12.4V9.5a6 6 0 1 1 12 0v2.9l1.6 1.7c.3.3.4.7.4 1.1a1.8 1.8 0 0 1-1.8 1.8H15" />
+      <path d="M9.5 19a2.5 2.5 0 0 0 5 0" />
     </svg>
   );
 }

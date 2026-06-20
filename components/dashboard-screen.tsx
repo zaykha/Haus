@@ -7,6 +7,8 @@ import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ClientOrganizationDetailScreen } from "@/components/client-organization-detail-screen";
 import { CustomDatePicker } from "@/components/custom-date-picker";
+import { DashboardScreenSkeleton } from "@/components/page-skeletons";
+import { ProjectStageProgress } from "@/components/project-stage-progress";
 import {
   canManageWorkspace,
   canViewProject,
@@ -107,44 +109,6 @@ function getProjectMark(project: Project) {
   return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
 }
 
-function getVisibleProjectProgress(project: Project, taskCount: number, doneCount: number) {
-  if (project.status === "done") {
-    return 100;
-  }
-
-  const stageWeight = getStageWeight(project.stage);
-
-  if (!taskCount) {
-    return stageWeight;
-  }
-
-  const ratio = Math.round((doneCount / taskCount) * 100);
-  return Math.max(stageWeight, ratio);
-}
-
-function getStageWeight(stage: Project["stage"]) {
-  switch (stage) {
-    case "Waiting List":
-    case "intake":
-      return 20;
-    case "WIP":
-    case "concept":
-      return 45;
-    case "design":
-      return 60;
-    case "Pending Review":
-    case "review":
-      return 80;
-    case "Complete":
-    case "delivery":
-      return 100;
-    case "On Hold":
-      return 55;
-    default:
-      return 35;
-  }
-}
-
 function getStatusTone(status: ProjectStatus) {
   switch (status) {
     case "active":
@@ -172,7 +136,7 @@ function getFeedbackTone(action: FeedbackAction) {
 }
 
 export function DashboardScreen() {
-  const { state, user, createTask } = useAppState();
+  const { ready, state, user, createTask } = useAppState();
   const [priorityPage, setPriorityPage] = useState(1);
   const [tasksPage, setTasksPage] = useState(1);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
@@ -210,29 +174,15 @@ export function DashboardScreen() {
   const isClient = safeUser ? safeUser.role === "client" : false;
 
   const projectRows = useMemo(() => {
-    const currentUser = safeUser;
     const nextVisibleProjects = visibleProjects;
 
     return nextVisibleProjects
       .slice()
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
-      .map((project) => {
-        const visibleTasks = currentUser ? getVisibleTasksForUser(currentUser, project) : [];
-        return {
-          ...project,
-          progress: getVisibleProjectProgress(
-            project,
-            visibleTasks.length,
-            visibleTasks.filter(
-              (task) =>
-                task.status === "done" ||
-                task.status === "review" ||
-                task.status === "approved",
-            ).length,
-          ),
-          clientName: getClientOrganizationName(project, organizationNames),
-        };
-      });
+      .map((project) => ({
+        ...project,
+        clientName: getClientOrganizationName(project, organizationNames),
+      }));
   }, [organizationNames, safeUser, visibleProjects]);
 
   const availableProjects = visibleProjects;
@@ -331,12 +281,33 @@ export function DashboardScreen() {
   const dueSoonTasksCount = openTasks.length;
   const feedbackCount = projectRows.filter((project) => project.status === "review").length;
   const completedCount = projectRows.filter((project) => project.status === "done").length;
+  const managerReviewProjects = useMemo(() => {
+    if (!safeUser || isDesigner || isClient) {
+      return projectRows;
+    }
 
-  const priorityProjectPageCount = Math.max(1, Math.ceil(projectRows.length / PRIORITY_PROJECTS_PAGE_SIZE));
+    return [...projectRows]
+      .map((project) => ({
+        ...project,
+        attentionCount: getVisibleTasksForUser(safeUser, project).filter(
+          (task) => task.status === "done" && task.managerReviewStatus === "internal",
+        ).length,
+      }))
+      .filter((project) => project.attentionCount > 0)
+      .sort((left, right) => {
+        if (right.attentionCount !== left.attentionCount) {
+          return right.attentionCount - left.attentionCount;
+        }
+
+        return new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime();
+      });
+  }, [isClient, isDesigner, projectRows, safeUser]);
+
+  const priorityProjectPageCount = Math.max(1, Math.ceil(managerReviewProjects.length / PRIORITY_PROJECTS_PAGE_SIZE));
   const tasksPageCount = Math.max(1, Math.ceil(openTasks.length / TASKS_PAGE_SIZE));
   const currentPriorityPage = Math.min(priorityPage, priorityProjectPageCount);
   const currentTasksPage = Math.min(tasksPage, tasksPageCount);
-  const priorityProjects = projectRows.slice(
+  const priorityProjects = managerReviewProjects.slice(
     (currentPriorityPage - 1) * PRIORITY_PROJECTS_PAGE_SIZE,
     currentPriorityPage * PRIORITY_PROJECTS_PAGE_SIZE,
   );
@@ -406,6 +377,10 @@ export function DashboardScreen() {
 
   const clientHomeOrganizationId =
     safeUser?.role === "client" ? getUserClientOrganizationIds(safeUser)[0] : null;
+
+  if (!ready) {
+    return <DashboardScreenSkeleton />;
+  }
 
   if (safeUser?.role === "client" && clientHomeOrganizationId) {
     return (
@@ -752,8 +727,8 @@ export function DashboardScreen() {
               <PanelLink href="/projects">View all</PanelLink>
             </PanelHeader>
             <ProjectList>
-              {projectRows.slice(0, 3).length ? (
-                projectRows.slice(0, 3).map((project) => {
+              {priorityProjects.slice(0, 3).length ? (
+                priorityProjects.slice(0, 3).map((project) => {
                   const tone = getStatusTone(project.status);
                   return (
                     <MobileProjectRow key={project.id} href={`/projects/${project.id}`}>
@@ -770,12 +745,7 @@ export function DashboardScreen() {
                         </MobileProjectHeader>
                         <MobileProjectFooter>
                           <MobileMetaText>Due {formatShortDate(project.dueDate)}</MobileMetaText>
-                          <MobileProgressGroup>
-                            <ProgressBar>
-                              <ProgressFill style={{ width: `${project.progress}%` }} />
-                            </ProgressBar>
-                            <MobileProgressText>{project.progress}%</MobileProgressText>
-                          </MobileProgressGroup>
+                          <ProjectStageProgress stage={project.stage} size="sm" />
                         </MobileProjectFooter>
                       </ProjectBody>
                     </MobileProjectRow>
@@ -783,11 +753,11 @@ export function DashboardScreen() {
                 })
               ) : (
                 <EmptyBlock>
-                  <strong>{isDesigner ? "No assigned projects yet" : "No priority projects yet"}</strong>
+                  <strong>{isDesigner ? "No assigned projects yet" : "No projects awaiting review"}</strong>
                   <p>
                     {isDesigner
                       ? "Projects assigned to you will appear here."
-                      : "Projects will appear here after a manager creates one."}
+                      : "Projects with tasks submitted for internal review will appear here."}
                   </p>
                 </EmptyBlock>
               )}
@@ -991,15 +961,9 @@ export function DashboardScreen() {
                             </MetaGroup>
                             <MetaGroup>
                               <MetaLabel>Progress</MetaLabel>
-                              <MetaValue>{project.progress}%</MetaValue>
+                              <ProjectStageProgress stage={project.stage} size="sm" />
                             </MetaGroup>
                           </ProjectTop>
-
-                          <ProgressRow $barOnly>
-                            <ProgressBar>
-                              <ProgressFill style={{ width: `${project.progress}%` }} />
-                            </ProgressBar>
-                          </ProgressRow>
 
                           <ProjectStatusRow>
                             <StatusPill style={{ background: tone.bg, color: tone.fg }}>
@@ -1012,16 +976,16 @@ export function DashboardScreen() {
                   })
                 ) : (
                   <EmptyBlock>
-                    <strong>{isDesigner ? "No assigned projects yet" : "No priority projects yet"}</strong>
+                    <strong>{isDesigner ? "No assigned projects yet" : "No projects awaiting review"}</strong>
                     <p>
                       {isDesigner
                         ? "Projects assigned to you will appear here."
-                        : "Projects will appear here after a manager creates one."}
+                        : "Projects with tasks submitted for internal review will appear here."}
                     </p>
                   </EmptyBlock>
                 )}
               </ProjectList>
-              {projectRows.length > PRIORITY_PROJECTS_PAGE_SIZE ? (
+              {managerReviewProjects.length > PRIORITY_PROJECTS_PAGE_SIZE ? (
                 <PanelPagination>
                   <PageButton
                     type="button"
@@ -1854,19 +1818,6 @@ const MobileMetaText = styled.span`
   font-weight: 500;
 `;
 
-const MobileProgressGroup = styled.div`
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-`;
-
-const MobileProgressText = styled.span`
-  color: var(--color-text);
-  font-size: 0.8rem;
-  font-weight: 700;
-`;
-
 const ProjectTop = styled.div`
   display: grid;
   gap: 8px;
@@ -1905,26 +1856,6 @@ const MetaLabel = styled.span`
 const MetaValue = styled.strong`
   font-size: 0.72rem;
   line-height: 1.2;
-`;
-
-const ProgressRow = styled.div<{ $barOnly?: boolean }>`
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-`;
-
-const ProgressBar = styled.div`
-  height: 5px;
-  border-radius: 999px;
-  background: #ece7df;
-  overflow: hidden;
-`;
-
-const ProgressFill = styled.div`
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #83c37d, #4f8f5e);
 `;
 
 const ProjectStatusRow = styled.div`

@@ -7,6 +7,7 @@ import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { FilterModal } from "@/components/filter-modal";
 import { useAppState } from "@/components/app-state";
+import { ListScreenSkeleton } from "@/components/page-skeletons";
 import {
   buildClientOrganizationRows,
   getClientOrganizationMark,
@@ -39,17 +40,6 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function formatShortDate(value: string | null) {
-  if (!value) {
-    return "No date";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-  }).format(new Date(value));
-}
-
 function getClusterMark(label: string) {
   const words = label
     .split(/[\s&()/-]+/)
@@ -79,7 +69,7 @@ function getClusterItems(labels: string[]) {
 
 export function ClientsScreen() {
   const router = useRouter();
-  const { state, user, createClientOrganization } = useAppState();
+  const { ready, state, user, createClientOrganization } = useAppState();
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ClientFilter>("all");
@@ -166,6 +156,10 @@ export function ClientsScreen() {
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
+
+  if (!ready) {
+    return <ListScreenSkeleton title="Clients" />;
+  }
 
   if (!user) {
     return null;
@@ -429,7 +423,7 @@ export function ClientsScreen() {
                 <ActionIcon>
                   <IconPlus />
                 </ActionIcon>
-                <span>Create Organization</span>
+                <span>Organization</span>
               </InviteButton>
             ) : null}
           </ToolbarActions>
@@ -593,67 +587,29 @@ export function ClientsScreen() {
 
         <MobileList>
           {paginatedClients.length ? (
-            paginatedClients.map((client) => {
-              const liaisonCluster = getClusterItems(client.members.map((member) => member.name));
-
-              return (
+            paginatedClients.map((client) => (
                 <MobileCard key={client.id} href={`/clients/${client.id}`}>
                   <MobileTop>
                     <ClientMark>{getClientOrganizationMark(client.name)}</ClientMark>
                     <ClientCopy>
                       <ClientName>{client.name}</ClientName>
-                      <InlinePills>
+                      <MobileSummaryRow>
                         <TypePill $type={client.type}>
                           {client.type === "internal" ? "Internal" : "External"}
                         </TypePill>
-                        {getClientOrganizationStatusLabel(client) ? (
-                          <PendingPill $active={client.status === "active"}>
-                            {getClientOrganizationStatusLabel(client)}
-                          </PendingPill>
-                        ) : null}
-                      </InlinePills>
-                      {client.memberCount ? (
-                        <>
-                          <ClusterWrap aria-label={`${client.memberCount} liaisons`}>
-                            {liaisonCluster.visibleLabels.map((memberName, index) => (
-                              <ClusterBubble
-                                key={`${client.id}:${memberName}:${index}`}
-                                $index={index}
-                                title={memberName}
-                              >
-                                {getClusterMark(memberName)}
-                              </ClusterBubble>
-                            ))}
-                            {liaisonCluster.overflowCount > 0 ? (
-                              <ClusterBubble
-                                $index={liaisonCluster.visibleLabels.length}
-                                $tone="accent"
-                                title={`${liaisonCluster.overflowCount} more liaisons`}
-                              >
-                                +{liaisonCluster.overflowCount}
-                              </ClusterBubble>
-                            ) : null}
-                          </ClusterWrap>
-                          <ClientMeta>
-                            {client.memberCount === 1 ? "1 liaison" : `${client.memberCount} liaisons`}
-                          </ClientMeta>
-                        </>
-                      ) : (
-                        <ClientMeta>No liaisons</ClientMeta>
-                      )}
-                      <ClientMeta>{client.projectCount} projects</ClientMeta>
+                        <ClientMeta>
+                          {client.memberCount === 0
+                            ? "No liaisons"
+                            : client.memberCount === 1
+                              ? "1 liaison"
+                              : `${client.memberCount} liaisons`}
+                        </ClientMeta>
+                        <ClientMeta>{client.projectCount} projects</ClientMeta>
+                      </MobileSummaryRow>
                     </ClientCopy>
                   </MobileTop>
-                  <MobileBottom>
-                    <DatePill>{formatShortDate(client.lastActivityDate)}</DatePill>
-                    <ClientMeta>{client.lastActivityLabel}</ClientMeta>
-                    <ArrowWrap>
-                      <IconArrowRight />
-                    </ArrowWrap>
-                  </MobileBottom>
                 </MobileCard>
-              );
-            })
+            ))
           ) : (
             <EmptyState>
               <strong>No client organizations found</strong>
@@ -760,9 +716,17 @@ const Toolbar = styled.section`
 `;
 
 const ToolbarActions = styled.div`
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  flex-wrap: wrap;
+  width: 100%;
+
+  ${desktop} {
+    display: flex;
+    width: auto;
+    flex-wrap: wrap;
+    margin: auto;
+  }
 `;
 
 const SearchControls = styled.form`
@@ -815,6 +779,7 @@ const SearchButton = styled(FilterButton)`
 `;
 
 const InviteButton = styled.button`
+  width: 100%;
   min-height: 40px;
   display: inline-flex;
   align-items: center;
@@ -828,10 +793,14 @@ const InviteButton = styled.button`
   font-size: 0.9rem;
   font-weight: 700;
 
- 
+  @media (max-width: 768px){
+  min-height: 40px;
+  font-size: 0.8rem;
+  }
 `;
 
 const SecondaryActionLink = styled(Link)`
+  width: 100%;
   min-height: 40px;
   display: inline-flex;
   align-items: center;
@@ -846,20 +815,19 @@ const SecondaryActionLink = styled(Link)`
   font-size: 0.9rem;
   font-weight: 700;
   text-decoration: none;
+
+  @media (max-width: 768px){
+  min-height: 40px;
+  font-size: 0.8rem;
+  }
 `;
 
 const StatsRow = styled.section`
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
+  display: none;
 
   ${desktop} {
+    display: flex;
+    gap: 10px;
     overflow: visible;
   }
 `;
@@ -1038,41 +1006,66 @@ const ClientCell = styled.div`
 `;
 
 const ClientMark = styled.div`
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
   background: linear-gradient(145deg, #ede5d8, #f8f4ee);
   color: #8c7040;
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 700;
-  flex: 0 0 48px;
+  flex: 0 0 40px;
+
+  ${desktop} {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    font-size: 1rem;
+    flex-basis: 48px;
+  }
 `;
 
 const ClientCopy = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
+
+  ${desktop} {
+    gap: 4px;
+  }
 `;
 
 const ClientName = styled.strong`
-  font-size: 0.96rem;
+  font-size: 0.9rem;
   color: var(--color-text);
+
+  ${desktop} {
+    font-size: 0.96rem;
+  }
 `;
 
 const ClientMeta = styled.p`
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.82rem;
-  line-height: 1.4;
+  font-size: 0.76rem;
+  line-height: 1.25;
+
+  ${desktop} {
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
 `;
 
 const InlinePills = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
+
+  ${desktop} {
+    gap: 6px;
+  }
 `;
 
 const MetaColumn = styled.div`
@@ -1095,12 +1088,18 @@ const Pill = styled.span`
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  min-height: 24px;
-  padding: 0 8px;
+  min-height: 22px;
+  padding: 0 7px;
   border-radius: 999px;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 700;
   white-space: nowrap;
+
+  ${desktop} {
+    min-height: 24px;
+    padding: 0 8px;
+    font-size: 0.74rem;
+  }
 `;
 
 const DatePill = styled(Pill)`
@@ -1121,16 +1120,21 @@ const TypePill = styled(Pill)<{ $type: "internal" | "external" }>`
 const ClusterWrap = styled.div`
   display: flex;
   align-items: center;
-  min-height: 30px;
-  padding-right: 8px;
+  min-height: 24px;
+  padding-right: 6px;
+
+  ${desktop} {
+    min-height: 30px;
+    padding-right: 8px;
+  }
 `;
 
 const ClusterBubble = styled.span<{ $index: number; $tone?: "default" | "accent" }>`
   position: relative;
   z-index: ${({ $index }) => 10 - $index};
-  width: 30px;
-  height: 30px;
-  margin-left: ${({ $index }) => ($index === 0 ? "0" : "-8px")};
+  width: 24px;
+  height: 24px;
+  margin-left: ${({ $index }) => ($index === 0 ? "0" : "-6px")};
   display: inline-grid;
   place-items: center;
   border: 1.5px solid rgba(255, 255, 255, 0.96);
@@ -1140,10 +1144,17 @@ const ClusterBubble = styled.span<{ $index: number; $tone?: "default" | "accent"
       ? "#1f4339"
       : "linear-gradient(145deg, #ede5d8, #f8f4ee)"};
   color: ${({ $tone }) => ($tone === "accent" ? "#fff" : "#8c7040")};
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   font-weight: 700;
   box-shadow: 0 6px 14px rgba(104, 84, 54, 0.12);
   transition: transform 140ms ease, box-shadow 140ms ease, z-index 140ms ease;
+
+  ${desktop} {
+    width: 30px;
+    height: 30px;
+    margin-left: ${({ $index }) => ($index === 0 ? "0" : "-8px")};
+    font-size: 0.72rem;
+  }
 
   &:hover {
     z-index: 30;
@@ -1155,7 +1166,7 @@ const ClusterBubble = styled.span<{ $index: number; $tone?: "default" | "accent"
 const MobileList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 
   ${desktop} {
     display: none;
@@ -1166,34 +1177,22 @@ const MobileCard = styled(Link)`
   ${cardSurface}
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 20px;
+  padding: 12px;
+  border-radius: 18px;
   text-decoration: none;
 `;
 
 const MobileTop = styled.div`
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
 `;
 
-const MobileBottom = styled.div`
+const MobileSummaryRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   flex-wrap: wrap;
-`;
-
-const ArrowWrap = styled.span`
-  width: 18px;
-  height: 18px;
-  color: var(--color-text-muted);
-
-  svg {
-    width: 100%;
-    height: 100%;
-  }
 `;
 
 const Overlay = styled.div`
@@ -1491,15 +1490,6 @@ function IconFilter() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 7h16M7 12h10M10 17h4" />
-    </svg>
-  );
-}
-
-function IconArrowRight() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 12h14" />
-      <path d="m13 6 6 6-6 6" />
     </svg>
   );
 }

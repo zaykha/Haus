@@ -8,6 +8,7 @@ import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { FilterModal } from "@/components/filter-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
+import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { buildLiaisonRows } from "@/lib/client-organizations";
 import { formatRole } from "@/lib/display";
 import { canCreateClient, getUserClientOrganizationIds } from "@/lib/permissions";
@@ -34,17 +35,6 @@ function formatDate(value: string | null) {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(value));
-}
-
-function formatShortDate(value: string | null) {
-  if (!value) {
-    return "No date";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
   }).format(new Date(value));
 }
 
@@ -97,7 +87,7 @@ function getOrganizationClusterItems(names: string[]) {
 }
 
 export function LiaisonsScreen() {
-  const { state, user, updateClient, deleteClient } = useAppState();
+  const { ready, state, user, updateClient, deleteClient } = useAppState();
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<LiaisonFilter>("all");
@@ -197,6 +187,10 @@ export function LiaisonsScreen() {
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
+
+  if (!ready) {
+    return <ListScreenSkeleton title="Liaisons" />;
+  }
 
   if (!user) {
     return null;
@@ -706,70 +700,29 @@ export function LiaisonsScreen() {
         <MobileList>
           {paginatedLiaisons.length ? (
             paginatedLiaisons.map((liaison) => {
-              const organizationCluster = getOrganizationClusterItems(liaison.clientOrganizationNames);
-              const liaisonMeta = [liaison.jobTitle, liaison.department].filter(Boolean).join(" · ");
-
               return (
                 <MobileStaticCard key={liaison.id} type="button" onClick={() => setSelectedLiaisonId(liaison.id)}>
                   <MobileTop>
                     <ClientMark>{liaison.name.slice(0, 1).toUpperCase()}</ClientMark>
                     <ClientCopy>
-                      <ClientName>{liaison.name}</ClientName>
-                      <ClientMeta>{liaison.email}</ClientMeta>
-                      {liaisonMeta ? <ClientMeta>{liaisonMeta}</ClientMeta> : null}
-                      {organizationCluster.visibleNames.length ? (
-                        <OrganizationCluster aria-label={`${liaison.clientOrganizationIds.length} organizations`}>
-                          {organizationCluster.visibleNames.map((organizationName, index) => (
-                            <OrganizationBubble
-                              key={`${liaison.id}:${organizationName}:${index}`}
-                              $index={index}
-                              title={organizationName}
-                            >
-                              {getClusterMark(organizationName)}
-                            </OrganizationBubble>
-                          ))}
-                          {organizationCluster.overflowCount > 0 ? (
-                            <OrganizationBubble
-                              $index={organizationCluster.visibleNames.length}
-                              $tone="accent"
-                              title={`${organizationCluster.overflowCount} more organizations`}
-                            >
-                              +{organizationCluster.overflowCount}
-                            </OrganizationBubble>
-                          ) : null}
-                        </OrganizationCluster>
-                      ) : null}
-                      <ClientMeta>
-                        {liaison.clientOrganizationIds.length > 1
-                          ? `${liaison.clientOrganizationIds.length} organizations`
-                          : liaison.isUnassigned
-                            ? "No organizations assigned"
-                            : "1 organization"}
-                      </ClientMeta>
-                      <InlinePills>
-                        <PendingPill
-                          $active={
-                            liaison.isUnassigned
-                              ? false
-                              : liaison.hasActiveOrganizations && !liaison.hasInactiveOrganizations
-                          }
-                        >
-                          {getOrganizationStatusLabel(
-                            liaison.isUnassigned,
-                            liaison.organizationStatus,
-                            liaison.hasActiveOrganizations,
-                            liaison.hasInactiveOrganizations,
-                          )}
-                        </PendingPill>
-                      </InlinePills>
+                      <MobileTitleRow>
+                        <ClientName>{liaison.name}</ClientName>
+                        <ClientMeta>{liaison.phone || liaison.email}</ClientMeta>
+                      </MobileTitleRow>
+                      <MobileOrganizationPills>
+                        {liaison.clientOrganizationNames.length ? (
+                          liaison.clientOrganizationNames.map((organizationName, index) => (
+                            <OrganizationNamePill key={`${liaison.id}:${organizationName}:${index}`}>
+                              {organizationName}
+                            </OrganizationNamePill>
+                          ))
+                        ) : (
+                          <OrganizationNamePill>No organizations</OrganizationNamePill>
+                        )}
+                        {liaison.jobTitle ? <OrganizationNamePill>{liaison.jobTitle}</OrganizationNamePill> : null}
+                      </MobileOrganizationPills>
                     </ClientCopy>
                   </MobileTop>
-                  <MobileBottom>
-                    <DatePill>{formatShortDate(liaison.createdAt)}</DatePill>
-                    <ClientMeta>
-                      {liaison.activeProjectCount}/{liaison.projectCount} active projects
-                    </ClientMeta>
-                  </MobileBottom>
                 </MobileStaticCard>
               );
             })
@@ -871,10 +824,14 @@ const Overlay = styled.div`
   inset: 0;
   z-index: 50;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 16px;
   background: rgba(21, 18, 13, 0.4);
+
+  ${desktop} {
+    align-items: center;
+  }
 `;
 
 const ModalCard = styled.div`
@@ -909,6 +866,10 @@ const SubtitleText = styled.p`
   color: var(--color-text-muted);
   font-size: 0.84rem;
   line-height: 1.45;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
 `;
 
 const ModalForm = styled.form`
@@ -1077,6 +1038,12 @@ const IconButton = styled.button`
   border-radius: 999px;
   background: #fff;
   color: var(--color-text);
+
+  svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+  }
 `;
 
 const DangerIconButton = styled(IconButton)`
@@ -1156,12 +1123,20 @@ const SearchButton = styled(FilterButton)`
 `;
 
 const ToolbarActions = styled.div`
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  flex-wrap: wrap;
+  width: 100%;
+
+  ${desktop} {
+    display: flex;
+    width: auto;
+    flex-wrap: wrap;
+  }
 `;
 
 const SecondaryActionLink = styled(Link)`
+  width: 100%;
   min-height: 40px;
   display: inline-flex;
   align-items: center;
@@ -1173,12 +1148,17 @@ const SecondaryActionLink = styled(Link)`
   background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow-sm);
   color: var(--color-text);
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 700;
   text-decoration: none;
+
+  ${desktop} {
+    font-size: 0.9rem;
+  }
 `;
 
 const PrimaryActionButton = styled.button`
+  width: 100%;
   min-height: 40px;
   display: inline-flex;
   align-items: center;
@@ -1189,23 +1169,21 @@ const PrimaryActionButton = styled.button`
   border-radius: 10px;
   background: #1f4339;
   color: #fff;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 700;
   text-decoration: none;
+
+  ${desktop} {
+    font-size: 0.9rem;
+  }
 `;
 
 const StatsRow = styled.section`
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
+  display: none;
 
   ${desktop} {
+    display: flex;
+    gap: 10px;
     overflow: visible;
   }
 `;
@@ -1359,48 +1337,78 @@ const ClientCell = styled.div`
 `;
 
 const ClientMark = styled.div`
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
   background: linear-gradient(145deg, #ede5d8, #f8f4ee);
   color: #8c7040;
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 700;
-  flex: 0 0 48px;
+  flex: 0 0 40px;
+
+  ${desktop} {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    font-size: 1rem;
+    flex-basis: 48px;
+  }
 `;
 
 const ClientCopy = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
+
+  ${desktop} {
+    gap: 4px;
+  }
 `;
 
 const ClientName = styled.strong`
-  font-size: 0.96rem;
+  font-size: 0.9rem;
   color: var(--color-text);
+
+  ${desktop} {
+    font-size: 0.96rem;
+  }
 `;
 
 const ClientMeta = styled.p`
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.82rem;
-  line-height: 1.4;
+  font-size: 0.76rem;
+  line-height: 1.25;
+
+  ${desktop} {
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
 `;
 
 const OrganizationCluster = styled.div`
   display: flex;
   align-items: center;
-  min-height: 30px;
-  padding-right: 8px;
+  min-height: 24px;
+  padding-right: 6px;
+
+  ${desktop} {
+    min-height: 30px;
+    padding-right: 8px;
+  }
 `;
 
 const InlinePills = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
+
+  ${desktop} {
+    gap: 6px;
+  }
 `;
 
 const MetaColumn = styled.div`
@@ -1422,12 +1430,18 @@ const Pill = styled.span`
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  min-height: 24px;
-  padding: 0 8px;
+  min-height: 22px;
+  padding: 0 7px;
   border-radius: 999px;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 700;
   white-space: nowrap;
+
+  ${desktop} {
+    min-height: 24px;
+    padding: 0 8px;
+    font-size: 0.74rem;
+  }
 `;
 
 const DatePill = styled(Pill)`
@@ -1443,9 +1457,9 @@ const PendingPill = styled(Pill)<{ $active?: boolean }>`
 const OrganizationBubble = styled.span<{ $index: number; $tone?: "default" | "accent" }>`
   position: relative;
   z-index: ${({ $index }) => 10 - $index};
-  width: 30px;
-  height: 30px;
-  margin-left: ${({ $index }) => ($index === 0 ? "0" : "-8px")};
+  width: 24px;
+  height: 24px;
+  margin-left: ${({ $index }) => ($index === 0 ? "0" : "-6px")};
   display: inline-grid;
   place-items: center;
   border: 1.5px solid rgba(255, 255, 255, 0.96);
@@ -1455,10 +1469,17 @@ const OrganizationBubble = styled.span<{ $index: number; $tone?: "default" | "ac
       ? "#1f4339"
       : "linear-gradient(145deg, #ede5d8, #f8f4ee)"};
   color: ${({ $tone }) => ($tone === "accent" ? "#fff" : "#8c7040")};
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   font-weight: 700;
   box-shadow: 0 6px 14px rgba(104, 84, 54, 0.12);
   transition: transform 140ms ease, box-shadow 140ms ease, z-index 140ms ease;
+
+  ${desktop} {
+    width: 30px;
+    height: 30px;
+    margin-left: ${({ $index }) => ($index === 0 ? "0" : "-8px")};
+    font-size: 0.72rem;
+  }
 
   &:hover {
     z-index: 30;
@@ -1470,7 +1491,7 @@ const OrganizationBubble = styled.span<{ $index: number; $tone?: "default" | "ac
 const MobileList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 
   ${desktop} {
     display: none;
@@ -1482,24 +1503,43 @@ const MobileStaticCard = styled.button`
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 8px;
+  padding: 12px;
   border: 0;
-  border-radius: 20px;
+  border-radius: 18px;
   text-align: left;
 `;
 
 const MobileTop = styled.div`
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
 `;
 
-const MobileBottom = styled.div`
+const MobileTitleRow = styled.div`
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+`;
+
+const MobileOrganizationPills = styled.div`
+  display: flex;
+  gap: 6px;
   flex-wrap: wrap;
+`;
+
+const OrganizationNamePill = styled.span`
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(244, 241, 237, 0.9);
+  color: var(--color-text);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
 `;
 
 const EmptyState = styled.div`

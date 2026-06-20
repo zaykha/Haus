@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
 import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { FilterModal } from "@/components/filter-modal";
+import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { canCreateTask, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { taskNeedsAttention } from "@/lib/task-attention";
 import { formatLabel, formatRole, getTaskStatusLabel } from "@/lib/display";
@@ -177,8 +178,7 @@ function formatCompanyName(value: string) {
 }
 
 export function TasksScreen() {
-  const { state, user, createTask, updateTaskStatus } = useAppState();
-  const [currentPage, setCurrentPage] = useState(1);
+  const { ready, state, user, createTask, updateTaskStatus } = useAppState();
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -193,6 +193,8 @@ export function TasksScreen() {
   const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus>("todo");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
+  const [visibleCount, setVisibleCount] = useState(8);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const visibleProjects = useMemo(
     () => (user ? state.projects.filter((project) => canViewProject(user, project)) : []),
@@ -318,16 +320,38 @@ export function TasksScreen() {
     });
   }, [allTasks, filter, search]);
 
-  const pageSize = 4;
-  const totalTasks = filteredTasks.length;
-  const totalPages = Math.max(1, Math.ceil(totalTasks / pageSize));
-  const activePage = Math.min(currentPage, totalPages);
-  const paginatedTasks = filteredTasks.slice((activePage - 1) * pageSize, activePage * pageSize);
-  const rangeStart = totalTasks ? (activePage - 1) * pageSize + 1 : 0;
-  const rangeEnd = totalTasks ? Math.min(activePage * pageSize, totalTasks) : 0;
+  const visibleTasks = filteredTasks.slice(0, visibleCount);
+  const hasMoreTasks = visibleCount < filteredTasks.length;
   const activeDesignerTask = activeDesignerTaskId
     ? allTasks.find((task) => task.id === activeDesignerTaskId) ?? null
     : null;
+
+  useEffect(() => {
+    setVisibleCount(8);
+  }, [filter, search]);
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !hasMoreTasks) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((current) => Math.min(current + 8, filteredTasks.length));
+        }
+      },
+      { rootMargin: "220px 0px" },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [filteredTasks.length, hasMoreTasks]);
+
+  if (!ready) {
+    return <ListScreenSkeleton title="Tasks" showStats={false} />;
+  }
 
   if (!user) {
     return null;
@@ -336,7 +360,6 @@ export function TasksScreen() {
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSearch(searchDraft);
-    setCurrentPage(1);
   };
 
   const openDesignerTaskModal = (task: TaskRow) => {
@@ -622,7 +645,6 @@ export function TasksScreen() {
             values={{ filter }}
             onApply={(nextValues) => {
               setFilter(nextValues.filter as FilterKey);
-              setCurrentPage(1);
             }}
             onClose={() => setShowFilters(false)}
           />
@@ -665,7 +687,7 @@ export function TasksScreen() {
 
         <TaskList>
           {filteredTasks.length ? (
-            paginatedTasks.map((task) => {
+            visibleTasks.map((task) => {
               const statusTone = getStatusTone(task.status);
               const priorityTone = getPriorityTone(task.priority);
               const isTaskClickable = isDesigner && task.assigneeId === user.id;
@@ -677,36 +699,51 @@ export function TasksScreen() {
                     {task.needsAttention ? "Action" : ""}
                   </TaskAttentionBadge>
                   <TaskCompanyHeader>{task.clientOrganizationName}</TaskCompanyHeader>
+                  <TaskStatusPillMobile style={{ background: statusTone.bg, color: statusTone.fg }}>
+                    {statusTone.label}
+                  </TaskStatusPillMobile>
                   <TaskCardLead>
                     <TaskCardMark>{task.projectMark}</TaskCardMark>
                     <TaskCardSummary>
                       <TaskCardEyebrow>{task.projectName}</TaskCardEyebrow>
-                      <TaskTitle>{task.title}</TaskTitle>
+                      <TaskTitleRow>
+                        <TaskTitle>{task.title}</TaskTitle>
+                        <TaskPriorityPillMobile style={{ background: priorityTone.bg, color: priorityTone.fg }}>
+                          {priorityTone.label}
+                        </TaskPriorityPillMobile>
+                        <TaskTitleMetaInline>
+                          <TaskDueText>{formatDueDate(task.dueDate)}</TaskDueText>
+                        </TaskTitleMetaInline>
+                      </TaskTitleRow>
+                      <TaskContactPills>
+                        <TaskAssigneePill>{task.assigneeName}</TaskAssigneePill>
+                        {task.assigneePhone ? <TaskAssigneePill>{task.assigneePhone}</TaskAssigneePill> : null}
+                      </TaskContactPills>
                     </TaskCardSummary>
                   </TaskCardLead>
                   <TaskMetaGroup>
-                    <TaskMetaBlock>
+                    <TaskMetaBlock $desktopOnly $desktopOrder={1}>
                       <TaskMetaLabel>Assignee</TaskMetaLabel>
                       <TaskMetaValue>
                         {task.assigneeName}
                         {task.assigneePhone ? ` · ${task.assigneePhone}` : ""}
                       </TaskMetaValue>
                     </TaskMetaBlock>
-                    <TaskMetaBlock>
+                    <TaskMetaBlock $desktopOrder={4}>
+                      <TaskMetaLabel>Due date</TaskMetaLabel>
+                      <TaskDueText>{formatDueDate(task.dueDate)}</TaskDueText>
+                    </TaskMetaBlock>
+                    <TaskMetaBlock $desktopOrder={2}>
                       <TaskMetaLabel>Status</TaskMetaLabel>
                       <Pill style={{ background: statusTone.bg, color: statusTone.fg }}>
                         {statusTone.label}
                       </Pill>
                     </TaskMetaBlock>
-                    <TaskMetaBlock>
+                    <TaskMetaBlock $desktopOrder={3}>
                       <TaskMetaLabel>Priority</TaskMetaLabel>
-                      <Pill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
+                      <TaskPriorityPillDesktop style={{ background: priorityTone.bg, color: priorityTone.fg }}>
                         {priorityTone.label}
-                      </Pill>
-                    </TaskMetaBlock>
-                    <TaskMetaBlock>
-                      <TaskMetaLabel>Due date</TaskMetaLabel>
-                      <TaskDueText>{formatDueDate(task.dueDate)}</TaskDueText>
+                      </TaskPriorityPillDesktop>
                     </TaskMetaBlock>
                   </TaskMetaGroup>
                 </>
@@ -737,32 +774,8 @@ export function TasksScreen() {
               <p>Try another search term or adjust the selected status filter.</p>
             </EmptyState>
           )}
+          {hasMoreTasks ? <LoadMoreSentinel ref={loadMoreRef} aria-hidden="true" /> : null}
         </TaskList>
-
-        {filteredTasks.length ? (
-          <PaginationBar>
-            <CountText>
-              Showing {rangeStart} to {rangeEnd} of {totalTasks} tasks
-            </CountText>
-            <PaginationControls>
-              <PaginationButton
-                type="button"
-                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                disabled={activePage === 1}
-              >
-                Last
-              </PaginationButton>
-              <PaginationCurrent>{activePage}</PaginationCurrent>
-              <PaginationButton
-                type="button"
-                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                disabled={activePage === totalPages}
-              >
-                Next
-              </PaginationButton>
-            </PaginationControls>
-          </PaginationBar>
-        ) : null}
       </Content>
     </Shell>
   );
@@ -1155,77 +1168,19 @@ const TaskList = styled.section`
   }
 `;
 
-const PaginationBar = styled.section`
-  ${cardSurface}
-  display: grid;
-  gap: 14px;
-  padding: 10px;
-  border-radius: 24px;
-
-  ${desktop} {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    padding: 10px 22px;
-  }
-`;
-
-const CountText = styled.p`
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: 0.84rem;
-`;
-
-const PaginationControls = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: flex-end;
-`;
-
-const PaginationButton = styled.button`
-  min-height: 30px;
-  padding: 0 18px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--color-text-muted);
-  font-size: 0.84rem;
-  font-weight: 700;
-
-  &:disabled {
-    opacity: 0.5;
-  }
-`;
-
-const PaginationCurrent = styled.span`
-  min-width: 30px;
-  min-height: 30px;
-  padding: 0 14px;
-  border-radius: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #214f39;
-  color: #fff;
-  font-size: 0.92rem;
-  font-weight: 700;
-`;
-
 const taskCardSurfaceCss = css<{ $attention?: boolean }>`
   ${cardSurface}
   position: relative;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  gap: 10px;
   border-color: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.98)" : "rgba(230, 224, 215, 0.95)")};
-  border-radius: 20px;
+  border-radius: 18px;
   text-decoration: none;
   transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
   box-shadow: ${({ $attention }) =>
     $attention ? "0 0 0 1px rgba(217, 75, 75, 0.18), var(--shadow-sm)" : "var(--shadow-sm)"};
   background: ${({ $attention }) => ($attention ? "rgba(244, 233, 233, 0.75)" : "rgba(255, 255, 255, 0.95)")};
-  padding: 18px 16px 16px;
+  padding: 14px 12px 12px;
 
   &:hover {
     background: ${({ $attention }) =>
@@ -1233,9 +1188,12 @@ const taskCardSurfaceCss = css<{ $attention?: boolean }>`
   }
 
   ${desktop} {
+    display: flex;
     flex-direction: row;
+    justify-content: space-between;
     align-items: start;
     gap: 18px;
+    border-radius: 20px;
     padding: 22px 18px 18px;
   }
 `;
@@ -1257,42 +1215,52 @@ const TaskCardLead = styled.div`
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex: 1;
-  padding-top: 10px;
+  padding-top: 8px;
 
   ${desktop} {
     gap: 16px;
     flex: 1.1;
+    padding-top: 10px;
   }
 `;
 
 const TaskAttentionBadge = styled.span<{ $visible?: boolean }>`
   position: absolute;
-  top: -6px;
-  right: 12px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
+  top: -8px;
+  right: 10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
   border-radius: 999px;
   background: #d94b4b;
   color: #fff;
   display: ${({ $visible }) => ($visible ? "inline-flex" : "none")};
   align-items: center;
   justify-content: center;
-  font-size: 0.68rem;
+  font-size: 0.6rem;
   font-weight: 800;
   line-height: 1;
+
+  ${desktop} {
+    top: -6px;
+    right: 12px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 0.68rem;
+  }
 `;
 
 const TaskCompanyHeader = styled.span`
   position: absolute;
-  top: 12px;
-  left: 16px;
-  right: 48px;
+  top: 10px;
+  left: 12px;
+  right: 120px;
   color: grey;
   text-transform: uppercase;
-  font-size: 0.7rem;
+  font-size: 0.62rem;
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
@@ -1300,20 +1268,41 @@ const TaskCompanyHeader = styled.span`
   text-overflow: ellipsis;
 
   ${desktop} {
+    top: 12px;
     left: 18px;
     right: 56px;
+    font-size: 0.7rem;
+  }
+`;
+
+const TaskStatusPillMobile = styled.span`
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.64rem;
+  font-weight: 700;
+  z-index: 1;
+
+  ${desktop} {
+    display: none;
   }
 `;
 
 const TaskCardMark = styled.div`
-  width: 50px;
-  height: 50px;
-  border-radius: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
   background: linear-gradient(145deg, #ede5d8, #f8f4ee);
   color: #8c7040;
-  font-size: 1rem;
+  font-size: 0.88rem;
   font-weight: 700;
 
   ${desktop} {
@@ -1326,63 +1315,225 @@ const TaskCardMark = styled.div`
 
 const TaskCardSummary = styled.div`
   display: grid;
-  gap: 8px;
+  gap: 5px;
   min-width: 0;
+
+  ${desktop} {
+    gap: 8px;
+  }
+`;
+
+const TaskContactPills = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  ${desktop} {
+    display: none;
+  }
+`;
+
+const TaskAssigneePill = styled.div`
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(244, 241, 237, 0.96);
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.2;
+
+  white-space: nowrap;
+
+  ${desktop} {
+    display: none;
+  }
 `;
 
 const TaskCardEyebrow = styled.span`
   color: var(--color-text-light);
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   text-transform: none;
+
+  ${desktop} {
+    font-size: 0.62rem;
+  }
+`;
+
+const TaskTitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+
+  ${desktop} {
+    display: block;
+  }
+`;
+
+const TaskTitleMetaInline = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  flex: 0 0 auto;
+
+  ${desktop} {
+    display: none;
+  }
 `;
 
 const TaskMetaGroup = styled.div`
   display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
   justify-content: flex-start;
-  align-items: flex-start;
+  display: none;
 
   ${desktop} {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: 18px;
     flex: 0 1 auto;
     align-self: center;
+    align-items: flex-start;
     justify-content: flex-end;
   }
 `;
 
-const TaskMetaBlock = styled.div`
+const TaskMetaBlock = styled.div<{ $desktopOnly?: boolean; $desktopOrder?: number }>`
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  justify-items: flex-end;
+  text-align: right;
+  ${({ $desktopOnly }) =>
+    $desktopOnly
+      ? css`
+          display: none;
+        `
+      : ""}
+
+  ${desktop} {
+    display: grid;
+    gap: 6px;
+    justify-items: start;
+    text-align: left;
+    order: ${({ $desktopOrder = 0 }) => $desktopOrder};
+    ${({ $desktopOnly }) =>
+      $desktopOnly
+        ? css`
+            display: grid;
+          `
+        : ""}
+  }
+
+  &:nth-child(2),
+  &:nth-child(3) {
+    @media (max-width: 767px) {
+      display: none;
+    }
+  }
 `;
 
 const TaskMetaLabel = styled.span`
-  color: var(--color-text-light);
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  display: none;
+
+  ${desktop} {
+    display: inline;
+    color: var(--color-text-light);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
 `;
 
 const TaskDueText = styled.strong`
-  font-size: 0.88rem;
+  font-size: 0.66rem;
   color: var(--color-text);
+  line-height: 1.15;
+
+  ${desktop} {
+    font-size: 0.88rem;
+    line-height: normal;
+  }
 `;
 
 const TaskMetaValue = styled.strong`
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   color: var(--color-text);
   line-height: 1.35;
+
+  ${desktop} {
+    font-size: 0.84rem;
+  }
+`;
+
+const TaskPriorityFlag = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+
+  svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  ${desktop} {
+    width: auto;
+    height: auto;
+    border-radius: 0;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+`;
+
+const TaskPriorityFlagMobile = styled(TaskPriorityFlag)`
+  ${desktop} {
+    display: none;
+  }
+`;
+
+const TaskPriorityPillMobile = styled.span`
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.64rem;
+  font-weight: 700;
+
+  ${desktop} {
+    display: none;
+  }
 `;
 
 const TaskTitle = styled.strong`
-  font-size: 1rem;
-  line-height: 1.25;
+  font-size: 0.92rem;
+  line-height: 1.22;
+  min-width: 0;
+  flex: 1;
 
   ${desktop} {
     font-size: 1.08rem;
+    flex: unset;
   }
 `;
 
@@ -1391,6 +1542,10 @@ const TaskMeta = styled.p`
   color: var(--color-text-muted);
   font-size: 0.82rem;
   line-height: 1.45;
+`;
+
+const LoadMoreSentinel = styled.div`
+  height: 1px;
 `;
 
 const ProjectMark = styled.div`
@@ -1418,15 +1573,31 @@ const Avatar = styled.span`
 `;
 
 const Pill = styled.span`
-  display: inline-flex;
+   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 4px 8px;
   width: fit-content;
-  min-height: 24px;
-  padding: 0 8px;
+  max-width: 100%;
+  padding: 5px 9px;
   border-radius: 999px;
-  font-size: 0.74rem;
+  background: rgba(244, 241, 237, 0.96);
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
   font-weight: 700;
-  white-space: nowrap;
+  line-height: 1.2;
+
+  span {
+    white-space: nowrap;
+  }
+`;
+
+const TaskPriorityPillDesktop = styled(Pill)`
+  display: none;
+
+  ${desktop} {
+    display: inline-flex;
+  }
 `;
 
 const MiniIcon = styled.span`
@@ -1909,6 +2080,15 @@ function IconFilter() {
       <path d="M4 6h16" />
       <path d="M7 12h10" />
       <path d="M10 18h4" />
+    </svg>
+  );
+}
+
+function IconFlag() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 21V5" />
+      <path d="M5 5h10l-2 4 2 4H5" />
     </svg>
   );
 }
