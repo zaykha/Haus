@@ -119,6 +119,21 @@ const sidebarItemCss = css<{ $active?: boolean }>`
   text-align: left;
   text-decoration: none;
   font-size: 0.96rem;
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+
+  &:hover {
+    color: var(--color-text);
+    background: ${({ $active }) => ($active ? "#f5efe5" : "rgba(245, 239, 229, 0.78)")};
+    box-shadow: ${({ $active }) =>
+      $active
+        ? "inset 0 0 0 1px rgba(230, 224, 215, 0.9)"
+        : "inset 0 0 0 1px rgba(230, 224, 215, 0.72), 0 8px 18px rgba(31, 31, 31, 0.05)"};
+    transform: translateX(2px);
+  }
 `;
 
 const SidebarLink = styled(Link)<{ $active?: boolean }>`
@@ -207,6 +222,7 @@ function IconUsers() {
     </svg>
   );
 }
+
 
 function IconCalendar() {
   return (

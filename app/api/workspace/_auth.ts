@@ -7,6 +7,7 @@ export type WorkspaceProfile = {
   email: string;
   name: string;
   role: Role;
+  avatarPath: string | null;
   company: string | null;
   phone: string | null;
   jobTitle: string | null;
@@ -46,7 +47,7 @@ export async function requireWorkspaceUser(request: NextRequest): Promise<
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, email, name, role, company, phone, job_title, department")
+    .select("id, email, name, role, avatar_path, company, phone, job_title, department")
     .eq("id", authData.user.id)
     .maybeSingle();
 
@@ -87,6 +88,7 @@ export async function requireWorkspaceUser(request: NextRequest): Promise<
       email: profile.email,
       name: profile.name,
       role: profile.role,
+      avatarPath: profile.avatar_path ?? null,
       company: profile.company,
       phone: profile.phone ?? null,
       jobTitle: profile.job_title ?? null,

@@ -34,6 +34,7 @@ type ProfileRecord = {
   email: string;
   name: string;
   role: Role;
+  avatar_path: string | null;
   company: string | null;
   phone: string | null;
   job_title: string | null;
@@ -187,6 +188,7 @@ function toAppUser(profile: ProfileRecord, clientOrganizationIds: string[] = [])
     email: profile.email,
     name: profile.name,
     role: profile.role,
+    avatarPath: profile.avatar_path ?? null,
     company: profile.company ?? undefined,
     phone: profile.phone ?? undefined,
     jobTitle: profile.job_title ?? undefined,
@@ -292,7 +294,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: true }),
     supabase
       .from("profiles")
-      .select("id, email, name, role, company, phone, job_title, department, created_at")
+      .select("id, email, name, role, avatar_path, company, phone, job_title, department, created_at")
       .order("created_at", { ascending: true }),
     supabase
       .from("projects")

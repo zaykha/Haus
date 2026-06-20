@@ -9,6 +9,7 @@ import { FilterModal } from "@/components/filter-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
+import { UserAvatar } from "@/components/user-avatar";
 import { buildLiaisonRows } from "@/lib/client-organizations";
 import { formatRole } from "@/lib/display";
 import { canCreateClient, getUserClientOrganizationIds } from "@/lib/permissions";
@@ -446,7 +447,7 @@ export function LiaisonsScreen() {
             <Subtitle>Browse all client liaison accounts and manage their organization memberships.</Subtitle>
           </div>
           <HeaderAvatarLink href="/profile" aria-label="Open profile">
-            {user.name.slice(0, 1)}
+            <UserAvatar user={user} />
           </HeaderAvatarLink>
         </Header>
 

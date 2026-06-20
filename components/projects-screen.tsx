@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { FilterModal } from "@/components/filter-modal";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
+import { UserAvatar } from "@/components/user-avatar";
 import { canCreateProject as canCreateProjectPermission, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { getAttentionTasksForProject } from "@/lib/task-attention";
 import { formatProjectStage, formatRole } from "@/lib/display";
@@ -203,11 +204,18 @@ export function ProjectsScreen() {
 
       <Content>
         <DesktopHeader>
-          <Eyebrow>{roleLabel}</Eyebrow>
-          <Title>Select a project</Title>
-          <Subtitle>
-            Choose a project workspace to manage deliverables, staff, clients, and tasks.
-          </Subtitle>
+          <DesktopHeaderTop>
+            <DesktopHeaderCopy>
+              <Eyebrow>{roleLabel}</Eyebrow>
+              <Title>Select a project</Title>
+              <Subtitle>
+                Choose a project workspace to manage deliverables, staff, clients, and tasks.
+              </Subtitle>
+            </DesktopHeaderCopy>
+            <HeaderAvatarLink href="/profile" aria-label="Open profile">
+              {user ? <UserAvatar user={user} /> : null}
+            </HeaderAvatarLink>
+          </DesktopHeaderTop>
         </DesktopHeader>
 
         <MobileHeader>
@@ -216,7 +224,7 @@ export function ProjectsScreen() {
             <Title>Select a project</Title>
           </MobileHeaderCopy>
           <HeaderAvatarLink href="/profile" aria-label="Open profile">
-            {user?.name?.slice(0, 1)}
+            {user ? <UserAvatar user={user} /> : null}
           </HeaderAvatarLink>
         </MobileHeader>
 
@@ -493,10 +501,23 @@ const DesktopHeader = styled.header`
   ${desktop} {
     ${headerCss}
     display: flex;
-    flex-direction: column;
-    gap: 6px;
     padding: 2px 8px 0;
   }
+`;
+
+const DesktopHeaderTop = styled.div`
+  width: 100%;
+
+  ${desktop} {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+  }
+`;
+
+const DesktopHeaderCopy = styled.div`
+  min-width: 0;
 `;
 
 const MobileHeader = styled.header`
@@ -557,6 +578,20 @@ const HeaderAvatarLink = styled(Link)`
   color: #fff;
   font-weight: 700;
   text-decoration: none;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+
+  ${desktop} {
+    &:hover {
+      transform: translateY(-2px);
+      background: #e7ded0;
+      border-color: rgba(220, 208, 194, 0.95);
+      box-shadow: 0 14px 28px rgba(31, 31, 31, 0.08);
+    }
+  }
 `;
 
 const Toolbar = styled.section`
@@ -567,7 +602,6 @@ const Toolbar = styled.section`
     display: flex;
     align-items: center;
     gap: 18px;
-    margin-top: 26px;
   }
 `;
 
@@ -780,12 +814,31 @@ const ProjectRow = styled(Link)<{ $attention?: boolean }>`
   display: flex;
   align-items: center;
   gap: 20px;
+  height: 125px;
   padding: 34px 20px 22px;
   border-radius: 24px;
   text-decoration: none;
   border-color: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)")};
   box-shadow: ${({ $attention }) =>
     $attention ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)" : "var(--shadow-sm)"};
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+
+  ${desktop} {
+    &:hover {
+      transform: translateY(-2px);
+      background: rgba(255, 248, 239, 0.94);
+      border-color: ${({ $attention }) =>
+        $attention ? "rgba(217, 75, 75, 0.82)" : "rgba(220, 208, 194, 0.95)"};
+      box-shadow: ${({ $attention }) =>
+        $attention
+          ? "0 0 0 1px rgba(217, 75, 75, 0.18), 0 18px 32px rgba(31, 31, 31, 0.08)"
+          : "0 18px 32px rgba(31, 31, 31, 0.08)"};
+    }
+  }
 `;
 
 const ProjectIdBadge = styled.span`

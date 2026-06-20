@@ -3,7 +3,9 @@
 import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AvatarPicker } from "@/components/avatar-picker";
 import { useAppState } from "@/components/app-state";
+import { profileAvatarOptions } from "@/lib/profile-avatars";
 import { formatLabel, formatRole } from "@/lib/display";
 
 interface RemoteInvitationPreview {
@@ -28,6 +30,7 @@ export function AcceptInviteScreen() {
   const [phone, setPhone] = useState("");
   const [jobTitle, setJobTitle] = useState("");
   const [department, setDepartment] = useState("");
+  const [avatarPath, setAvatarPath] = useState<string>(profileAvatarOptions[0] ?? "");
   const [departmentOpen, setDepartmentOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -149,6 +152,7 @@ export function AcceptInviteScreen() {
         phone,
         jobTitle: isClientInvite ? jobTitle : undefined,
         department: isClientInvite ? department : undefined,
+        avatarPath,
       });
       router.push("/dashboard");
     } catch (requestError) {
@@ -237,6 +241,13 @@ export function AcceptInviteScreen() {
 
                   {invite.status === "pending" ? (
                     <form className="auth-form-stack onboarding-form" onSubmit={handleSubmit}>
+                      <AvatarPicker
+                        value={avatarPath}
+                        onChange={setAvatarPath}
+                        disabled={submitting}
+                        helperText="This avatar will be used for your profile."
+                      />
+
                       <label className={name ? "auth-field is-filled" : "auth-field"}>
                         <input
                           type="text"
@@ -245,6 +256,7 @@ export function AcceptInviteScreen() {
                           placeholder=" "
                           autoComplete="name"
                           required
+                          disabled={submitting}
                         />
                         <span>Display name</span>
                       </label>
@@ -257,6 +269,7 @@ export function AcceptInviteScreen() {
                           placeholder=" "
                           autoComplete="tel"
                           required
+                          disabled={submitting}
                         />
                         <span>Contact number</span>
                       </label>
@@ -270,6 +283,7 @@ export function AcceptInviteScreen() {
                               onChange={(event) => setJobTitle(event.target.value)}
                               placeholder=" "
                               autoComplete="organization-title"
+                              disabled={submitting}
                             />
                             <span>Job title</span>
                           </label>
@@ -283,6 +297,7 @@ export function AcceptInviteScreen() {
                               className="onboarding-department-trigger"
                               aria-haspopup="listbox"
                               aria-expanded={departmentOpen}
+                              disabled={submitting}
                               onClick={() => setDepartmentOpen((current) => !current)}
                             >
                               <span className="onboarding-department-value">
@@ -304,6 +319,7 @@ export function AcceptInviteScreen() {
                                         setDepartment(dept.name);
                                         setDepartmentOpen(false);
                                       }}
+                                      disabled={submitting}
                                     >
                                       {dept.name}
                                     </button>
@@ -331,11 +347,13 @@ export function AcceptInviteScreen() {
                             placeholder=" "
                             autoComplete="new-password"
                             required
+                            disabled={submitting}
                           />
                           <span className="auth-inline-label">Create password</span>
                           <button
                             className="password-toggle"
                             type="button"
+                            disabled={submitting}
                             onClick={() => setShowPassword((current) => !current)}
                           >
                             {showPassword ? "Hide" : "Show"}

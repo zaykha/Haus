@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { FilterModal } from "@/components/filter-modal";
 import { useAppState } from "@/components/app-state";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
+import { UserAvatar } from "@/components/user-avatar";
 import {
   buildClientOrganizationRows,
   getClientOrganizationMark,
@@ -355,7 +356,7 @@ export function ClientsScreen() {
             <Subtitle>Browse client organizations, then open one to manage liaisons and linked projects.</Subtitle>
           </div>
           <HeaderAvatarLink href="/profile" aria-label="Open profile">
-            {user.name.slice(0, 1)}
+            <UserAvatar user={user} />
           </HeaderAvatarLink>
         </Header>
 

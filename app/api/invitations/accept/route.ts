@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
     phone?: string;
     jobTitle?: string;
     department?: string;
+    avatarPath?: string;
   };
   if (
     !body.token ||
@@ -67,6 +68,7 @@ export async function POST(request: NextRequest) {
     email: invitation.email,
     name: body.name.trim(),
     role: invitation.role,
+    avatar_path: body.avatarPath?.trim() || null,
     phone: body.phone.trim(),
     job_title: body.jobTitle?.trim() || null,
     department: body.department?.trim() || null,
@@ -126,6 +128,7 @@ export async function POST(request: NextRequest) {
       email: invitation.email,
       name: body.name.trim(),
       role: invitation.role,
+      avatarPath: body.avatarPath?.trim() || null,
       phone: body.phone.trim(),
       jobTitle: body.jobTitle?.trim() || undefined,
       department: body.department?.trim() || undefined,

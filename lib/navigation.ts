@@ -31,4 +31,3 @@ export function getPrimaryNavItems(role?: Role): AppNavItem[] {
     { label: "Team", href: "/team" },
   ];
 }
-

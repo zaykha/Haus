@@ -1,24 +1,130 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import styled from "styled-components";
+import { AvatarPicker } from "@/components/avatar-picker";
 import { useAppState } from "@/components/app-state";
+import { UserAvatar } from "@/components/user-avatar";
 import { formatRole } from "@/lib/display";
 
 export function ProfileScreen() {
-  const { user, logout, mode } = useAppState();
+  const router = useRouter();
+  const { user, logout, updateProfileAvatar } = useAppState();
+  const [selectedAvatarPath, setSelectedAvatarPath] = useState(user?.avatarPath ?? "");
+  const [savingAvatar, setSavingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+
+  useEffect(() => {
+    setSelectedAvatarPath(user?.avatarPath ?? "");
+  }, [user?.avatarPath]);
 
   if (!user) {
     return null;
   }
 
-  const userInitial = user.name.trim().charAt(0).toUpperCase() || "U";
+  const avatarChanged = selectedAvatarPath !== (user.avatarPath ?? "");
+  const details = [
+    { label: "Role", value: <RoleBadge>{formatRole(user.role)}</RoleBadge> },
+    { label: "Email", value: <InfoValue>{user.email}</InfoValue> },
+    { label: "Contact", value: <InfoValue>{user.phone ?? "Not provided"}</InfoValue> },
+    { label: "Job title", value: <InfoValue>{user.jobTitle ?? "Not provided"}</InfoValue> },
+    { label: "Department", value: <InfoValue>{user.department ?? "Not provided"}</InfoValue> },
+  ] as const;
+
+  const handleSaveAvatar = async () => {
+    setSavingAvatar(true);
+    setAvatarError("");
+
+    try {
+      await updateProfileAvatar(selectedAvatarPath || null);
+      return true;
+    } catch (error) {
+      setAvatarError(error instanceof Error ? error.message : "Unable to update avatar");
+      return false;
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
+
+  const handleAvatarModalClose = () => {
+    if (savingAvatar) {
+      return;
+    }
+
+    setSelectedAvatarPath(user.avatarPath ?? "");
+    setAvatarError("");
+    setShowAvatarModal(false);
+  };
 
   return (
     <ProfilePage>
       <ProfileShell>
+        {showAvatarModal ? (
+          <ModalBackdrop onClick={handleAvatarModalClose}>
+            <ModalCard onClick={(event) => event.stopPropagation()}>
+              <ModalHeader>
+                <ModalTitle>Choose avatar</ModalTitle>
+                <ModalClose type="button" onClick={handleAvatarModalClose} disabled={savingAvatar} aria-label="Close">
+                  ×
+                </ModalClose>
+              </ModalHeader>
+
+              <AvatarPicker
+                value={selectedAvatarPath}
+                onChange={setSelectedAvatarPath}
+                disabled={savingAvatar}
+                helperText="Animal avatars are only used for your user profile."
+              />
+
+              {avatarError ? <InlineError>{avatarError}</InlineError> : null}
+
+              <ModalActions>
+                <SecondaryButton type="button" onClick={handleAvatarModalClose} disabled={savingAvatar}>
+                  Cancel
+                </SecondaryButton>
+                <SaveButton
+                  type="button"
+                  disabled={!avatarChanged || savingAvatar}
+                  onClick={async () => {
+                    const saved = await handleSaveAvatar();
+                    if (saved) {
+                      setShowAvatarModal(false);
+                    }
+                  }}
+                >
+                  {savingAvatar ? "Saving..." : "Save avatar"}
+                </SaveButton>
+              </ModalActions>
+            </ModalCard>
+          </ModalBackdrop>
+        ) : null}
+
+        <BackButton
+          type="button"
+          onClick={() => {
+            if (typeof window !== "undefined" && window.history.length > 1) {
+              router.back();
+              return;
+            }
+
+            router.push("/dashboard");
+          }}
+        >
+          <BackIcon aria-hidden="true">←</BackIcon>
+          <span>Back</span>
+        </BackButton>
+
         <ProfileCard>
           <ProfileHero>
-            <Avatar>{userInitial}</Avatar>
+            <AvatarButton
+              type="button"
+              onClick={() => setShowAvatarModal(true)}
+              aria-label="Change profile avatar"
+            >
+              <UserAvatar user={user} />
+            </AvatarButton>
 
             <ProfileCopy>
               <Eyebrow>Account</Eyebrow>
@@ -28,15 +134,12 @@ export function ProfileScreen() {
           </ProfileHero>
 
           <InfoGrid>
-            <InfoItem>
-              <InfoLabel>Role</InfoLabel>
-              <RoleBadge>{formatRole(user.role)}</RoleBadge>
-            </InfoItem>
-
-            <InfoItem>
-              <InfoLabel>Email</InfoLabel>
-              <InfoValue>{user.email}</InfoValue>
-            </InfoItem>
+            {details.map((detail) => (
+              <InfoItem key={detail.label}>
+                <InfoLabel>{detail.label}</InfoLabel>
+                {detail.value}
+              </InfoItem>
+            ))}
           </InfoGrid>
 
           <Divider />
@@ -73,6 +176,34 @@ const ProfilePage = styled.main`
 const ProfileShell = styled.div`
   width: 100%;
   max-width: 680px;
+  display: grid;
+  gap: 14px;
+`;
+
+const BackButton = styled.button`
+  width: fit-content;
+  min-height: 42px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #4b443c;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(31, 31, 31, 0.06);
+
+  &:hover {
+    background: #fff7ef;
+  }
+`;
+
+const BackIcon = styled.span`
+  font-size: 1rem;
+  line-height: 1;
 `;
 
 const ProfileCard = styled.section`
@@ -105,17 +236,26 @@ const ProfileHero = styled.div`
   }
 `;
 
-const Avatar = styled.div`
+const AvatarButton = styled.button`
   width: 72px;
   height: 72px;
   border-radius: 24px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(180deg, #eadfce, #cfb89f);
-  color: #5e4c37;
-  font-size: 1.85rem;
-  font-weight: 800;
+  overflow: hidden;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  background: #f7f1e8;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.5),
+      0 12px 24px rgba(31, 31, 31, 0.1);
+  }
 
   @media (min-width: 768px) {
     width: 88px;
@@ -236,6 +376,123 @@ const ActionText = styled.p`
   color: #6f6a63;
   font-size: 0.88rem;
   line-height: 1.45;
+`;
+
+const InlineError = styled.p`
+  margin: 0;
+  color: #b42318;
+  font-size: 0.86rem;
+  line-height: 1.4;
+`;
+
+const ModalBackdrop = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(21, 18, 14, 0.42);
+  backdrop-filter: blur(8px);
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const ModalCard = styled.div`
+  width: min(680px, 100%);
+  max-height: min(80vh, 760px);
+  overflow-y: auto;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(243, 234, 219, 0.9), transparent 34%),
+    rgba(255, 255, 255, 0.98);
+  box-shadow: 0 30px 60px rgba(31, 31, 31, 0.16);
+  padding: 22px;
+  display: grid;
+  gap: 18px;
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+`;
+
+const ModalTitle = styled.h2`
+  margin: 0;
+  color: #1f1f1f;
+  font-size: 1.1rem;
+  line-height: 1.2;
+`;
+
+const ModalClose = styled.button`
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 12px;
+  background: #fff;
+  color: #4b443c;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+`;
+
+const ModalActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+
+  @media (max-width: 639px) {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+`;
+
+const SecondaryButton = styled.button`
+  min-height: 46px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 14px;
+  background: #fff;
+  color: #4b443c;
+  padding: 0 18px;
+  font-size: 0.92rem;
+  font-weight: 800;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+`;
+
+const SaveButton = styled.button`
+  min-height: 46px;
+  width: fit-content;
+  border: 0;
+  border-radius: 14px;
+  background: #2f5d50;
+  color: #fff;
+  padding: 0 18px;
+  font-size: 0.92rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 14px 28px rgba(47, 93, 80, 0.18);
+
+  &:disabled {
+    background: #b8b2aa;
+    box-shadow: none;
+    cursor: default;
+  }
+
+  @media (max-width: 639px) {
+    width: 100%;
+  }
 `;
 
 const SignOutButton = styled.button`

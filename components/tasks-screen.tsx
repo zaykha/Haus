@@ -9,6 +9,7 @@ import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { FilterModal } from "@/components/filter-modal";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
+import { UserAvatar } from "@/components/user-avatar";
 import { canCreateTask, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { taskNeedsAttention } from "@/lib/task-attention";
 import { formatLabel, formatRole, getTaskStatusLabel } from "@/lib/display";
@@ -623,7 +624,7 @@ export function TasksScreen() {
             </Subtitle>
           </div>
           <HeaderAvatarLink href="/profile" aria-label="Open profile">
-            {user.name.slice(0, 1)}
+            <UserAvatar user={user} />
           </HeaderAvatarLink>
         </Header>
 
@@ -1130,12 +1131,23 @@ const taskRowSurfaceCss = css<{ $attention?: boolean }>`
   border-top: 1px solid rgba(230, 224, 215, 0.8);
   border-left: 3px solid ${({ $attention }) => ($attention ? "#d94b4b" : "transparent")};
   text-decoration: none;
-  transition: background 140ms ease, border-color 140ms ease;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    color 180ms ease;
   background: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.04)" : "transparent")};
 
-  &:hover {
-    background: ${({ $attention }) =>
-      $attention ? "rgba(217, 75, 75, 0.07)" : "rgba(244, 241, 237, 0.5)"};
+  ${desktop} {
+    &:hover {
+      transform: translateY(-2px);
+      background: ${({ $attention }) =>
+        $attention ? "rgba(255, 244, 244, 0.96)" : "rgba(255, 248, 239, 0.92)"};
+      border-color: ${({ $attention }) => ($attention ? "#d94b4b" : "rgba(220, 208, 194, 0.95)")};
+      box-shadow: 0 14px 28px rgba(31, 31, 31, 0.08);
+      color: #1f4339;
+    }
   }
 `;
 
@@ -1176,16 +1188,16 @@ const taskCardSurfaceCss = css<{ $attention?: boolean }>`
   border-color: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.98)" : "rgba(230, 224, 215, 0.95)")};
   border-radius: 18px;
   text-decoration: none;
-  transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    color 180ms ease;
   box-shadow: ${({ $attention }) =>
     $attention ? "0 0 0 1px rgba(217, 75, 75, 0.18), var(--shadow-sm)" : "var(--shadow-sm)"};
   background: ${({ $attention }) => ($attention ? "rgba(244, 233, 233, 0.75)" : "rgba(255, 255, 255, 0.95)")};
   padding: 14px 12px 12px;
-
-  &:hover {
-    background: ${({ $attention }) =>
-      $attention ? "rgba(255, 244, 244, 0.96)" : "rgba(244, 241, 237, 0.5)"};
-  }
 
   ${desktop} {
     display: flex;
@@ -1195,6 +1207,19 @@ const taskCardSurfaceCss = css<{ $attention?: boolean }>`
     gap: 18px;
     border-radius: 20px;
     padding: 22px 18px 18px;
+
+    &:hover {
+      transform: translateY(-2px);
+      background: ${({ $attention }) =>
+        $attention ? "rgba(255, 244, 244, 0.96)" : "rgba(255, 248, 239, 0.92)"};
+      border-color: ${({ $attention }) =>
+        $attention ? "rgba(217, 75, 75, 0.98)" : "rgba(220, 208, 194, 0.95)"};
+      box-shadow: ${({ $attention }) =>
+        $attention
+          ? "0 0 0 1px rgba(217, 75, 75, 0.2), 0 18px 32px rgba(31, 31, 31, 0.08)"
+          : "0 18px 32px rgba(31, 31, 31, 0.08)"};
+      color: #1f4339;
+    }
   }
 `;
 

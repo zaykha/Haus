@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
+import { UserAvatar } from "@/components/user-avatar";
 import {
   buildLiaisonRows,
   buildClientOrganizationRows,
@@ -341,7 +342,7 @@ export function ClientOrganizationDetailScreen({
             </div>
             <HeaderActions>
               <HeaderAvatarLink href="/profile" aria-label="Open profile">
-                {user.name.slice(0, 1)}
+                <UserAvatar user={user} />
               </HeaderAvatarLink>
             </HeaderActions>
           </Header>
@@ -1137,7 +1138,7 @@ export function ClientOrganizationDetailScreen({
               </>
             ) : null}
             <HeaderAvatarLink href="/profile" aria-label="Open profile">
-              {user.name.slice(0, 1)}
+              <UserAvatar user={user} />
             </HeaderAvatarLink>
           </HeaderActions>
         </Header>

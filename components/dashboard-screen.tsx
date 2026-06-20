@@ -9,6 +9,7 @@ import { ClientOrganizationDetailScreen } from "@/components/client-organization
 import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DashboardScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
+import { UserAvatar } from "@/components/user-avatar";
 import {
   canManageWorkspace,
   canViewProject,
@@ -183,7 +184,7 @@ export function DashboardScreen() {
         ...project,
         clientName: getClientOrganizationName(project, organizationNames),
       }));
-  }, [organizationNames, safeUser, visibleProjects]);
+  }, [organizationNames, visibleProjects]);
 
   const availableProjects = visibleProjects;
   const availableStaff = state.users.filter((candidate) => candidate.role !== "client");
@@ -641,10 +642,10 @@ export function DashboardScreen() {
             </Subtitle>
           </div>
           <MobileProfileLink href="/profile" aria-label="Open profile">
-            <HeaderAvatar>{safeUser?.name.slice(0, 1) ?? ""}</HeaderAvatar>
+            <HeaderAvatar>{safeUser ? <UserAvatar user={safeUser} /> : null}</HeaderAvatar>
           </MobileProfileLink>
           <HeaderUser href="/profile" aria-label="Open profile">
-            <HeaderAvatar>{safeUser?.name.slice(0, 1) ?? ""}</HeaderAvatar>
+            <HeaderAvatar>{safeUser ? <UserAvatar user={safeUser} /> : null}</HeaderAvatar>
             <div>
               <HeaderUserName>{safeUser?.name ?? ""}</HeaderUserName>
             </div>
@@ -1458,11 +1459,23 @@ const HeaderUser = styled(Link)`
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.9);
   text-decoration: none;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
 
   display: none;
 
   ${desktop} {
     display: flex;
+
+    &:hover {
+      transform: translateY(-2px);
+      background: rgba(255, 250, 243, 0.96);
+      border-color: rgba(220, 208, 194, 0.95);
+      box-shadow: 0 14px 28px rgba(31, 31, 31, 0.08);
+    }
   }
 `;
 
@@ -1735,6 +1748,25 @@ const PanelTag = styled.span`
   font-weight: 600;
 `;
 
+const interactiveHoverCss = css`
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+
+  ${desktop} {
+    &:hover {
+      transform: translateY(-2px);
+      background: rgba(255, 248, 239, 0.92);
+      border-color: rgba(220, 208, 194, 0.95);
+      color: #1f4339;
+      box-shadow: 0 14px 28px rgba(31, 31, 31, 0.08);
+    }
+  }
+`;
+
 const ProjectList = styled.div`
   display: grid;
   gap: 8px;
@@ -1748,6 +1780,9 @@ const ProjectRow = styled(Link)`
   text-decoration: none;
   padding: 8px 0;
   border-top: 1px solid rgba(230, 224, 215, 0.65);
+  border-radius: 14px;
+
+  ${interactiveHoverCss}
 
   &:first-child {
     padding-top: 0;
@@ -1769,6 +1804,9 @@ const MobileProjectRow = styled(Link)`
   text-decoration: none;
   padding: 12px 0;
   border-top: 1px solid rgba(230, 224, 215, 0.65);
+  border-radius: 14px;
+
+  ${interactiveHoverCss}
 
   &:first-child {
     padding-top: 0;
@@ -1887,6 +1925,9 @@ const TaskRow = styled(Link)`
   align-items: start;
   text-decoration: none;
   padding: 2px 0;
+  border-radius: 12px;
+
+  ${interactiveHoverCss}
 `;
 
 const TaskCircle = styled.span<{ $urgent: boolean; $done?: boolean }>`
@@ -2111,11 +2152,32 @@ const actionButtonCss = css`
   font-size: 0.82rem;
   font-weight: 700;
   text-decoration: none;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
 
   &:first-child {
     background: #1f4339;
     color: #fff;
     border-color: transparent;
+  }
+
+  ${desktop} {
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 28px rgba(31, 31, 31, 0.08);
+      background: #fff7ef;
+      border-color: rgba(220, 208, 194, 0.95);
+      color: #1f4339;
+    }
+
+    &:first-child:hover {
+      background: #285347;
+      border-color: transparent;
+    }
   }
 `;
 

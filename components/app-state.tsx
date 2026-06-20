@@ -209,7 +209,9 @@ interface AppStateContextValue {
     phone: string;
     jobTitle?: string;
     department?: string;
+    avatarPath?: string;
   }) => Promise<{ user: User | null }>;
+  updateProfileAvatar: (avatarPath: string | null) => Promise<void>;
 }
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
@@ -219,6 +221,7 @@ type ProfileRecord = {
   email: string;
   name: string;
   role: Role;
+  avatar_path: string | null;
   company: string | null;
   phone: string | null;
   job_title: string | null;
@@ -286,6 +289,7 @@ function areUsersEqual(left: User | null, right: User | null) {
     left.email === right.email &&
     left.name === right.name &&
     left.role === right.role &&
+    left.avatarPath === right.avatarPath &&
     left.company === right.company &&
     left.phone === right.phone &&
     left.jobTitle === right.jobTitle &&
@@ -327,7 +331,7 @@ async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, name, role, company, phone, job_title, department, created_at")
+    .select("id, email, name, role, avatar_path, company, phone, job_title, department, created_at")
     .eq("id", authUser.id)
     .maybeSingle();
 
@@ -367,6 +371,7 @@ async function fetchAuthUserProfile(authUser: AuthUser): Promise<User> {
         authUser.email?.split("@")[0] ??
         "User"),
     role,
+    avatarPath: profile?.avatar_path ?? null,
     company: profile?.company ?? undefined,
     phone: profile?.phone ?? undefined,
     jobTitle: profile?.job_title ?? undefined,
@@ -1251,6 +1256,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     phone,
     jobTitle,
     department,
+    avatarPath,
   }) => {
     if (appMode === "supabase") {
       const response = await fetch("/api/invitations/accept", {
@@ -1258,7 +1264,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ token, name, password, phone, jobTitle, department }),
+        body: JSON.stringify({ token, name, password, phone, jobTitle, department, avatarPath }),
       });
 
       if (!response.ok) {
@@ -1282,6 +1288,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     return { user: null };
+  };
+
+  const updateProfileAvatar: AppStateContextValue["updateProfileAvatar"] = async (avatarPath) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    if (appMode !== "supabase") {
+      setUser((current) => (current ? { ...current, avatarPath } : current));
+      return;
+    }
+
+    await apiRequest<{ ok: true }>("/api/workspace/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ avatarPath }),
+    });
+
+    await refreshWorkspace(user);
   };
 
   return (
@@ -1315,6 +1339,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         revokeInvitation,
         getInvitationByToken,
         acceptInvitation,
+        updateProfileAvatar,
       }}
     >
       {children}

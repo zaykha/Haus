@@ -55,6 +55,7 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  avatarPath?: string | null;
   company?: string;
   phone?: string;
   jobTitle?: string;
