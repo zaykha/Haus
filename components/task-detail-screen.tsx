@@ -124,6 +124,10 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
     [project?.clientOrganizationId, state.clientOrganizations],
   );
   const assignee = availableStaff.find((candidate) => candidate.id === assigneeId) ?? null;
+  const taskAssignee = task?.assigneeId
+    ? availableStaff.find((member) => member.id === task.assigneeId) ?? null
+    : null;
+  const assigneeDetail = [taskAssignee?.name ?? "Unassigned", taskAssignee?.phone ?? ""].filter(Boolean).join(" · ");
 
   useEffect(() => {
     if (!task || !project) {
@@ -340,18 +344,33 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
           </HeaderActions>
         </Header>
 
+        <TaskMetaPills>
+          <TaskMetaPill>
+            <CompactMetaLabel>Client Org</CompactMetaLabel>
+            <CompactMetaValue>{clientOrganization?.name ?? "Unassigned client"}</CompactMetaValue>
+          </TaskMetaPill>
+          <TaskMetaPill>
+            <CompactMetaLabel>Assignee</CompactMetaLabel>
+            <CompactMetaValue>{assigneeDetail}</CompactMetaValue>
+          </TaskMetaPill>
+          <TaskMetaPill>
+            <CompactMetaLabel>Status</CompactMetaLabel>
+            <CompactMetaValue>{getTaskStatusLabel(task.status)}</CompactMetaValue>
+          </TaskMetaPill>
+          <TaskMetaPill>
+            <CompactMetaLabel>Priority</CompactMetaLabel>
+            <CompactMetaValue>{formatLabel(task.priority ?? "medium")}</CompactMetaValue>
+          </TaskMetaPill>
+        </TaskMetaPills>
+
         <TaskMetaGrid>
-          <TaskMetaCard>
-            <MetaLabel>Project</MetaLabel>
-            <MetaValue>{project.projectRequestName || project.name}</MetaValue>
-          </TaskMetaCard>
           <TaskMetaCard>
             <MetaLabel>Client Org</MetaLabel>
             <MetaValue>{clientOrganization?.name ?? "Unassigned client"}</MetaValue>
           </TaskMetaCard>
           <TaskMetaCard>
             <MetaLabel>Assignee</MetaLabel>
-            <MetaValue>{availableStaff.find((member) => member.id === task.assigneeId)?.name ?? "Unassigned"}</MetaValue>
+            <MetaValue>{assigneeDetail}</MetaValue>
           </TaskMetaCard>
           <TaskMetaCard>
             <MetaLabel>Status</MetaLabel>
@@ -788,11 +807,12 @@ const PanelCaption = styled.p`
 `;
 
 const TaskMetaGrid = styled.section`
-  display: grid;
-  gap: 12px;
+  display: none;
 
   ${desktop} {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 `;
 
@@ -802,6 +822,42 @@ const TaskMetaCard = styled.div`
   gap: 6px;
   padding: 14px 16px;
   border-radius: 18px;
+`;
+
+const TaskMetaPills = styled.section`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  ${desktop} {
+    display: none;
+  }
+`;
+
+const TaskMetaPill = styled.div`
+  min-width: 0;
+  max-width: 100%;
+  display: inline-grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: var(--shadow-sm);
+`;
+
+const CompactMetaLabel = styled.span`
+  color: var(--color-text-light);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+`;
+
+const CompactMetaValue = styled.strong`
+  color: #1f1f1f;
+  font-size: 0.78rem;
+  line-height: 1.25;
 `;
 
 const ReviewStateBanner = styled.div`
@@ -1119,7 +1175,11 @@ const AssetNameButton = styled.button`
   font-weight: 700;
   line-height: 1.2;
   text-align: left;
-  overflow-wrap: anywhere;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: zoom-in;
 `;
 
@@ -1149,12 +1209,17 @@ const AssetFileCard = styled.a`
   border-radius: 10px;
   color: var(--color-text);
   text-decoration: none;
+  min-width: 0;
 
   span {
+    min-width: 0;
+    flex: 1;
     font-size: 0.64rem;
     font-weight: 700;
-    overflow-wrap: anywhere;
     line-height: 1.1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   svg {

@@ -61,6 +61,7 @@ type TaskRow = {
 const tablet = "@media (min-width: 768px) and (max-width: 1099px)";
 const tabletUp = "@media (min-width: 768px)";
 const desktop = "@media (min-width: 1100px)";
+const MOBILE_BATCH_SIZE = 20;
 
 const sideNavItems = [
   { label: "Home", href: "/dashboard", icon: <IconHome /> },
@@ -194,7 +195,7 @@ export function TasksScreen() {
   const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus>("todo");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
-  const [visibleCount, setVisibleCount] = useState(8);
+  const [visibleCount, setVisibleCount] = useState(MOBILE_BATCH_SIZE);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const visibleProjects = useMemo(
@@ -328,7 +329,7 @@ export function TasksScreen() {
     : null;
 
   useEffect(() => {
-    setVisibleCount(8);
+    setVisibleCount(MOBILE_BATCH_SIZE);
   }, [filter, search]);
 
   useEffect(() => {
@@ -340,7 +341,7 @@ export function TasksScreen() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          setVisibleCount((current) => Math.min(current + 8, filteredTasks.length));
+          setVisibleCount((current) => Math.min(current + MOBILE_BATCH_SIZE, filteredTasks.length));
         }
       },
       { rootMargin: "220px 0px" },

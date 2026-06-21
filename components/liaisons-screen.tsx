@@ -803,6 +803,12 @@ const Subtitle = styled.p`
   color: var(--color-text-muted);
   font-size: 12px;
   line-height: 1.45;
+
+  display: none;
+
+  ${desktop} {
+    display: block;
+  }
 `;
 
 const HeaderAvatarLink = styled(Link)`

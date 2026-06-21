@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -19,6 +19,7 @@ import { canCreateClient, getUserClientOrganizationIds } from "@/lib/permissions
 
 type ClientFilter = "all" | "active" | "feedback" | "approvals" | "inactive";
 const PAGE_SIZE = 6;
+const MOBILE_BATCH_SIZE = 20;
 const desktop = "@media (min-width: 768px)";
 
 const filterOptions: Array<{ key: ClientFilter; label: string }> = [
@@ -84,6 +85,8 @@ export function ClientsScreen() {
   const [organizationAddress, setOrganizationAddress] = useState("");
   const [isCreatingOrganization, setIsCreatingOrganization] = useState(false);
   const [openCreateSelect, setOpenCreateSelect] = useState<"type" | "status" | null>(null);
+  const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
+  const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (isCreatingOrganization) {
@@ -151,12 +154,39 @@ export function ClientsScreen() {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   );
+  const mobileClients = filteredClients.slice(0, mobileVisibleCount);
+  const hasMoreMobileClients = mobileVisibleCount < filteredClients.length;
   const rangeStart = filteredClients.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0;
   const rangeEnd = Math.min(currentPage * PAGE_SIZE, filteredClients.length);
 
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
+
+  useEffect(() => {
+    setMobileVisibleCount(MOBILE_BATCH_SIZE);
+  }, [filter, search, visibleClients.length]);
+
+  useEffect(() => {
+    const node = mobileLoadMoreRef.current;
+    if (!node || !hasMoreMobileClients) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) {
+          return;
+        }
+
+        setMobileVisibleCount((current) => Math.min(current + MOBILE_BATCH_SIZE, filteredClients.length));
+      },
+      { rootMargin: "180px 0px" },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [filteredClients.length, hasMoreMobileClients]);
 
   if (!ready) {
     return <ListScreenSkeleton title="Clients" />;
@@ -587,8 +617,8 @@ export function ClientsScreen() {
         </DesktopPanel>
 
         <MobileList>
-          {paginatedClients.length ? (
-            paginatedClients.map((client) => (
+          {mobileClients.length ? (
+            mobileClients.map((client) => (
                 <MobileCard key={client.id} href={`/clients/${client.id}`}>
                   <MobileTop>
                     <ClientMark>{getClientOrganizationMark(client.name)}</ClientMark>
@@ -617,6 +647,7 @@ export function ClientsScreen() {
               <p>Try another search term or adjust the selected filter.</p>
             </EmptyState>
           )}
+          {hasMoreMobileClients ? <LoadMoreSentinel ref={mobileLoadMoreRef} aria-hidden="true" /> : null}
         </MobileList>
       </Content>
     </Shell>
@@ -687,6 +718,12 @@ const Subtitle = styled.p`
   color: var(--color-text-muted);
   font-size: 12px;
   line-height: 1.45;
+
+  display: none;
+
+  ${desktop} {
+    display: block;
+  }
 `;
 
 const HeaderAvatarLink = styled(Link)`
@@ -1172,6 +1209,10 @@ const MobileList = styled.div`
   ${desktop} {
     display: none;
   }
+`;
+
+const LoadMoreSentinel = styled.div`
+  height: 1px;
 `;
 
 const MobileCard = styled(Link)`

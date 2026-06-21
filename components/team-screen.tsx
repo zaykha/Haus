@@ -16,6 +16,7 @@ import { formatRole, getTaskStatusLabel } from "@/lib/display";
 const desktop = "@media (min-width: 768px)";
 const PAGE_SIZE = 6;
 const MEMBER_TASKS_PAGE_SIZE = 5;
+const MOBILE_BATCH_SIZE = 20;
 
 type RoleFilter = "all" | Role;
 type InternalRole = Exclude<Role, "client">;
@@ -105,6 +106,8 @@ export function TeamScreen() {
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [roleMenuDirection, setRoleMenuDirection] = useState<"up" | "down">("down");
   const [roleMenuMaxHeight, setRoleMenuMaxHeight] = useState(220);
+  const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
+  const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const viewerRole = user?.role ?? "client";
   const canManageInvites = canInviteUsers(viewerRole);
@@ -223,6 +226,8 @@ export function TeamScreen() {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   );
+  const mobileMembers = filteredMembers.slice(0, mobileVisibleCount);
+  const hasMoreMobileMembers = mobileVisibleCount < filteredMembers.length;
   const rangeStart = filteredMembers.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0;
   const rangeEnd = Math.min(currentPage * PAGE_SIZE, filteredMembers.length);
 
@@ -235,6 +240,31 @@ export function TeamScreen() {
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
+
+  useEffect(() => {
+    setMobileVisibleCount(MOBILE_BATCH_SIZE);
+  }, [filteredMembers.length, roleFilter, search]);
+
+  useEffect(() => {
+    const node = mobileLoadMoreRef.current;
+    if (!node || !hasMoreMobileMembers) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) {
+          return;
+        }
+
+        setMobileVisibleCount((current) => Math.min(current + MOBILE_BATCH_SIZE, filteredMembers.length));
+      },
+      { rootMargin: "180px 0px" },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [filteredMembers.length, hasMoreMobileMembers]);
 
   const selectedMemberId = selectedMember?.id;
   const selectedMemberRole = selectedMember?.role;
@@ -758,8 +788,8 @@ export function TeamScreen() {
         </DesktopTable>
 
         <MobileList>
-          {paginatedMembers.length ? (
-            paginatedMembers.map((member) => {
+          {mobileMembers.length ? (
+            mobileMembers.map((member) => {
               const roleTone = getRoleTone(member.role);
               return (
                 <MobileCard key={member.id} onClick={() => setSelectedMember(member)}>
@@ -785,6 +815,7 @@ export function TeamScreen() {
               <p>Try another search term or adjust the selected filters.</p>
             </EmptyState>
           )}
+          {hasMoreMobileMembers ? <LoadMoreSentinel ref={mobileLoadMoreRef} aria-hidden="true" /> : null}
         </MobileList>
 
         {invitationRows.length ? (
@@ -1338,6 +1369,10 @@ const MobileList = styled.section`
   ${desktop} {
     display: none;
   }
+`;
+
+const LoadMoreSentinel = styled.div`
+  height: 1px;
 `;
 
 const MobileCard = styled.article`
