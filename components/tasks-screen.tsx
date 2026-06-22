@@ -30,6 +30,7 @@ type DerivedTaskStatus =
   | "review"
   | "approved"
   | "completed";
+type SortKey = "priority" | "due_date" | "created_at_desc" | "created_at_asc";
 
 type TaskRow = {
   id: string;
@@ -42,6 +43,7 @@ type TaskRow = {
   clientOrganizationName: string;
   projectMark: string;
   dueDate: string;
+  createdAt: string;
   status: DerivedTaskStatus;
   priority: DerivedPriority;
   completionScreenshotUrl?: string | null;
@@ -184,6 +186,9 @@ export function TasksScreen() {
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [priorityFilter, setPriorityFilter] = useState<DerivedPriority | "all">("all");
+  const [projectFilter, setProjectFilter] = useState("all");
+  const [sort, setSort] = useState<SortKey>("priority");
   const [showFilters, setShowFilters] = useState(false);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
@@ -230,6 +235,18 @@ export function TasksScreen() {
   const canManage = user ? canCreateTask(user.role) : false;
   const isDesigner = user?.role === "designer";
   const isClient = user?.role === "client";
+  const projectFilterOptions = useMemo(
+    () => [
+      { value: "all", label: "All" },
+      ...visibleProjects
+        .map((project) => ({
+          value: project.id,
+          label: project.name,
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    ],
+    [visibleProjects],
+  );
 
 
   const allTasks = useMemo<TaskRow[]>(() => {
@@ -255,6 +272,7 @@ export function TasksScreen() {
           ),
           projectMark: getProjectMark(project),
           dueDate: task.dueDate ?? project.dueDate,
+          createdAt: task.createdAt ?? "",
           status: deriveTaskStatus(task.status, project),
           priority: task.priority ??
             derivePriority(task.dueDate ?? project.dueDate, task.status),
@@ -297,16 +315,35 @@ export function TasksScreen() {
     const q = search.trim().toLowerCase();
     const next = allTasks.filter((task) => {
       const matchesFilter = filter === "all" ? true : task.status === filter;
+      const matchesPriority = priorityFilter === "all" ? true : task.priority === priorityFilter;
+      const matchesProject = projectFilter === "all" ? true : task.projectId === projectFilter;
       const matchesSearch =
         !q ||
         task.title.toLowerCase().includes(q) ||
         task.projectName.toLowerCase().includes(q) ||
         task.assigneeName.toLowerCase().includes(q);
 
-      return matchesFilter && matchesSearch;
+      return matchesFilter && matchesPriority && matchesProject && matchesSearch;
     });
 
     return [...next].sort((a, b) => {
+      if (sort === "created_at_desc") {
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      }
+
+      if (sort === "created_at_asc") {
+        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+      }
+
+      if (sort === "due_date") {
+        const dueDiff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        if (dueDiff !== 0) {
+          return dueDiff;
+        }
+
+        return a.title.localeCompare(b.title);
+      }
+
       const weight = { high: 0, medium: 1, low: 2 };
       const priorityDiff = weight[a.priority] - weight[b.priority];
       if (priorityDiff !== 0) {
@@ -320,7 +357,7 @@ export function TasksScreen() {
 
       return a.title.localeCompare(b.title);
     });
-  }, [allTasks, filter, search]);
+  }, [allTasks, filter, priorityFilter, projectFilter, search, sort]);
 
   const visibleTasks = filteredTasks.slice(0, visibleCount);
   const hasMoreTasks = visibleCount < filteredTasks.length;
@@ -330,7 +367,7 @@ export function TasksScreen() {
 
   useEffect(() => {
     setVisibleCount(MOBILE_BATCH_SIZE);
-  }, [filter, search]);
+  }, [filter, priorityFilter, projectFilter, search, sort]);
 
   useEffect(() => {
     const node = loadMoreRef.current;
@@ -643,10 +680,40 @@ export function TasksScreen() {
                   label: option.label,
                 })),
               },
+              {
+                id: "priorityFilter",
+                label: "Priority",
+                options: [
+                  { value: "all", label: "All" },
+                  { value: "high", label: "High" },
+                  { value: "medium", label: "Medium" },
+                  { value: "low", label: "Low" },
+                ],
+              },
+              {
+                id: "projectFilter",
+                label: "Project",
+                options: projectFilterOptions,
+                searchable: true,
+                searchPlaceholder: "Search projects...",
+              },
+              {
+                id: "sort",
+                label: "Sort by",
+                options: [
+                  { value: "priority", label: "Priority" },
+                  { value: "due_date", label: "Due Date: Soonest First" },
+                  { value: "created_at_desc", label: "Newest to Oldest" },
+                  { value: "created_at_asc", label: "Oldest to Newest" },
+                ],
+              },
             ]}
-            values={{ filter }}
+            values={{ filter, priorityFilter, projectFilter, sort }}
             onApply={(nextValues) => {
               setFilter(nextValues.filter as FilterKey);
+              setPriorityFilter(nextValues.priorityFilter as DerivedPriority | "all");
+              setProjectFilter(nextValues.projectFilter);
+              setSort(nextValues.sort as SortKey);
             }}
             onClose={() => setShowFilters(false)}
           />
