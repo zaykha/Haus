@@ -20,6 +20,7 @@ export type ClientOrganizationRow = {
   }>;
   memberCount: number;
   projectCount: number;
+  activeProjectCount: number;
   lastActivityDate: string | null;
   lastActivityLabel: string;
   pendingCount: number;
@@ -161,6 +162,7 @@ export function buildClientOrganizationRows(state: DemoState): ClientOrganizatio
     const latestProject = [...organizationProjects].sort(
       (a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime(),
     )[0];
+    const activeProjectCount = organizationProjects.filter((project) => project.status !== "done").length;
 
     const latestFeedback = organizationProjects
       .flatMap((project) =>
@@ -224,6 +226,7 @@ export function buildClientOrganizationRows(state: DemoState): ClientOrganizatio
       members,
       memberCount: members.length,
       projectCount: organizationProjects.length,
+      activeProjectCount,
       lastActivityDate: latestFeedback[0]?.createdAt ?? latestProject?.dueDate ?? null,
       lastActivityLabel:
         latestFeedback[0]?.action === "approve"

@@ -23,6 +23,7 @@ export function FilterModal({
   sections,
   values,
   onApply,
+  onReset,
   onClose,
 }: {
   open: boolean;
@@ -31,6 +32,7 @@ export function FilterModal({
   sections: FilterSection[];
   values: Record<string, string>;
   onApply: (values: Record<string, string>) => void;
+  onReset?: () => void;
   onClose: () => void;
 }) {
   const [draftValues, setDraftValues] = useState<Record<string, string>>(values);
@@ -157,6 +159,11 @@ export function FilterModal({
           <GhostButton
             type="button"
             onClick={() => {
+              if (onReset) {
+                onReset();
+                onClose();
+                return;
+              }
               setDraftValues(values);
               setOpenSelect(null);
               setSearchValues({});

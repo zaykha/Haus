@@ -103,6 +103,7 @@ export function LiaisonsScreen() {
   const [showDeleteLiaisonModal, setShowDeleteLiaisonModal] = useState(false);
   const [isDeletingLiaison, setIsDeletingLiaison] = useState(false);
   const [showInviteLiaisonModal, setShowInviteLiaisonModal] = useState(false);
+  const appliedFilterCount = filter !== "all" ? 1 : 0;
 
   const viewerRole = user?.role ?? "client";
   const roleLabel = formatRole(viewerRole).toUpperCase();
@@ -493,6 +494,7 @@ export function LiaisonsScreen() {
               aria-expanded={showFilters}
               onClick={() => setShowFilters(true)}
             >
+              {appliedFilterCount ? <FilterBadge>{appliedFilterCount}</FilterBadge> : null}
               <ActionIcon>
                 <IconFilter />
               </ActionIcon>
@@ -1111,6 +1113,7 @@ const SearchInput = styled.input`
 `;
 
 const FilterButton = styled.button`
+  position: relative;
   width: 40px;
   height: 40px;
   flex: 0 0 40px;
@@ -1122,6 +1125,25 @@ const FilterButton = styled.button`
   background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow-sm);
   color: var(--color-text);
+`;
+
+const FilterBadge = styled.span`
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #d94b45;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(217, 75, 69, 0.28);
 `;
 
 const SearchButton = styled(FilterButton)`

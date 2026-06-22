@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
@@ -93,8 +94,36 @@ function getProjectMark(project: Project) {
   return project.name.trim().charAt(0).toUpperCase() || "P";
 }
 
+function isSameMonth(value: string, reference: Date) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  return date.getFullYear() === reference.getFullYear() && date.getMonth() === reference.getMonth();
+}
+
+function isProjectCompletedThisMonth(project: Project, reference: Date) {
+  const latestCompletionActivity = [...project.activities]
+    .filter(
+      (activity) =>
+        activity.action === "workflow_updated" &&
+        activity.message.toLowerCase().includes("updated project status to complete"),
+    )
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] ?? null;
+
+  if (latestCompletionActivity) {
+    return isSameMonth(latestCompletionActivity.createdAt, reference);
+  }
+
+  return Boolean(project.createdAt) && isSameMonth(project.createdAt ?? "", reference);
+}
+
 export function ProjectsScreen() {
   const { ready, state, user } = useAppState();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [currentPage, setCurrentPage] = useState(1);
   const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
   const [searchDraft, setSearchDraft] = useState("");
@@ -105,6 +134,13 @@ export function ProjectsScreen() {
   const [sort, setSort] = useState<SortKey>("due_date");
   const [showFilters, setShowFilters] = useState(false);
   const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
+  const quickFilter = searchParams.get("quick") ?? "";
+  const appliedFilterCount =
+    (quickFilter ? 1 : 0) +
+    (stageFilter !== "all" ? 1 : 0) +
+    (priorityFilter !== "all" ? 1 : 0) +
+    (organizationFilter !== "all" ? 1 : 0) +
+    (sort !== "due_date" ? 1 : 0);
 
   // Keep hooks unconditionally called: ESLint rules-of-hooks
   const visibleProjects = state.projects.filter((project) => (user ? canViewProject(user, project) : false));
@@ -152,12 +188,21 @@ export function ProjectsScreen() {
 
   const filteredProjects = useMemo(() => {
     const loweredSearch = search.trim().toLowerCase();
+    const now = new Date();
     const nextProjects = visibleProjects.filter((project) => {
       const matchesStage = stageFilter === "all" ? true : project.stage === stageFilter;
       const matchesPriority =
         priorityFilter === "all" ? true : (project.priorityLevel?.trim() ?? "") === priorityFilter;
       const matchesOrganization =
         organizationFilter === "all" ? true : project.clientOrganizationId === organizationFilter;
+      const matchesQuickFilter =
+        quickFilter === "active"
+          ? project.status !== "done"
+          : quickFilter === "awaiting_feedback"
+            ? project.status === "review"
+            : quickFilter === "completed_this_month"
+              ? project.status === "done" && isProjectCompletedThisMonth(project, now)
+              : true;
       const clientName = getClientOrganizationName(project, organizationNames, userNames).toLowerCase();
       const primaryContact = getPrimaryContactLabel(project, usersById).toLowerCase();
       const matchesSearch =
@@ -168,7 +213,7 @@ export function ProjectsScreen() {
         clientName.includes(loweredSearch) ||
         primaryContact.includes(loweredSearch);
 
-      return matchesStage && matchesPriority && matchesOrganization && matchesSearch;
+      return matchesStage && matchesPriority && matchesOrganization && matchesQuickFilter && matchesSearch;
     });
 
     return [...nextProjects].sort((left, right) => {
@@ -190,6 +235,7 @@ export function ProjectsScreen() {
     organizationFilter,
     organizationNames,
     priorityFilter,
+    quickFilter,
     search,
     sort,
     stageFilter,
@@ -325,6 +371,14 @@ export function ProjectsScreen() {
               setSort(nextValues.sort as SortKey);
               setCurrentPage(1);
             }}
+            onReset={() => {
+              setStageFilter("all");
+              setPriorityFilter("all");
+              setOrganizationFilter("all");
+              setSort("due_date");
+              setCurrentPage(1);
+              router.replace(pathname);
+            }}
             onClose={() => setShowFilters(false)}
           />
           <SearchControls onSubmit={handleSearchSubmit}>
@@ -342,6 +396,7 @@ export function ProjectsScreen() {
                 aria-expanded={showFilters}
                 onClick={() => setShowFilters(true)}
               >
+                {appliedFilterCount ? <FilterBadge>{appliedFilterCount}</FilterBadge> : null}
                 <ButtonIcon>
                   <IconFilter />
                 </ButtonIcon>
@@ -727,6 +782,7 @@ const FilterMenuWrap = styled.div`
 
 const FilterButton = styled.button`
   ${controlSurface}
+  position: relative;
   width: 40px;
   height: 40px;
   flex: 0 0 40px;
@@ -734,6 +790,25 @@ const FilterButton = styled.button`
   align-items: center;
   justify-content: center;
   border-radius: 10px;
+`;
+
+const FilterBadge = styled.span`
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #d94b45;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(217, 75, 69, 0.28);
 `;
 
 const SearchButton = styled(FilterButton)`

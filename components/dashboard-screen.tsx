@@ -25,7 +25,7 @@ type EnrichedTask = {
   status: string;
   projectId: string;
   projectName: string;
-  projectDueDate: string;
+  dueDate: string;
 };
 
 type FeedbackRow = {
@@ -136,6 +136,44 @@ function getFeedbackTone(action: FeedbackAction) {
   }
 }
 
+function isSameMonth(value: string, reference: Date) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  return date.getFullYear() === reference.getFullYear() && date.getMonth() === reference.getMonth();
+}
+
+function isProjectCompletedThisMonth(project: Project, reference: Date) {
+  const latestCompletionActivity = [...project.activities]
+    .filter(
+      (activity) =>
+        activity.action === "workflow_updated" &&
+        activity.message.toLowerCase().includes("updated project status to complete"),
+    )
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] ?? null;
+
+  if (latestCompletionActivity) {
+    return isSameMonth(latestCompletionActivity.createdAt, reference);
+  }
+
+  return Boolean(project.createdAt) && isSameMonth(project.createdAt ?? "", reference);
+}
+
+function isDateToday(value: string, reference: Date) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  return (
+    date.getFullYear() === reference.getFullYear() &&
+    date.getMonth() === reference.getMonth() &&
+    date.getDate() === reference.getDate()
+  );
+}
+
 export function DashboardScreen() {
   const { ready, state, user, createTask } = useAppState();
   const [priorityPage, setPriorityPage] = useState(1);
@@ -173,6 +211,7 @@ export function DashboardScreen() {
   const canManage = safeUser ? canManageWorkspace(safeUser.role) : false;
   const isDesigner = safeUser ? safeUser.role === "designer" : false;
   const isClient = safeUser ? safeUser.role === "client" : false;
+  const now = new Date();
 
   const projectRows = useMemo(() => {
     const nextVisibleProjects = visibleProjects;
@@ -236,7 +275,7 @@ export function DashboardScreen() {
             status: task.status,
             projectId: project.id,
             projectName: project.name,
-            projectDueDate: project.dueDate,
+            dueDate: task.dueDate ?? project.dueDate,
           })),
       );
     },
@@ -279,9 +318,9 @@ export function DashboardScreen() {
   );
 
   const activeProjectsCount = projectRows.filter((project) => project.status !== "done").length;
-  const dueSoonTasksCount = openTasks.length;
+  const dueTodayTasksCount = openTasks.filter((task) => isDateToday(task.dueDate, now)).length;
   const feedbackCount = projectRows.filter((project) => project.status === "review").length;
-  const completedCount = projectRows.filter((project) => project.status === "done").length;
+  const completedCount = projectRows.filter((project) => project.status === "done" && isProjectCompletedThisMonth(project, now)).length;
   const managerReviewProjects = useMemo(() => {
     if (!safeUser || isDesigner || isClient) {
       return projectRows;
@@ -655,7 +694,7 @@ export function DashboardScreen() {
         {isDesigner || isClient ? null : (
           <StatsGrid>
 
-            <StatCard>
+            <StatCardLink href="/projects?quick=active">
               <StatCopy>
                 <StatLabel>
                   <MobileLabel>Active</MobileLabel>
@@ -663,31 +702,31 @@ export function DashboardScreen() {
                 </StatLabel>
                 <StatValue>{activeProjectsCount}</StatValue>
                 <StatNote $tone="positive">
-                  {projectRows.length ? `+${Math.min(activeProjectsCount, 2)} from last month` : "No active projects yet"}
+                  {activeProjectsCount ? `${activeProjectsCount} currently in progress` : "No active projects yet"}
                 </StatNote>
               </StatCopy>
               <StatIcon $tone="dark">
                 <IconFolder />
               </StatIcon>
-            </StatCard>
+            </StatCardLink>
 
-            <StatCard>
+            <StatCardLink href="/tasks?quick=due_today">
               <StatCopy>
                 <StatLabel>
                   <MobileLabel>Due Today</MobileLabel>
                   <DesktopLabel>Tasks Due Today</DesktopLabel>
                 </StatLabel>
-                <StatValue>{dueSoonTasksCount}</StatValue>
+                <StatValue>{dueTodayTasksCount}</StatValue>
                 <StatNote $tone="warning">
-                  {dueSoonTasksCount ? `${Math.min(dueSoonTasksCount, 2)} overdue` : "Nothing due today"}
+                  {dueTodayTasksCount ? `${dueTodayTasksCount} due today` : "Nothing due today"}
                 </StatNote>
               </StatCopy>
               <StatIcon $tone="soft-green">
                 <IconCheckCircle />
               </StatIcon>
-            </StatCard>
+            </StatCardLink>
 
-            <StatCard>
+            <StatCardLink href="/projects?quick=awaiting_feedback">
               <StatCopy>
                 <StatLabel>
                   <MobileLabel>Feedback</MobileLabel>
@@ -695,15 +734,15 @@ export function DashboardScreen() {
                 </StatLabel>
                 <StatValue>{feedbackCount}</StatValue>
                 <StatNote $tone="warning">
-                  {feedbackCount ? `+${feedbackCount} from last week` : "No feedback waiting"}
+                  {feedbackCount ? `${feedbackCount} waiting for review` : "No feedback waiting"}
                 </StatNote>
               </StatCopy>
               <StatIcon $tone="soft-gold">
                 <IconComment />
               </StatIcon>
-            </StatCard>
+            </StatCardLink>
 
-            <StatCard>
+            <StatCardLink href="/projects?quick=completed_this_month">
               <StatCopy>
                 <StatLabel>
                   <MobileLabel>Completed</MobileLabel>
@@ -711,13 +750,13 @@ export function DashboardScreen() {
                 </StatLabel>
                 <StatValue>{completedCount}</StatValue>
                 <StatNote $tone="positive">
-                  {completedCount ? `+${completedCount * 10}% from last month` : "No completed work yet"}
+                  {completedCount ? `${completedCount} completed this month` : "No completed work yet"}
                 </StatNote>
               </StatCopy>
               <StatIcon $tone="dark">
                 <IconFlag />
               </StatIcon>
-            </StatCard>
+            </StatCardLink>
           </StatsGrid>
         )}
 
@@ -786,7 +825,7 @@ export function DashboardScreen() {
                       <TaskTitle>{task.title}</TaskTitle>
                       <TaskSub>{task.projectName}</TaskSub>
                     </TaskCopy>
-                    <TaskDate>{formatShortDate(task.projectDueDate)}</TaskDate>
+                    <TaskDate>{formatShortDate(task.dueDate)}</TaskDate>
                   </TaskRow>
                 ))
               ) : (
@@ -1033,7 +1072,7 @@ export function DashboardScreen() {
                         <TaskTitle>{task.title}</TaskTitle>
                         <TaskSub>{task.projectName}</TaskSub>
                       </TaskCopy>
-                      <TaskDate>{formatShortDate(task.projectDueDate)}</TaskDate>
+                      <TaskDate>{formatShortDate(task.dueDate)}</TaskDate>
                     </TaskRow>
                   ))
                 ) : (
@@ -1538,6 +1577,23 @@ const StatCard = styled.article`
     grid-template-columns: minmax(0, 1fr) 52px;
     min-height: 100px;
     padding: 10px 20px;
+  }
+`;
+
+const StatCardLink = styled(StatCard).attrs({ as: Link })`
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba(214, 206, 193, 0.95);
+    box-shadow: 0 16px 30px rgba(31, 31, 31, 0.08);
+    background: rgba(252, 249, 244, 0.98);
   }
 `;
 

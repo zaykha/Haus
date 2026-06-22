@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
@@ -181,8 +182,24 @@ function formatCompanyName(value: string) {
     .join(" ");
 }
 
+function isDateToday(value: string, reference: Date) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  return (
+    date.getFullYear() === reference.getFullYear() &&
+    date.getMonth() === reference.getMonth() &&
+    date.getDate() === reference.getDate()
+  );
+}
+
 export function TasksScreen() {
   const { ready, state, user, createTask, updateTaskStatus } = useAppState();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -202,6 +219,13 @@ export function TasksScreen() {
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
   const [visibleCount, setVisibleCount] = useState(MOBILE_BATCH_SIZE);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const quickFilter = searchParams.get("quick") ?? "";
+  const appliedFilterCount =
+    (quickFilter ? 1 : 0) +
+    (filter !== "all" ? 1 : 0) +
+    (priorityFilter !== "all" ? 1 : 0) +
+    (projectFilter !== "all" ? 1 : 0) +
+    (sort !== "priority" ? 1 : 0);
 
   const visibleProjects = useMemo(
     () => (user ? state.projects.filter((project) => canViewProject(user, project)) : []),
@@ -313,17 +337,19 @@ export function TasksScreen() {
 
   const filteredTasks = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const now = new Date();
     const next = allTasks.filter((task) => {
       const matchesFilter = filter === "all" ? true : task.status === filter;
       const matchesPriority = priorityFilter === "all" ? true : task.priority === priorityFilter;
       const matchesProject = projectFilter === "all" ? true : task.projectId === projectFilter;
+      const matchesQuickFilter = quickFilter === "due_today" ? isDateToday(task.dueDate, now) : true;
       const matchesSearch =
         !q ||
         task.title.toLowerCase().includes(q) ||
         task.projectName.toLowerCase().includes(q) ||
         task.assigneeName.toLowerCase().includes(q);
 
-      return matchesFilter && matchesPriority && matchesProject && matchesSearch;
+      return matchesFilter && matchesPriority && matchesProject && matchesQuickFilter && matchesSearch;
     });
 
     return [...next].sort((a, b) => {
@@ -357,7 +383,7 @@ export function TasksScreen() {
 
       return a.title.localeCompare(b.title);
     });
-  }, [allTasks, filter, priorityFilter, projectFilter, search, sort]);
+  }, [allTasks, filter, priorityFilter, projectFilter, quickFilter, search, sort]);
 
   const visibleTasks = filteredTasks.slice(0, visibleCount);
   const hasMoreTasks = visibleCount < filteredTasks.length;
@@ -715,6 +741,13 @@ export function TasksScreen() {
               setProjectFilter(nextValues.projectFilter);
               setSort(nextValues.sort as SortKey);
             }}
+            onReset={() => {
+              setFilter("all");
+              setPriorityFilter("all");
+              setProjectFilter("all");
+              setSort("priority");
+              router.replace(pathname);
+            }}
             onClose={() => setShowFilters(false)}
           />
           <SearchControls onSubmit={handleSearchSubmit}>
@@ -732,6 +765,7 @@ export function TasksScreen() {
                 aria-expanded={showFilters}
                 onClick={() => setShowFilters(true)}
               >
+                {appliedFilterCount ? <FilterBadge>{appliedFilterCount}</FilterBadge> : null}
                 <ActionIcon>
                   <IconFilter />
                 </ActionIcon>
@@ -1098,6 +1132,7 @@ const FilterMenuWrap = styled.div`
 `;
 
 const FilterButton = styled.button`
+  position: relative;
   width: 40px;
   height: 40px;
   flex: 0 0 40px;
@@ -1109,6 +1144,25 @@ const FilterButton = styled.button`
   background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow-sm);
   color: var(--color-text);
+`;
+
+const FilterBadge = styled.span`
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #d94b45;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(217, 75, 69, 0.28);
 `;
 
 const SearchButton = styled(FilterButton)`

@@ -87,6 +87,7 @@ export function ClientsScreen() {
   const [openCreateSelect, setOpenCreateSelect] = useState<"type" | "status" | null>(null);
   const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
   const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
+  const appliedFilterCount = filter !== "all" ? 1 : 0;
 
   useEffect(() => {
     if (isCreatingOrganization) {
@@ -145,9 +146,7 @@ export function ClientsScreen() {
   const pendingFeedbackCount = visibleClients.filter((client) =>
     client.pendingProjects.some((project) => project.status === "review"),
   ).length;
-  const approvalsCount = visibleClients.filter((client) =>
-    client.pendingProjects.some((project) => project.status === "revision"),
-  ).length;
+  const activeProjectOrganizationsCount = visibleClients.filter((client) => client.activeProjectCount > 0).length;
 
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE));
   const paginatedClients = filteredClients.slice(
@@ -433,6 +432,7 @@ export function ClientsScreen() {
                 aria-expanded={showFilters}
                 onClick={() => setShowFilters(true)}
               >
+                {appliedFilterCount ? <FilterBadge>{appliedFilterCount}</FilterBadge> : null}
                 <ActionIcon>
                   <IconFilter />
                 </ActionIcon>
@@ -469,31 +469,7 @@ export function ClientsScreen() {
               <StatValue>{totalCount}</StatValue>
               <StatLabel>
                 <MobileLabel>Orgs</MobileLabel>
-                <DesktopLabel>Client Orgs</DesktopLabel>
-              </StatLabel>
-            </StatCopy>
-          </StatCard>
-          <StatCard>
-            <StatIcon $tone="gold">
-              <IconComment />
-            </StatIcon>
-            <StatCopy>
-              <StatValue>{pendingFeedbackCount}</StatValue>
-              <StatLabel>
-                <MobileLabel>Feedback</MobileLabel>
-                <DesktopLabel>Awaiting Feedback</DesktopLabel>
-              </StatLabel>
-            </StatCopy>
-          </StatCard>
-          <StatCard>
-            <StatIcon $tone="red">
-              <IconShield />
-            </StatIcon>
-            <StatCopy>
-              <StatValue>{approvalsCount}</StatValue>
-              <StatLabel>
-                <MobileLabel>Approvals</MobileLabel>
-                <DesktopLabel>Approvals</DesktopLabel>
+                <DesktopLabel>Total Organizations</DesktopLabel>
               </StatLabel>
             </StatCopy>
           </StatCard>
@@ -505,10 +481,34 @@ export function ClientsScreen() {
               <StatValue>{activeCount}</StatValue>
               <StatLabel>
                 <MobileLabel>Active</MobileLabel>
-                <DesktopLabel>Active Orgs</DesktopLabel>
+                <DesktopLabel>Active Organizations</DesktopLabel>
               </StatLabel>
             </StatCopy>
           </StatCard>
+          <StatCardLink href="/projects?quick=awaiting_feedback">
+            <StatIcon $tone="gold">
+              <IconComment />
+            </StatIcon>
+            <StatCopy>
+              <StatValue>{pendingFeedbackCount}</StatValue>
+              <StatLabel>
+                <MobileLabel>Feedback</MobileLabel>
+                <DesktopLabel>Awaiting Feedback</DesktopLabel>
+              </StatLabel>
+            </StatCopy>
+          </StatCardLink>
+          <StatCardLink href="/projects?quick=active">
+            <StatIcon $tone="red">
+              <IconShield />
+            </StatIcon>
+            <StatCopy>
+              <StatValue>{activeProjectOrganizationsCount}</StatValue>
+              <StatLabel>
+                <MobileLabel>Active Work</MobileLabel>
+                <DesktopLabel>Organizations With Active Projects</DesktopLabel>
+              </StatLabel>
+            </StatCopy>
+          </StatCardLink>
         </StatsRow>
 
         <DesktopPanel>
@@ -798,6 +798,7 @@ const FilterMenuWrap = styled.div`
 `;
 
 const FilterButton = styled.button`
+  position: relative;
   width: 40px;
   height: 40px;
   flex: 0 0 40px;
@@ -809,6 +810,25 @@ const FilterButton = styled.button`
   background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow-sm);
   color: var(--color-text);
+`;
+
+const FilterBadge = styled.span`
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #d94b45;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(217, 75, 69, 0.28);
 `;
 
 const SearchButton = styled(FilterButton)`
@@ -884,6 +904,23 @@ const StatCard = styled.article`
     gap: 14px;
     padding: 18px 20px;
     border-radius: 20px;
+  }
+`;
+
+const StatCardLink = styled(StatCard).attrs({ as: Link })`
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba(214, 206, 193, 0.95);
+    box-shadow: 0 16px 30px rgba(31, 31, 31, 0.08);
+    background: rgba(252, 249, 244, 0.98);
   }
 `;
 
