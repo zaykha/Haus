@@ -12,6 +12,8 @@ type FilterSection = {
   id: string;
   label: string;
   options: FilterOption[];
+  searchable?: boolean;
+  searchPlaceholder?: string;
 };
 
 export function FilterModal({
@@ -33,6 +35,7 @@ export function FilterModal({
 }) {
   const [draftValues, setDraftValues] = useState<Record<string, string>>(values);
   const [openSelect, setOpenSelect] = useState<string | null>(null);
+  const [searchValues, setSearchValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!open) {
@@ -41,6 +44,7 @@ export function FilterModal({
 
     setDraftValues(values);
     setOpenSelect(null);
+    setSearchValues({});
   }, [open, values]);
 
   const labelsBySection = useMemo(
@@ -52,6 +56,19 @@ export function FilterModal({
         ]),
       ),
     [draftValues, sections],
+  );
+  const filteredOptionsBySection = useMemo(
+    () =>
+      Object.fromEntries(
+        sections.map((section) => {
+          const searchValue = searchValues[section.id]?.trim().toLowerCase() ?? "";
+          const filteredOptions = searchValue
+            ? section.options.filter((option) => option.label.toLowerCase().includes(searchValue))
+            : section.options;
+          return [section.id, filteredOptions];
+        }),
+      ),
+    [searchValues, sections],
   );
 
   if (!open) {
@@ -91,24 +108,44 @@ export function FilterModal({
                 <SelectLabel>{section.label}</SelectLabel>
                 {openSelect === section.id ? (
                   <SelectMenu role="listbox" aria-label={section.label}>
-                    {section.options.map((option) => (
-                      <SelectOption
-                        key={option.value}
-                        type="button"
-                        role="option"
-                        aria-selected={draftValues[section.id] === option.value}
-                        $active={draftValues[section.id] === option.value}
-                        onClick={() => {
-                          setDraftValues((current) => ({
+                    {section.searchable ? (
+                      <SearchInput
+                        value={searchValues[section.id] ?? ""}
+                        onChange={(event) =>
+                          setSearchValues((current) => ({
                             ...current,
-                            [section.id]: option.value,
-                          }));
-                          setOpenSelect(null);
-                        }}
-                      >
-                        {option.label}
-                      </SelectOption>
-                    ))}
+                            [section.id]: event.target.value,
+                          }))
+                        }
+                        placeholder={section.searchPlaceholder ?? `Search ${section.label.toLowerCase()}...`}
+                      />
+                    ) : null}
+                    {(filteredOptionsBySection[section.id] as FilterOption[]).length ? (
+                      (filteredOptionsBySection[section.id] as FilterOption[]).map((option) => (
+                        <SelectOption
+                          key={option.value}
+                          type="button"
+                          role="option"
+                          aria-selected={draftValues[section.id] === option.value}
+                          $active={draftValues[section.id] === option.value}
+                          onClick={() => {
+                            setDraftValues((current) => ({
+                              ...current,
+                              [section.id]: option.value,
+                            }));
+                            setOpenSelect(null);
+                            setSearchValues((current) => ({
+                              ...current,
+                              [section.id]: "",
+                            }));
+                          }}
+                        >
+                          {option.label}
+                        </SelectOption>
+                      ))
+                    ) : (
+                      <EmptyState>No matches found</EmptyState>
+                    )}
                   </SelectMenu>
                 ) : null}
               </SelectField>
@@ -122,6 +159,7 @@ export function FilterModal({
             onClick={() => {
               setDraftValues(values);
               setOpenSelect(null);
+              setSearchValues({});
             }}
           >
             Reset
@@ -307,6 +345,22 @@ const SelectMenu = styled.div`
   z-index: 20;
 `;
 
+const SearchInput = styled.input`
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 6px;
+  padding: 0 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 12px;
+  background: rgba(248, 244, 238, 0.92);
+  color: var(--color-text);
+  font: inherit;
+
+  &::placeholder {
+    color: var(--color-text-muted);
+  }
+`;
+
 const SelectOption = styled.button<{ $active?: boolean }>`
   width: 100%;
   min-height: 44px;
@@ -318,6 +372,13 @@ const SelectOption = styled.button<{ $active?: boolean }>`
   font-size: 0.94rem;
   font-weight: ${({ $active }) => ($active ? 600 : 500)};
   text-align: left;
+`;
+
+const EmptyState = styled.div`
+  padding: 14px 12px;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  text-align: center;
 `;
 
 const Footer = styled.div<{ $menuOpen?: boolean }>`

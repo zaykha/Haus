@@ -12,10 +12,10 @@ import { UserAvatar } from "@/components/user-avatar";
 import { canCreateProject as canCreateProjectPermission, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { getAttentionTasksForProject } from "@/lib/task-attention";
 import { formatProjectStage, formatRole } from "@/lib/display";
-import { Project, ProjectStatus } from "@/lib/types";
+import { Project, ProjectWorkflowStage } from "@/lib/types";
 
-type FilterKey = "all" | ProjectStatus;
-type SortKey = "due_date" | "name";
+type StageFilterKey = "all" | ProjectWorkflowStage;
+type SortKey = "due_date" | "name" | "created_at_desc" | "created_at_asc";
 const MOBILE_BATCH_SIZE = 20;
 
 const desktopNav = [
@@ -29,12 +29,13 @@ const desktopNav = [
   { label: "Files", icon: <IconFile /> },
 ] as const;
 
-const filterOptions: { key: FilterKey; label: string }[] = [
+const stageFilterOptions: { key: StageFilterKey; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "active", label: "Active" },
-  { key: "review", label: "Waiting Feedback" },
-  { key: "revision", label: "Revision" },
-  { key: "done", label: "Completed" },
+  { key: "Waiting List", label: "Waiting List" },
+  { key: "WIP", label: "WIP" },
+  { key: "Pending Review", label: "Pending Review" },
+  { key: "On Hold", label: "On Hold" },
+  { key: "Complete", label: "Complete" },
 ];
 
 function formatDueDate(value: string) {
@@ -98,7 +99,9 @@ export function ProjectsScreen() {
   const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [stageFilter, setStageFilter] = useState<StageFilterKey>("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [organizationFilter, setOrganizationFilter] = useState("all");
   const [sort, setSort] = useState<SortKey>("due_date");
   const [showFilters, setShowFilters] = useState(false);
   const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -118,12 +121,43 @@ export function ProjectsScreen() {
     () => new Map(state.users.map((member) => [member.id, { name: member.name, email: member.email }])),
     [state.users],
   );
+  const organizationFilterOptions = useMemo(
+    () => [
+      { value: "all", label: "All" },
+      ...state.clientOrganizations
+        .map((organization) => ({
+          value: organization.id,
+          label: organization.name,
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    ],
+    [state.clientOrganizations],
+  );
+  const priorityFilterOptions = useMemo(
+    () => [
+      { value: "all", label: "All" },
+      ...Array.from(
+        new Set(
+          visibleProjects
+            .map((project) => project.priorityLevel?.trim())
+            .filter((value): value is string => Boolean(value)),
+        ),
+      )
+        .sort((left, right) => left.localeCompare(right))
+        .map((value) => ({ value, label: value })),
+    ],
+    [visibleProjects],
+  );
   const roleLabel = user ? formatRole(user.role).toUpperCase() : "";
 
   const filteredProjects = useMemo(() => {
     const loweredSearch = search.trim().toLowerCase();
     const nextProjects = visibleProjects.filter((project) => {
-      const matchesFilter = filter === "all" ? true : project.status === filter;
+      const matchesStage = stageFilter === "all" ? true : project.stage === stageFilter;
+      const matchesPriority =
+        priorityFilter === "all" ? true : (project.priorityLevel?.trim() ?? "") === priorityFilter;
+      const matchesOrganization =
+        organizationFilter === "all" ? true : project.clientOrganizationId === organizationFilter;
       const clientName = getClientOrganizationName(project, organizationNames, userNames).toLowerCase();
       const primaryContact = getPrimaryContactLabel(project, usersById).toLowerCase();
       const matchesSearch =
@@ -134,17 +168,35 @@ export function ProjectsScreen() {
         clientName.includes(loweredSearch) ||
         primaryContact.includes(loweredSearch);
 
-      return matchesFilter && matchesSearch;
+      return matchesStage && matchesPriority && matchesOrganization && matchesSearch;
     });
 
     return [...nextProjects].sort((left, right) => {
+      if (sort === "created_at_desc") {
+        return new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime();
+      }
+
+      if (sort === "created_at_asc") {
+        return new Date(left.createdAt ?? 0).getTime() - new Date(right.createdAt ?? 0).getTime();
+      }
+
       if (sort === "name") {
         return left.name.localeCompare(right.name);
       }
 
       return new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime();
     });
-  }, [filter, organizationNames, search, sort, userNames, usersById, visibleProjects]);
+  }, [
+    organizationFilter,
+    organizationNames,
+    priorityFilter,
+    search,
+    sort,
+    stageFilter,
+    userNames,
+    usersById,
+    visibleProjects,
+  ]);
 
   const pageSize = 4;
   const totalProjects = filteredProjects.length;
@@ -167,7 +219,7 @@ export function ProjectsScreen() {
   useEffect(() => {
     if (!user) return;
     setMobileVisibleCount(MOBILE_BATCH_SIZE);
-  }, [user, search, filter, sort, visibleProjects.length]);
+  }, [user, search, stageFilter, priorityFilter, organizationFilter, sort, visibleProjects.length]);
 
   useEffect(() => {
     if (!user) return;
@@ -235,25 +287,41 @@ export function ProjectsScreen() {
             description="Adjust project filtering and sorting."
             sections={[
               {
-                id: "filter",
-                label: "Status",
-                options: filterOptions.map((option) => ({
+                id: "stageFilter",
+                label: "Stage",
+                options: stageFilterOptions.map((option) => ({
                   value: option.key,
                   label: option.label,
                 })),
+              },
+              {
+                id: "priorityFilter",
+                label: "Priority",
+                options: priorityFilterOptions,
+              },
+              {
+                id: "organizationFilter",
+                label: "Client organization",
+                options: organizationFilterOptions,
+                searchable: true,
+                searchPlaceholder: "Search organizations...",
               },
               {
                 id: "sort",
                 label: "Sort by",
                 options: [
                   { value: "due_date", label: "Due date" },
+                  { value: "created_at_desc", label: "Newest to Oldest" },
+                  { value: "created_at_asc", label: "Oldest to Newest" },
                   { value: "name", label: "Name" },
                 ],
               },
             ]}
-            values={{ filter, sort }}
+            values={{ stageFilter, priorityFilter, organizationFilter, sort }}
             onApply={(nextValues) => {
-              setFilter(nextValues.filter as FilterKey);
+              setStageFilter(nextValues.stageFilter as StageFilterKey);
+              setPriorityFilter(nextValues.priorityFilter);
+              setOrganizationFilter(nextValues.organizationFilter);
               setSort(nextValues.sort as SortKey);
               setCurrentPage(1);
             }}
