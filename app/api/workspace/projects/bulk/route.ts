@@ -306,31 +306,16 @@ export async function POST(request: NextRequest) {
       return;
     }
 
-    if (!projectType) {
-      errors.push(`Row ${lineNumber}: Project Type is required.`);
-      return;
-    }
-
-    if (!priorityLevel) {
-      errors.push(`Row ${lineNumber}: Priority Level is required.`);
-      return;
-    }
-
-    if (!firstDraftDate || !finalDeliverableDate) {
-      errors.push(`Row ${lineNumber}: First Draft Date and Final Deliverable Date are required.`);
-      return;
-    }
-
     if (
       (requestedDate && !isIsoDate(requestedDate)) ||
-      !isIsoDate(firstDraftDate) ||
-      !isIsoDate(finalDeliverableDate)
+      (firstDraftDate && !isIsoDate(firstDraftDate)) ||
+      (finalDeliverableDate && !isIsoDate(finalDeliverableDate))
     ) {
       errors.push(`Row ${lineNumber}: Dates must use YYYY-MM-DD format.`);
       return;
     }
 
-    if (finalDeliverableDate < firstDraftDate) {
+    if (firstDraftDate && finalDeliverableDate && finalDeliverableDate < firstDraftDate) {
       errors.push(`Row ${lineNumber}: Final Deliverable Date cannot be before First Draft Date.`);
       return;
     }
@@ -346,8 +331,8 @@ export async function POST(request: NextRequest) {
       return;
     }
 
-    const normalizedPriorityLevel = normalizePriorityLevel(priorityLevel);
-    if (!normalizedPriorityLevel) {
+    const normalizedPriorityLevel = priorityLevel ? normalizePriorityLevel(priorityLevel) : null;
+    if (priorityLevel && !normalizedPriorityLevel) {
       errors.push(`Row ${lineNumber}: Priority Level "${priorityLevel}" is not supported.`);
       return;
     }
@@ -381,10 +366,10 @@ export async function POST(request: NextRequest) {
       project_request_name: projectRequestName,
       contact_person: row.contactPerson.trim() || null,
       contact_number: row.contactNumber.trim() || null,
-      project_type: projectType,
+      project_type: projectType || null,
       priority_level: normalizedPriorityLevel,
-      first_draft_date: firstDraftDate,
-      final_deliverable_date: finalDeliverableDate,
+      first_draft_date: firstDraftDate || null,
+      final_deliverable_date: finalDeliverableDate || null,
       project_objective: row.projectObjective.trim() || null,
       project_brief: row.projectBrief.trim() || null,
       creative_advice: row.creativeAdvice.trim() || null,
@@ -392,9 +377,9 @@ export async function POST(request: NextRequest) {
       client_organization_id: organizationRecord.id,
       owner_id: user.id,
       description: row.description.trim(),
-      category: projectType,
+      category: projectType || null,
       stage: normalizedStage,
-      due_date: finalDeliverableDate,
+      due_date: finalDeliverableDate || firstDraftDate || requestedDate || null,
     });
   });
 
