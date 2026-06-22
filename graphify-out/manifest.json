@@ -39,9 +39,14 @@
     "ast_hash": "045f2a925b48a588fedda5ff24c56b18",
     "semantic_hash": ""
   },
+  "/Users/thihanaing/Haus/app/sitemap.ts": {
+    "mtime": 1781849038.6104717,
+    "ast_hash": "2f6efeaa1582c98a8153ee9b9d9d2f00",
+    "semantic_hash": ""
+  },
   "/Users/thihanaing/Haus/app/layout.tsx": {
-    "mtime": 1780915847.7566411,
-    "ast_hash": "6935912d6d45819571fe903b5f11c1af",
+    "mtime": 1781849038.6091537,
+    "ast_hash": "592caf23c88dd3286d43d171d32e4041",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/page.tsx": {
@@ -125,8 +130,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/_auth.ts": {
-    "mtime": 1781791434.5019062,
-    "ast_hash": "6f0932f850d4a240827b7c6bb0513479",
+    "mtime": 1781966453.4449286,
+    "ast_hash": "54391734384bd96310eac4ef40ed930f",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/clients/[id]/route.ts": {
@@ -140,18 +145,18 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/client-organizations/[id]/route.ts": {
-    "mtime": 1781789619.8518865,
-    "ast_hash": "48118a8b58406a62f0cb79bdbe9ebd3d",
+    "mtime": 1782132732.9930296,
+    "ast_hash": "94c8ebea56442ab7c2d813af56afabde",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/route.ts": {
-    "mtime": 1781768367.1968827,
-    "ast_hash": "c62a43c13ba3aaa389de447249f0fed2",
+    "mtime": 1782134420.9998786,
+    "ast_hash": "1cc46244c0fc877138912fc7c63c6251",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/bulk/route.ts": {
-    "mtime": 1781792608.0397382,
-    "ast_hash": "f08872eeab75e60f4cc1b99eeb95fd10",
+    "mtime": 1782100044.1909666,
+    "ast_hash": "7ef672553af67ba004ca06ccce1bb78c",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/route.ts": {
@@ -165,8 +170,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/tasks/[taskId]/route.ts": {
-    "mtime": 1781703031.9049957,
-    "ast_hash": "10e8d5f11ca35ea0b7b9021c45ff79ba",
+    "mtime": 1781864340.341948,
+    "ast_hash": "1338d26a9665ba104691e557e0570bbe",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/workflow/route.ts": {
@@ -175,13 +180,18 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/workflow/client-approval/route.ts": {
-    "mtime": 1781617137.4008362,
-    "ast_hash": "93627b6cb9b3813b9946c3f4c5ec68be",
+    "mtime": 1781855849.8968594,
+    "ast_hash": "8c715bbb2cf6107fa62dc9513a0d35b9",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/state/route.ts": {
-    "mtime": 1781791499.3228383,
-    "ast_hash": "0bc686f6f6656abc95cb74e77c46d1f2",
+    "mtime": 1781966453.4391048,
+    "ast_hash": "fa33093ef5fa1aefea73e32c074fbd29",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/api/workspace/profile/route.ts": {
+    "mtime": 1781966427.8004167,
+    "ast_hash": "de27c0a82bf9c102ca1a2ba865399aff",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/team/[id]/route.ts": {
@@ -195,8 +205,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/invitations/accept/route.ts": {
-    "mtime": 1781791564.04529,
-    "ast_hash": "2afeefdde825d03041c7033836cbbf43",
+    "mtime": 1781966453.433842,
+    "ast_hash": "5e811e2a11073f20a99fe7234b5c7062",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/invitations/revoke/route.ts": {
@@ -215,8 +225,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/invitations/create/route.ts": {
-    "mtime": 1781534989.9733756,
-    "ast_hash": "cc81f255f5ff55919b3000de8339f6ec",
+    "mtime": 1782131153.1868515,
+    "ast_hash": "05ea74f85e60d810bfd0995518f0bfdb",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/accept-invite/page.tsx": {
@@ -237,6 +247,11 @@
   "/Users/thihanaing/Haus/supabase/migrations/20260616_projects_drop_legacy_status_columns.sql": {
     "mtime": 1781617162.525034,
     "ast_hash": "8462e6dec695dafc27d46a5d54e2cd55",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/supabase/migrations/20260620_profile_avatar_path.sql": {
+    "mtime": 1781966427.800779,
+    "ast_hash": "bb1841f6f6f750cf8cb4f0748e56ada9",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/supabase/migrations/20260610_fix_rls_recursion.sql": {
@@ -272,6 +287,11 @@
   "/Users/thihanaing/Haus/supabase/migrations/20260610_project_domain_tables.sql": {
     "mtime": 1781020944.5809898,
     "ast_hash": "d2dcd73dec1236d389b4fd825231cebf",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/supabase/migrations/20260619_fix_realtime_project_access.sql": {
+    "mtime": 1781881267.4703338,
+    "ast_hash": "90a806eb1ec052f3d1b15beb0f07bc34",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/supabase/migrations/20260610_fix_manager_rls_email_fallback.sql": {
@@ -315,33 +335,43 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/tasks-screen.tsx": {
-    "mtime": 1781701346.583915,
-    "ast_hash": "b2315b381dfde8793a64caf66f501c96",
+    "mtime": 1782103123.9027498,
+    "ast_hash": "9d4cd35d01d22e0871856b8cd125453b",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/user-avatar.tsx": {
+    "mtime": 1781966427.799037,
+    "ast_hash": "8d46f7968e96639ead2035b0f0b6bc58",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/client-organization-detail-screen.tsx": {
-    "mtime": 1781792578.545534,
-    "ast_hash": "4858d9ec53691c00e5f07ecd7460b16c",
+    "mtime": 1782135554.2384925,
+    "ast_hash": "412a3dd1bd1936ca8825408bf7d502ed",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/page-skeletons.tsx": {
+    "mtime": 1781961008.163551,
+    "ast_hash": "5daa3fa39252ac90f90e2a947a3ace9d",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/accept-invite-screen.tsx": {
-    "mtime": 1781598013.0825448,
-    "ast_hash": "9fc16663943a19c5fe86374eceb523aa",
+    "mtime": 1781970291.5840995,
+    "ast_hash": "f1f35ff8fbe47ed96a07c7a54f4cb6d8",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/filter-modal.tsx": {
-    "mtime": 1781336641.6755533,
-    "ast_hash": "34a29f7dd33fb3d790bd360ee3dec5d9",
+    "mtime": 1782103103.9221325,
+    "ast_hash": "68330dbead694248a25a8c2bfe1429e4",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/require-auth.tsx": {
-    "mtime": 1780902993.047365,
-    "ast_hash": "62b6394acfdd5aba30d77eb079fb2cce",
+    "mtime": 1781838190.607702,
+    "ast_hash": "d3d0dc99fd1934d7690232e8b88e96a0",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/liaisons-screen.tsx": {
-    "mtime": 1781836418.9446607,
-    "ast_hash": "77600bc056cd3772a9447f234a1823f3",
+    "mtime": 1782135859.0323653,
+    "ast_hash": "0be227a42c5a75ae6b3eee1a577096bc",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/custom-date-picker.tsx": {
@@ -350,18 +380,18 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/projects-screen.tsx": {
-    "mtime": 1781768400.369866,
-    "ast_hash": "1e9122bd2adf04f7f7b52ff08ca79ef4",
+    "mtime": 1782134506.327307,
+    "ast_hash": "0c977db016576868fd89e2d5f7eb978c",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/app-state.tsx": {
-    "mtime": 1781791525.6221,
-    "ast_hash": "66b1641dae1de0d6031af4bdd5d59860",
+    "mtime": 1782134427.5721786,
+    "ast_hash": "6eaf88a0899dbb179a4f726882a83a95",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/task-detail-screen.tsx": {
-    "mtime": 1781704323.4239223,
-    "ast_hash": "7f54feea69905dbf3d7e53c8913394f1",
+    "mtime": 1782044330.836333,
+    "ast_hash": "824acfcb754a10800f58e4c592da65dd",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/confirm-action-modal.tsx": {
@@ -370,28 +400,33 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/project-detail-screen.tsx": {
-    "mtime": 1781790580.407365,
-    "ast_hash": "244c89697b2adc95adc6eb7d7f037862",
+    "mtime": 1781959595.2995539,
+    "ast_hash": "94d8e774ecaee9cfdcd471c0bc730d07",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/team-screen.tsx": {
-    "mtime": 1781701346.5873797,
-    "ast_hash": "49f04afbb28e86280543e655937ee143",
+    "mtime": 1782102835.9346251,
+    "ast_hash": "189e8e597c9ff859cec94d0b99897f99",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/profile-screen.tsx": {
-    "mtime": 1781238453.792425,
-    "ast_hash": "90653d19f2777a3d6cb6e9f484a9ceca",
+    "mtime": 1781967357.0886188,
+    "ast_hash": "5638b15b8e2ad4c31671a4650279f78c",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/app-sidebar.tsx": {
-    "mtime": 1781701041.2234173,
-    "ast_hash": "5486de3a60846d9b4ab4e3ad0b730457",
+    "mtime": 1782135832.5982394,
+    "ast_hash": "09d6effe0e36244acb5bcf7c984f4e9d",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/avatar-picker.tsx": {
+    "mtime": 1781966427.7986925,
+    "ast_hash": "a033012a1527a336f6d63daba2eb7674",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/designer-task-modal.tsx": {
-    "mtime": 1781686137.0391624,
-    "ast_hash": "ae775a54812823187da1ecfdc00a783f",
+    "mtime": 1781951025.889714,
+    "ast_hash": "07b2daa856c8bb7095e544ea24ccdd6b",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/project-form.tsx": {
@@ -400,33 +435,38 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/login-screen.tsx": {
-    "mtime": 1781059591.447705,
-    "ast_hash": "c06f4ceb7e1644d15a574783cc92d8fc",
+    "mtime": 1781861423.739751,
+    "ast_hash": "82cbe3156561262de8a551ad514641a3",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/project-create-screen.tsx": {
-    "mtime": 1781752055.2337494,
-    "ast_hash": "0996be83edefc9b1b1e35b17fd5b5b38",
+    "mtime": 1782135232.7737138,
+    "ast_hash": "d62b65430d769db1179e02cb9b8268e6",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/project-stage-progress.tsx": {
+    "mtime": 1781960057.7423124,
+    "ast_hash": "eef4864b3ab4b72e2d3a203ebd80eae7",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/invite-workspace-modal.tsx": {
-    "mtime": 1781587465.6895587,
-    "ast_hash": "a3fb90a689339cd0a26b5c3058d0c122",
+    "mtime": 1782135844.676558,
+    "ast_hash": "98255e44b2500f8a0f6aaf0cb30b0b77",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/dashboard-screen.tsx": {
-    "mtime": 1781792419.112229,
-    "ast_hash": "0ebeca1cc1ee92ac3890bfee49c782f7",
+    "mtime": 1782102290.8957763,
+    "ast_hash": "85bcef0fdd51885e9f47ebd8e59e6a7d",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/clients-screen.tsx": {
-    "mtime": 1781835617.9984584,
-    "ast_hash": "9a68f695ef7661fa054b3172dbb8a90e",
+    "mtime": 1782102815.2121625,
+    "ast_hash": "88da6a16b907b545daa63b4d51a8157e",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/ui.tsx": {
-    "mtime": 1781064834.0084412,
-    "ast_hash": "5d6f164274229285a5404f6b1e055205",
+    "mtime": 1782135836.8786442,
+    "ast_hash": "95fdfc5f0979cd8ae3cdbb64c18ff07f",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/.codex/hooks.json": {
@@ -445,8 +485,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/navigation.ts": {
-    "mtime": 1781087238.0159473,
-    "ast_hash": "206c61a9e406a0f7d5333c1e8b76f4c8",
+    "mtime": 1782135828.4557927,
+    "ast_hash": "35dea70c4676b8fffb50c2033eee6e26",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/invitations.ts": {
@@ -455,13 +495,13 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/permissions.ts": {
-    "mtime": 1781792561.3982046,
-    "ast_hash": "7ca9b2b6f5b763a8bc2c869a283a8145",
+    "mtime": 1782134413.011989,
+    "ast_hash": "7301c609ae10273a36359ab236752a37",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/client-organizations.ts": {
-    "mtime": 1781792593.1874814,
-    "ast_hash": "6ca4f17d5800c4fd3a57579e6859d6ff",
+    "mtime": 1782102552.6251116,
+    "ast_hash": "c2cb4cad4d6bfa4963755a0ddf12f9ed",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/csv.ts": {
@@ -475,18 +515,23 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/display.ts": {
-    "mtime": 1781616587.4267943,
-    "ast_hash": "5f35a97a3b0a0a430d9bab103d940ec3",
+    "mtime": 1781854132.3445003,
+    "ast_hash": "113aceb4f1c252227b544614cd7cf6c1",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/types.ts": {
-    "mtime": 1781789327.9975781,
-    "ast_hash": "4bc76d0852dc6dfb51f71c547d4ed32f",
+    "mtime": 1781966453.385871,
+    "ast_hash": "327b9f7d1e1e06b95b23cde6e09d5dba",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/config.ts": {
     "mtime": 1781768441.3315787,
     "ast_hash": "c39dcdd2f58cfe373ccb2f6141cc794e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/task-attention.ts": {
+    "mtime": 1781923926.7787678,
+    "ast_hash": "b260b8e7f0474c95d1ce83280a5310ec",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/image-upload.ts": {
@@ -504,9 +549,14 @@
     "ast_hash": "2ee25ee9107a186c74595ef2055387f9",
     "semantic_hash": ""
   },
+  "/Users/thihanaing/Haus/lib/profile-avatars.ts": {
+    "mtime": 1781966427.793562,
+    "ast_hash": "bcc461b3b4d6debcba9878f0df66ab0d",
+    "semantic_hash": ""
+  },
   "/Users/thihanaing/Haus/lib/task-completion-assets.ts": {
-    "mtime": 1781679244.388407,
-    "ast_hash": "0c601b4b97d79240679dfa38ae855ee9",
+    "mtime": 1781861378.2728584,
+    "ast_hash": "a4fc5652d601bf1533a8f5ebe20cd058",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/supabase/admin.ts": {
@@ -545,8 +595,13 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/READYNESS_TEST_CHECKLIST.md": {
-    "mtime": 1781835830.0780306,
-    "ast_hash": "fba7ff78eb904c23249d3782637d82e0",
+    "mtime": 1782131282.6478078,
+    "ast_hash": "6528610f402b6ba6746255df3636522c",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/TASK_DATA_CLEANUP.md": {
+    "mtime": 1781882915.4717364,
+    "ast_hash": "22eb3f33f2a9c01cc7ec3f011a936c5f",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/docs/TEST_CHECKLIST.md": {
@@ -574,6 +629,11 @@
     "ast_hash": "167cbf0d921e00a1c41ca243e326df6a",
     "semantic_hash": ""
   },
+  "/Users/thihanaing/Haus/public/haus_logo.png": {
+    "mtime": 1781849215.8010998,
+    "ast_hash": "92e7c09a7792d40237e19d8db8e15305",
+    "semantic_hash": ""
+  },
   "/Users/thihanaing/Haus/public/favicon_haus/favicon-16x16.png": {
     "mtime": 1781835063.3254538,
     "ast_hash": "df573fd50d25315a0ee499d55cddd29f",
@@ -597,6 +657,156 @@
   "/Users/thihanaing/Haus/public/favicon_haus/favicon-32x32.png": {
     "mtime": 1781835063.3280983,
     "ast_hash": "cab4e1b92c40ae8f1c871c843e8620ec",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/sloth.webp": {
+    "mtime": 1781966154.7608216,
+    "ast_hash": "2fb27310c979b46ee944b7ac209d89a4",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/bear.webp": {
+    "mtime": 1781966154.6998105,
+    "ast_hash": "bee8880aa98a89961ee3560cb7b71107",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/horse.webp": {
+    "mtime": 1781966154.7263625,
+    "ast_hash": "2830a78d19fece83a4e3d5a90117c032",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/rabbit.webp": {
+    "mtime": 1781966154.7525966,
+    "ast_hash": "63186e98b00fe182701921e7a875e57c",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/parrot.webp": {
+    "mtime": 1781966154.7463138,
+    "ast_hash": "c9b27e176abf636101bae6d94b360d51",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/owl.webp": {
+    "mtime": 1781966154.7400208,
+    "ast_hash": "0273cd6cd6ed8b0ddd767d0b92537cfd",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/giraffe.webp": {
+    "mtime": 1781966154.7199488,
+    "ast_hash": "f3a1fe5fd7bfbf76c1eb0d655790c07c",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/kangaroo.webp": {
+    "mtime": 1781966154.7301226,
+    "ast_hash": "a2a0da58b3baef0df30f6aca3616ffef",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/elephant.webp": {
+    "mtime": 1781966154.7136617,
+    "ast_hash": "604fdda9cff554b721127d9504248437",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/monkey.webp": {
+    "mtime": 1781966154.7352922,
+    "ast_hash": "858ea9f2a29a9d3ecfe2f374bf60a22a",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/deer.webp": {
+    "mtime": 1781966154.7088552,
+    "ast_hash": "edb4d353f7500a7da013d0c95504fba8",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/frog.webp": {
+    "mtime": 1781966154.7173164,
+    "ast_hash": "9deafa8355ae58d4fd959769a0c7af1d",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/raccoon.webp": {
+    "mtime": 1781966154.7555642,
+    "ast_hash": "e330112c473b16a26957fb71086063e3",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/cat.webp": {
+    "mtime": 1781966154.7024364,
+    "ast_hash": "b484ab8e38225b2418c442ee06f41049",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/seal.webp": {
+    "mtime": 1781966154.7585187,
+    "ast_hash": "59b0e9ca379a4f6448e8f2a9930462b7",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/fox.webp": {
+    "mtime": 1781966154.715595,
+    "ast_hash": "6a0bcbe44533397ac4ac12520b224873",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/hedgehog.webp": {
+    "mtime": 1781966154.7245357,
+    "ast_hash": "5686714f25a4e91dbc92e67bfbfd95d4",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/cow.webp": {
+    "mtime": 1781966154.7065706,
+    "ast_hash": "3d6c0be551bc4ea7a39d3b8f2f38beb3",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/zebra.webp": {
+    "mtime": 1781966154.771086,
+    "ast_hash": "3679a98ffe11dbabfd30c7472affaa69",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/koala.webp": {
+    "mtime": 1781966154.7326481,
+    "ast_hash": "500e134bbec8ad44bc8c29dbe4d3e3a1",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/tiger.webp": {
+    "mtime": 1781966154.7653937,
+    "ast_hash": "2b9f6197c0a5d59a633f188e9aed5f7d",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/otter.webp": {
+    "mtime": 1781966154.7379498,
+    "ast_hash": "0d2088b4b270fe22fa5235995762d0e2",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/panda.webp": {
+    "mtime": 1781966154.7427835,
+    "ast_hash": "c5ed5a8c707221490da4ae98a012a439",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/penguin.webp": {
+    "mtime": 1781966154.748227,
+    "ast_hash": "46fb954759e8d2184fb45ca291cbaf21",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/wolf.webp": {
+    "mtime": 1781966154.768404,
+    "ast_hash": "96306836962e2eb9691741507609ea36",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/dog.webp": {
+    "mtime": 1781966154.712536,
+    "ast_hash": "ce304313f23b85ab8f36d005ebba37d6",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/chicken.webp": {
+    "mtime": 1781966154.7048607,
+    "ast_hash": "7338ca1ecc72ca5f4504984b569c7f9f",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/squirrel.webp": {
+    "mtime": 1781966154.763297,
+    "ast_hash": "6e640bb66f493757638487d93e875c70",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/pig.webp": {
+    "mtime": 1781966154.7500002,
+    "ast_hash": "d28691ede8c71fe3c3c2c1810471540b",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/public/animal_avatars/hamster.webp": {
+    "mtime": 1781966154.7218468,
+    "ast_hash": "a5de250acad6bbdcceca04f5342323f7",
     "semantic_hash": ""
   }
 }

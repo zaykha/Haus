@@ -7,7 +7,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ProjectForm, ProjectFormValues } from "@/components/project-form";
 import { useAppState } from "@/components/app-state";
 import { parseTabularDocument } from "@/lib/spreadsheet";
-import { canCreateProject } from "@/lib/permissions";
+import { canCreateProject, canCreateProjectForOrganization, getUserClientOrganizationIds } from "@/lib/permissions";
 import { formatRole } from "@/lib/display";
 
 const desktop = "@media (min-width: 768px)";
@@ -67,7 +67,17 @@ export function ProjectCreateScreen() {
   const safeUser = user;
   const canManage = safeUser ? canCreateProject(safeUser.role) : false;
   const departments = state.departments;
-  const clientOrganizations = state.clientOrganizations;
+  const allowedClientOrganizationIds = useMemo(
+    () => (safeUser ? getUserClientOrganizationIds(safeUser) : []),
+    [safeUser],
+  );
+  const clientOrganizations = useMemo(
+    () =>
+      safeUser?.role === "client"
+        ? state.clientOrganizations.filter((organization) => allowedClientOrganizationIds.includes(organization.id))
+        : state.clientOrganizations,
+    [allowedClientOrganizationIds, safeUser?.role, state.clientOrganizations],
+  );
   const clients = state.users.filter((candidate) => candidate.role === "client");
   const preselectedClientOrganizationId = searchParams.get("clientOrganizationId") ?? "";
   const resolvedClientOrganizationId = clientOrganizations.some(
@@ -81,6 +91,11 @@ export function ProjectCreateScreen() {
       clientOrganizationId: resolvedClientOrganizationId,
     }),
     [resolvedClientOrganizationId],
+  );
+  const canCreateAnyProject = Boolean(
+    safeUser &&
+      (canManage ||
+        clientOrganizations.some((organization) => canCreateProjectForOrganization(safeUser, organization.id))),
   );
 
   const handleSubmit = async (values: ProjectFormValues) => {
@@ -380,7 +395,7 @@ export function ProjectCreateScreen() {
           ) : null}
         </Header>
 
-        {canManage ? (
+        {canCreateAnyProject ? (
           <ProjectForm
             initialValues={formInitialValues}
             departments={departments}
@@ -393,11 +408,11 @@ export function ProjectCreateScreen() {
         ) : (
           <EmptyCard>
             <strong>Access restricted</strong>
-            <p>Only managers can create projects.</p>
+            <p>You can only create projects for organizations you belong to.</p>
           </EmptyCard>
         )}
 
-        {showBulkModal ? (
+        {canManage && showBulkModal ? (
           <ModalBackdrop onClick={() => setShowBulkModal(false)}>
             <ModalCard onClick={(event) => event.stopPropagation()}>
               <ModalHeader>

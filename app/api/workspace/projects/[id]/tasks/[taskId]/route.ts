@@ -9,6 +9,7 @@ import {
   setCurrentTaskCompletionAssets,
   startNextTaskCompletionVersion,
 } from "@/lib/task-completion-assets";
+import { bumpSubmittedVersion } from "@/lib/task-completion-assets";
 import { TaskManagerReviewStatus, TaskPriority, TaskStatus } from "@/lib/types";
 
 const TASK_STATUSES: TaskStatus[] = ["todo", "in_progress", "done", "review", "approved"];
@@ -161,6 +162,8 @@ export async function PATCH(
         "submitted",
         nextCompletionState.currentAssets,
       );
+      // bump the submitted version counter so future submissions get a new SV number
+      nextCompletionState = bumpSubmittedVersion(nextCompletionState);
     } else if (nextStatus === "done") {
       nextCompletionState = recordTaskCompletionSnapshot(
         nextCompletionState,

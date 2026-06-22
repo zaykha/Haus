@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateSecureInvitationToken, hashInvitationToken } from "@/lib/invitations";
-import { canInviteUsers } from "@/lib/permissions";
+import { canInviteClientsForOrganization, canInviteUsers } from "@/lib/permissions";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { Role } from "@/lib/types";
 
@@ -37,14 +37,51 @@ export async function POST(request: NextRequest) {
   }
 
   const createdBy = request.headers.get("x-haus-user-id");
-  const createdByRole = request.headers.get("x-haus-user-role");
 
-  if (!createdBy || !createdByRole) {
-    return NextResponse.json({ error: "Missing manager identity" }, { status: 401 });
+  if (!createdBy) {
+    return NextResponse.json({ error: "Missing creator identity" }, { status: 401 });
   }
 
-  if (!canInviteUsers(createdByRole as Role)) {
-    return NextResponse.json({ error: "Only managers can invite users" }, { status: 403 });
+  const { data: createdByProfile, error: createdByProfileError } = await supabase
+    .from("profiles")
+    .select("id, role")
+    .eq("id", createdBy)
+    .maybeSingle();
+
+  if (createdByProfileError || !createdByProfile) {
+    return NextResponse.json({ error: createdByProfileError?.message ?? "Creator profile not found" }, { status: 401 });
+  }
+
+  let creatorClientOrganizationIds: string[] = [];
+  if (createdByProfile.role === "client") {
+    const { data: memberships, error: membershipsError } = await supabase
+      .from("client_organization_liaisons")
+      .select("client_organization_id")
+      .eq("profile_id", createdBy);
+
+    if (membershipsError && !membershipsError.message.includes('relation "client_organization_liaisons" does not exist')) {
+      return NextResponse.json({ error: membershipsError.message }, { status: 500 });
+    }
+
+    creatorClientOrganizationIds = (memberships ?? [])
+      .map((membership) => String(membership.client_organization_id ?? "").trim())
+      .filter(Boolean);
+  }
+
+  const canCreateInvite =
+    body.role === "client"
+      ? canInviteClientsForOrganization(
+          {
+            role: createdByProfile.role as Role,
+            clientOrganizationId: creatorClientOrganizationIds[0] ?? null,
+            clientOrganizationIds: creatorClientOrganizationIds,
+          },
+          body.clientOrganizationId ?? null,
+        )
+      : canInviteUsers(createdByProfile.role as Role);
+
+  if (!canCreateInvite) {
+    return NextResponse.json({ error: "You can only invite clients into your own organization" }, { status: 403 });
   }
 
   if (body.role === "client" && !body.clientOrganizationId) {

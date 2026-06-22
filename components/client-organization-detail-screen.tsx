@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
+import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { UserAvatar } from "@/components/user-avatar";
 import {
   buildLiaisonRows,
@@ -17,7 +19,9 @@ import {
 import { formatProjectStage, formatRole, getProjectStatusLabel } from "@/lib/display";
 import {
   canCreateClient,
+  canCreateProjectForOrganization,
   canDeleteClient,
+  canInviteClientsForOrganization,
   getUserClientOrganizationIds,
 } from "@/lib/permissions";
 
@@ -74,50 +78,20 @@ function isPendingReviewProject(status: string, stage?: string | null) {
   return status === "review" || status === "revision" || status === "Pending Review" || stage === "Pending Review";
 }
 
-function getClientProjectProgress(project: {
-  status: string;
-  stage?: string;
-  tasks: Array<{ status: string }>;
-}) {
-  if (isCompletedProject(project.status, project.stage)) {
-    return 100;
-  }
-
-  const visibleTaskCount = project.tasks.length;
-  const completedTaskCount = project.tasks.filter(
-    (task) => task.status === "done" || task.status === "review" || task.status === "approved",
-  ).length;
-
-  const stageFloor =
-    {
-      "Waiting List": 18,
-      WIP: 52,
-      "Pending Review": 76,
-      "On Hold": 40,
-      Complete: 100,
-    }[project.stage ?? "Waiting List"] ?? 18;
-
-  if (!visibleTaskCount) {
-    return stageFloor;
-  }
-
-  return Math.max(stageFloor, Math.round((completedTaskCount / visibleTaskCount) * 100));
-}
-
 function getClientProjectTone(status: string, stage?: string | null) {
   if (isCompletedProject(status, stage)) {
-    return { fg: "#5ca16d", bg: "#e5f4e8", bar: "#63b174" };
+    return { fg: "#5ca16d", bg: "#e5f4e8" };
   }
 
   if (isPendingReviewProject(status, stage)) {
-    return { fg: "#c58911", bg: "#fbefcf", bar: "#d39a1f" };
+    return { fg: "#c58911", bg: "#fbefcf" };
   }
 
   if (status === "On Hold" || stage === "On Hold") {
-    return { fg: "#d36c57", bg: "#fbe7e3", bar: "#db7b67" };
+    return { fg: "#d36c57", bg: "#fbe7e3" };
   }
 
-  return { fg: "#4770d8", bg: "#e6efff", bar: "#4770d8" };
+  return { fg: "#4770d8", bg: "#e6efff" };
 }
 
 function getClientProjectStatusLabel(status: string, stage?: string | null) {
@@ -151,13 +125,16 @@ export function ClientOrganizationDetailScreen({
   organizationId,
   homeMode = false,
 }: ClientOrganizationDetailScreenProps) {
-  const { state, user, deleteClient, revokeInvitation, updateClientOrganization, updateClient } =
+  const router = useRouter();
+  const { state, user, deleteClient, deleteClientOrganization, revokeInvitation, updateClientOrganization, updateClient } =
     useAppState();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [selectedTasksPage, setSelectedTasksPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [showDeleteClientModal, setShowDeleteClientModal] = useState(false);
   const [isDeletingClient, setIsDeletingClient] = useState(false);
+  const [showDeleteOrganizationModal, setShowDeleteOrganizationModal] = useState(false);
+  const [isDeletingOrganization, setIsDeletingOrganization] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
   const [showRevokeInviteModal, setShowRevokeInviteModal] = useState(false);
   const [isRevokingInvite, setIsRevokingInvite] = useState(false);
@@ -188,6 +165,16 @@ export function ClientOrganizationDetailScreen({
   const roleLabel = formatRole(viewerRole).toUpperCase();
   const canManage = canCreateClient(viewerRole);
   const canDelete = canDeleteClient(viewerRole);
+  const canCreateOrganizationProject = user
+    ? canCreateProjectForOrganization(
+        {
+          role: user.role,
+          clientOrganizationId: user.clientOrganizationId,
+          clientOrganizationIds: user.clientOrganizationIds,
+        },
+        organization?.organizationId ?? null,
+      )
+    : false;
   const activeLabel = homeMode ? "Home" : "Clients";
   const userById = useMemo(() => new Map(state.users.map((member) => [member.id, member])), [state.users]);
   const selectedLiaison = selectedLiaisonId
@@ -282,6 +269,7 @@ export function ClientOrganizationDetailScreen({
         organization.organizationId &&
           getUserClientOrganizationIds(user).includes(organization.organizationId),
       ));
+  const canInviteOrganizationClients = canInviteClientsForOrganization(user, organization.organizationId);
   const organizationProjects = state.projects
     .filter((project) =>
       organization.organizationId
@@ -415,37 +403,27 @@ export function ClientOrganizationDetailScreen({
                 <ClientHomeList>
                   {featuredProjects.map((project) => {
                     const tone = getClientProjectTone(project.status, project.stage);
-                    const progress = getClientProjectProgress(project);
                     return (
                       <ClientProjectCard key={project.id} href={`/projects/${project.id}`}>
                         <ClientProjectGlyph>{getClientOrganizationMark(project.projectRequestName || project.name)}</ClientProjectGlyph>
                         <ClientProjectBody>
                           <ClientProjectHeading>
-                            <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
-                            <ClientProjectArrow>
-                              <IconChevronRight />
-                            </ClientProjectArrow>
-                          </ClientProjectHeading>
-                          <ClientProjectMeta>
-                            <StatusInline $fg={tone.fg}>
+                            <div>
+                              <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
+                              <ClientProjectSubtitle>{project.projectBrief || project.description || "Project in progress"}</ClientProjectSubtitle>
+                            </div>
+                            <ClientProjectStatusPill style={{ background: tone.bg, color: tone.fg }}>
                               {getClientProjectStatusLabel(project.status, project.stage)}
-                            </StatusInline>
-                            <span>·</span>
-                            <span>{project.projectBrief || project.description || "Project in progress"}</span>
-                          </ClientProjectMeta>
-                          <ClientProjectMeta>
+                            </ClientProjectStatusPill>
+                          </ClientProjectHeading>
+                          <ClientProjectFooter>
                             <InlineMeta>
                               <IconCalendarMini />
                               <span>Due {formatDate(project.finalDeliverableDate ?? project.dueDate)}</span>
                             </InlineMeta>
-                          </ClientProjectMeta>
+                            <ProjectStageProgress stage={project.stage} size="sm" />
+                          </ClientProjectFooter>
                         </ClientProjectBody>
-                        <ClientProjectProgress>
-                          <ProgressTrack>
-                            <ProgressBar $value={progress} $color={tone.bar} />
-                          </ProgressTrack>
-                          <ProgressValue>{progress}%</ProgressValue>
-                        </ClientProjectProgress>
                       </ClientProjectCard>
                     );
                   })}
@@ -582,6 +560,33 @@ export function ClientOrganizationDetailScreen({
             }
           } finally {
             setIsDeletingClient(false);
+          }
+        }}
+      />
+      <ConfirmActionModal
+        open={showDeleteOrganizationModal}
+        title="Delete organization"
+        description={`This will delete ${organization.name} and remove its liaison memberships, pending invites, and organization link from related projects.`}
+        confirmLabel="Delete organization"
+        tone="danger"
+        busy={isDeletingOrganization}
+        onCancel={() => {
+          if (!isDeletingOrganization) {
+            setShowDeleteOrganizationModal(false);
+          }
+        }}
+        onConfirm={async () => {
+          if (!organization.organizationId) {
+            return;
+          }
+
+          setIsDeletingOrganization(true);
+          try {
+            await deleteClientOrganization(organization.organizationId);
+            setShowDeleteOrganizationModal(false);
+            router.push("/clients");
+          } finally {
+            setIsDeletingOrganization(false);
           }
         }}
       />
@@ -1111,7 +1116,7 @@ export function ClientOrganizationDetailScreen({
           <HeaderActions>
             {!organization.isUnassigned ? (
               <>
-                {canManage && organization.organizationId ? (
+                {canCreateOrganizationProject && organization.organizationId ? (
                   <PrimaryActionLink href={`/projects/new?clientOrganizationId=${organization.organizationId}`}>
                     <ButtonIcon aria-hidden="true">
                       <IconPlusMini />
@@ -1119,7 +1124,7 @@ export function ClientOrganizationDetailScreen({
                     Project
                   </PrimaryActionLink>
                 ) : null}         
-                {canManage ? (
+                {canInviteOrganizationClients ? (
                   <PrimaryButton type="button" onClick={() => setShowInviteModal(true)}>
                     <ButtonIcon aria-hidden="true">
                       <IconPlusMini />
@@ -1134,6 +1139,14 @@ export function ClientOrganizationDetailScreen({
                     </ButtonIcon>
                     Edit
                   </SecondaryButton>
+                ) : null}
+                {canDelete && organization.organizationId ? (
+                  <SecondaryDangerButton type="button" onClick={() => setShowDeleteOrganizationModal(true)}>
+                    <ButtonIcon aria-hidden="true">
+                      <IconTrash />
+                    </ButtonIcon>
+                    Delete
+                  </SecondaryDangerButton>
                 ) : null}
               </>
             ) : null}
@@ -1478,7 +1491,7 @@ const Subtitle = styled.p`
 const ClientHomeWelcome = styled.p`
   margin: 0;
   color: #1f1f1f;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 600;
   line-height: 1.4;
 `;
@@ -1599,28 +1612,28 @@ const StatValue = styled.strong`
 const ClientHomeHero = styled.section`
   ${cardSurface}
   display: grid;
-  gap: 18px;
-  padding: 18px;
-  border-radius: 24px;
+  gap: 14px;
+  padding: 15px;
+  border-radius: 20px;
 `;
 
 const ClientHomeHeroBrand = styled.div`
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 `;
 
 const ClientHomeHeroTitle = styled.h2`
   margin: 0;
-  font-size: clamp(1.2rem, 2.2vw, 1.62rem);
-  line-height: 1;
+  font-size: clamp(1.02rem, 1.9vw, 1.28rem);
+  line-height: 1.05;
   letter-spacing: -0.04em;
 `;
 
 const ClientHomeStats = styled.div`
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
+  gap: 8px;
 
   ${desktop} {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1631,11 +1644,11 @@ const ClientHomeStats = styled.div`
 const ClientMetricCard = styled.div`
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 0;
+  gap: 10px;
+  padding: 8px 0;
 
   ${desktop} {
-    padding: 0 18px;
+    padding: 0 14px;
     border-left: 1px solid rgba(230, 224, 215, 0.95);
 
     &:first-child {
@@ -1646,8 +1659,8 @@ const ClientMetricCard = styled.div`
 `;
 
 const MetricIcon = styled.div<{ $tone: "success" | "warning" | "neutral" }>`
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
   display: grid;
   place-items: center;
@@ -1657,23 +1670,23 @@ const MetricIcon = styled.div<{ $tone: "success" | "warning" | "neutral" }>`
     $tone === "success" ? "#5ca16d" : $tone === "warning" ? "#c58911" : "#7f7468"};
 
   svg {
-    width: 18px;
-    height: 18px;
+    width: 15px;
+    height: 15px;
   }
 `;
 
 const MetricLabel = styled.span`
   display: block;
   color: #5f564b;
-  font-size: 0.84rem;
+  font-size: 0.74rem;
   line-height: 1.25;
 `;
 
 const MetricValue = styled.strong`
   display: block;
-  margin-top: 3px;
+  margin-top: 2px;
   color: #1f1f1f;
-  font-size: 1.4rem;
+  font-size: 1.08rem;
   line-height: 1;
   letter-spacing: -0.04em;
 `;
@@ -1940,73 +1953,77 @@ const PageButton = styled.button<{ $active?: boolean }>`
 
 const ClientHomeGrid = styled.section`
   display: grid;
-  gap: 16px;
+  gap: 14px;
 
   ${desktop} {
     grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
     align-items: start;
+    gap: 14px;
   }
 `;
 
 const ClientHomePanel = styled.section`
   ${cardSurface}
   display: grid;
-  gap: 14px;
-  padding: 18px;
-  border-radius: 24px;
+  gap: 12px;
+  padding: 15px;
+  border-radius: 20px;
 `;
 
 const ClientHomeList = styled.div`
   display: grid;
-  gap: 12px;
+  gap: 8px;
 `;
 
 const SectionLink = styled(Link)`
   color: #1f4339;
-  font-size: 0.84rem;
+  font-size: 0.76rem;
   font-weight: 700;
   text-decoration: none;
 `;
 
 const ClientProjectCard = styled(Link)`
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 14px;
-  padding: 16px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.92);
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid rgba(230, 224, 215, 0.65);
+  border-radius: 14px;
   text-decoration: none;
   color: inherit;
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
 
+  &:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
   &:hover {
     transform: translateY(-2px);
-    border-color: rgba(31, 67, 57, 0.18);
-    box-shadow: 0 18px 32px rgba(31, 67, 57, 0.08);
+    box-shadow: 0 14px 24px rgba(31, 67, 57, 0.06);
   }
 
   ${desktop} {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
+    grid-template-columns: 56px minmax(0, 1fr);
   }
 `;
 
 const ClientProjectGlyph = styled.div`
-  width: 60px;
-  height: 60px;
-  border-radius: 16px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
-  background: linear-gradient(145deg, #eff8f1, #f8fbf9);
+  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
   color: #8c7040;
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.05rem;
+  font-weight: 600;
 `;
 
 const ClientProjectBody = styled.div`
   display: grid;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 `;
 
@@ -2019,64 +2036,49 @@ const ClientProjectHeading = styled.div`
 
 const ClientProjectTitle = styled.strong`
   color: #1f1f1f;
-  font-size: 0.94rem;
-  line-height: 1.3;
+  font-size: 0.88rem;
+  line-height: 1.25;
 `;
 
-const ClientProjectMeta = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+const ClientProjectSubtitle = styled.span`
+  display: block;
+  margin-top: 2px;
   color: #6f6558;
-  font-size: 0.84rem;
-  line-height: 1.4;
-`;
-
-const StatusInline = styled.span<{ $fg: string }>`
-  color: ${({ $fg }) => $fg};
-  font-weight: 700;
+  font-size: 0.76rem;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 const InlineMeta = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  color: #6f6558;
+  font-size: 0.76rem;
 
   svg {
-    width: 15px;
-    height: 15px;
+    width: 13px;
+    height: 13px;
   }
 `;
 
-const ClientProjectProgress = styled.div`
+const ClientProjectFooter = styled.div`
   display: grid;
-  gap: 8px;
-
-  ${desktop} {
-    width: 220px;
-  }
+  gap: 6px;
 `;
 
-const ProgressTrack = styled.div`
-  width: 100%;
-  height: 7px;
-  overflow: hidden;
+const ClientProjectStatusPill = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 10px;
   border-radius: 999px;
-  background: #ede7df;
-`;
-
-const ProgressBar = styled.div<{ $value: number; $color: string }>`
-  width: ${({ $value }) => `${Math.max(0, Math.min(100, $value))}%`};
-  height: 100%;
-  border-radius: inherit;
-  background: ${({ $color }) => $color};
-`;
-
-const ProgressValue = styled.span`
-  color: #534a3f;
-  font-size: 0.84rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  justify-self: end;
+  white-space: nowrap;
 `;
 
 const ClientProjectArrow = styled.span`
@@ -2099,28 +2101,28 @@ const ClientProjectArrow = styled.span`
 const ClientReviewCard = styled(Link)`
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
-  gap: 14px;
+  gap: 12px;
   align-items: center;
-  padding: 16px;
+  padding: 12px;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 20px;
+  border-radius: 18px;
   background: rgba(255, 255, 255, 0.92);
   text-decoration: none;
   color: inherit;
 `;
 
 const ClientReviewIcon = styled.div`
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
   display: grid;
   place-items: center;
   background: linear-gradient(145deg, #f7f4ef, #fbf9f5);
   color: #b18225;
 
   svg {
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
   }
 `;
 
@@ -2133,24 +2135,24 @@ const ClientReviewBody = styled.div`
 const ClientReviewPill = styled.span`
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 0 12px;
+  min-height: 24px;
+  padding: 0 10px;
   border-radius: 999px;
   background: #fbefcf;
   color: #c58911;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 700;
 `;
 
 const ActivityList = styled.div`
   display: grid;
-  gap: 12px;
+  gap: 10px;
 `;
 
 const ActivityRowCard = styled.div`
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
+  gap: 10px;
   align-items: start;
 `;
 

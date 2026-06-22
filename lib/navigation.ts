@@ -1,6 +1,6 @@
 import { Role } from "@/lib/types";
 
-export type AppNavLabel = "Home" | "Projects" | "Tasks" | "Clients" | "Team";
+export type AppNavLabel = "Home" | "Projects" | "Tasks" | "Clients" | "Liaisons" | "Team";
 
 
 export type AppNavItem = {
@@ -20,6 +20,7 @@ export function getPrimaryNavItems(role?: Role): AppNavItem[] {
     return [
       { label: "Home", href: "/dashboard" },
       { label: "Projects", href: "/projects" },
+      { label: "Liaisons", href: "/clients/liaisons" },
     ];
   }
 

@@ -42,6 +42,8 @@ export function AppSidebar({
         <IconCheckCircle />
       ) : item.label === "Team" ? (
         <IconUsers />
+      ) : item.label === "Liaisons" ? (
+        <IconUsers />
       ) : (
         <IconUser />
       ),

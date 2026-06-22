@@ -7,6 +7,7 @@ import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { CustomDatePicker } from "@/components/custom-date-picker";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
+import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { useAppState } from "@/components/app-state";
 import { formatLabel, getTaskStatusLabel } from "@/lib/display";
 import { canEditTask, canViewProject } from "@/lib/permissions";
@@ -29,7 +30,7 @@ type TaskDetailScreenProps = {
 
 export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   const router = useRouter();
-  const { state, user, updateTask } = useAppState();
+  const { state, user, updateTask, updateTaskStatus } = useAppState();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showReviseModal, setShowReviseModal] = useState(false);
+  const [showCompleteForDesignerModal, setShowCompleteForDesignerModal] = useState(false);
   const [revisionComment, setRevisionComment] = useState("");
   const [error, setError] = useState("");
 
@@ -73,30 +75,54 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
     return taskAssets;
   }, [completionState.history.length, task?.managerReviewStatus, task?.status, taskAssets]);
   const versionOptions = useMemo(() => {
-    const currentVersionLabel = getCurrentTaskCompletionLabel(completionState);
-    const historyOptions = completionState.history
-      .slice()
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .filter((snapshot) => snapshot.id !== currentVersionLabel)
-      .map((snapshot) => ({
-        id: snapshot.id,
-        label: snapshot.label,
-        assets: snapshot.assets,
-        isCurrent: false,
-      }));
+    // Build IV-based list and annotate IV entries with SV when assets match
+    const history = completionState.history.slice();
+    const internalSnapshots = history
+      .filter((s) => s.kind === "internal")
+      .map((s) => ({ number: s.number, assets: s.assets, id: s.id, label: s.label }));
+    const submittedSnapshots = history.filter((s) => s.kind === "submitted");
 
-    return [
-      {
-        id: "current",
-        label: `${currentVersionLabel} (Current)`,
-        assets: currentVersionAssets,
-        isCurrent: true,
-      },
-      ...historyOptions,
-    ];
+    const assetsKey = (arr: string[]) => JSON.stringify([...arr].sort());
+
+    const internalMap = new Map<number, { id: string; label: string; assets: string[] }>();
+    internalSnapshots.forEach((s) => internalMap.set(s.number, { id: s.id, label: s.label, assets: s.assets }));
+
+    const currentInternalNumber = completionState.currentVersionKind === "internal" ? completionState.internalVersion : null;
+    if (currentInternalNumber !== null && !internalMap.has(currentInternalNumber)) {
+      internalMap.set(currentInternalNumber, {
+        id: `IV${currentInternalNumber}`,
+        label: `IV${currentInternalNumber}`,
+        assets: completionState.currentAssets,
+      });
+    }
+
+    const numbers = Array.from(internalMap.keys()).sort((a, b) => a - b);
+
+    const options = numbers.map((n) => {
+      const entry = internalMap.get(n)!;
+      const matchingSubmitted = submittedSnapshots.find((s) => assetsKey(s.assets) === assetsKey(entry.assets));
+      const svLabel = matchingSubmitted ? `(SV${matchingSubmitted.number})` : "";
+      const isCurrent = currentInternalNumber === n && completionState.currentVersionKind === "internal";
+      const label = `${entry.label}${svLabel ? ` ${svLabel}` : ""}${isCurrent ? " (Current)" : ""}`;
+      return { id: entry.id, label, assets: entry.assets, isCurrent };
+    });
+
+    return options;
   }, [completionState, currentVersionAssets]);
   const selectedVersion =
     versionOptions.find((option) => option.id === selectedVersionId) ?? versionOptions[0] ?? null;
+
+  useEffect(() => {
+    if (!versionOptions.length) {
+      setSelectedVersionId("current");
+      return;
+    }
+
+    const exists = versionOptions.some((o) => o.id === selectedVersionId);
+    if (!exists) {
+      setSelectedVersionId(versionOptions[0]?.id ?? "current");
+    }
+  }, [versionOptions, selectedVersionId]);
   const displayedAssets = useMemo(() => selectedVersion?.assets ?? [], [selectedVersion]);
   const imageAssets = useMemo(
     () => displayedAssets.filter((asset) => isTaskCompletionImage(asset)),
@@ -190,6 +216,8 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   };
 
   const handleManagerSubmit = async () => {
+    // Close version dropdown whenever manager actions happen to avoid stale UI state.
+    setVersionOpen(false);
     setIsSaving(true);
     setError("");
 
@@ -288,6 +316,31 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
         }}
         onConfirm={handleManagerSubmit}
       />
+      <DesignerTaskModal
+        open={showCompleteForDesignerModal}
+        task={
+          task
+            ? {
+                id: task.id,
+                title: task.title,
+                projectId: project.id,
+                projectName: project.projectRequestName ?? project.name,
+                dueDate: task.dueDate,
+                status: task.status,
+                completionScreenshotUrl: task.completionScreenshotUrl ?? null,
+                managerReviewStatus: task.managerReviewStatus,
+              }
+            : null
+        }
+        onClose={() => setShowCompleteForDesignerModal(false)}
+        onSubmit={async (payload) => {
+          await updateTaskStatus(project.id, task.id, {
+            status: payload.status,
+            completionScreenshotUrl: payload.completionScreenshotUrl ?? null,
+          });
+          setShowCompleteForDesignerModal(false);
+        }}
+      />
       {showReviseModal ? (
         <ReviewModalOverlay onClick={() => (isSaving ? null : setShowReviseModal(false))}>
           <ReviewModalCard onClick={(event) => event.stopPropagation()}>
@@ -337,6 +390,14 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
             <Subtitle>Review task details and update assignment, status, priority, or due date.</Subtitle>
           </div>
           <HeaderActions>
+            {task.status === "in_progress" ? (
+              <ActionButton
+                type="button"
+                onClick={() => setShowCompleteForDesignerModal(true)}
+              >
+                Complete on behalf of designer
+              </ActionButton>
+            ) : null}
             <ActionButton type="button" onClick={() => setIsEditing((current) => !current)}>
               <IconPencil />
               {isEditing ? "Cancel" : "Edit"}

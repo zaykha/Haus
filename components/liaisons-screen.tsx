@@ -108,6 +108,9 @@ export function LiaisonsScreen() {
   const viewerRole = user?.role ?? "client";
   const roleLabel = formatRole(viewerRole).toUpperCase();
   const canManage = canCreateClient(viewerRole);
+  const clientOrganizationIds = user ? getUserClientOrganizationIds(user) : [];
+  const canInviteLiaisons = canManage || (viewerRole === "client" && clientOrganizationIds.length > 0);
+  const inviteLockedToSingleOrganization = viewerRole === "client" && clientOrganizationIds.length === 1;
   const liaisons = useMemo(() => buildLiaisonRows(state), [state]);
   const selectedLiaison = selectedLiaisonId
     ? liaisons.find((liaison) => liaison.id === selectedLiaisonId) ?? null
@@ -204,6 +207,9 @@ export function LiaisonsScreen() {
         open={showInviteLiaisonModal}
         onClose={() => setShowInviteLiaisonModal(false)}
         variant="client"
+        initialClientOrganizationId={clientOrganizationIds[0] ?? ""}
+        lockClientOrganization={inviteLockedToSingleOrganization}
+        allowedClientOrganizationIds={viewerRole === "client" ? clientOrganizationIds : undefined}
       />
       <ConfirmActionModal
         open={showDeleteLiaisonModal && Boolean(selectedLiaison)}
@@ -439,13 +445,17 @@ export function LiaisonsScreen() {
           </ModalCard>
         </Overlay>
       ) : null}
-      <AppSidebar user={user} activeLabel="Clients" />
+      <AppSidebar user={user} activeLabel={viewerRole === "client" ? "Liaisons" : "Clients"} />
       <Content>
         <Header>
           <div>
             <Eyebrow>{roleLabel}</Eyebrow>
             <Title>Liaisons</Title>
-            <Subtitle>Browse all client liaison accounts and manage their organization memberships.</Subtitle>
+            <Subtitle>
+              {viewerRole === "client"
+                ? "Browse liaison accounts in your organization and invite additional liaisons."
+                : "Browse all client liaison accounts and manage their organization memberships."}
+            </Subtitle>
           </div>
           <HeaderAvatarLink href="/profile" aria-label="Open profile">
             <UserAvatar user={user} />
@@ -507,16 +517,18 @@ export function LiaisonsScreen() {
           </SearchControls>
 
           <ToolbarActions>
-            <PrimaryActionButton
-              type="button"
-              onClick={() => setShowInviteLiaisonModal(true)}
-            >
-              <ActionIcon>
-                <IconPlus />
-              </ActionIcon>
-              Liaison
-            </PrimaryActionButton>
-            <SecondaryActionLink href="/clients">View Organizations</SecondaryActionLink>
+            {canInviteLiaisons ? (
+              <PrimaryActionButton
+                type="button"
+                onClick={() => setShowInviteLiaisonModal(true)}
+              >
+                <ActionIcon>
+                  <IconPlus />
+                </ActionIcon>
+                Liaison
+              </PrimaryActionButton>
+            ) : null}
+            {canManage ? <SecondaryActionLink href="/clients">View Organizations</SecondaryActionLink> : null}
           </ToolbarActions>
         </Toolbar>
 

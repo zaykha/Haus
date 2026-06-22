@@ -10,7 +10,7 @@ import { FilterModal } from "@/components/filter-modal";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { UserAvatar } from "@/components/user-avatar";
-import { canCreateProject as canCreateProjectPermission, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
+import { canCreateProject as canCreateProjectPermission, canCreateProjectForOrganization, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { getAttentionTasksForProject } from "@/lib/task-attention";
 import { formatProjectStage, formatRole } from "@/lib/display";
 import { Project, ProjectWorkflowStage } from "@/lib/types";
@@ -145,6 +145,11 @@ export function ProjectsScreen() {
   // Keep hooks unconditionally called: ESLint rules-of-hooks
   const visibleProjects = state.projects.filter((project) => (user ? canViewProject(user, project) : false));
   const canManage = user ? canCreateProjectPermission(user.role) : false;
+  const canCreateAnyProject = Boolean(
+    user &&
+      (canManage ||
+        state.clientOrganizations.some((organization) => canCreateProjectForOrganization(user, organization.id))),
+  );
   const organizationNames = useMemo(
     () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization.name])),
     [state.clientOrganizations],
@@ -409,7 +414,7 @@ export function ProjectsScreen() {
             </SearchButton>
           </SearchControls>
 
-          {canManage ? (
+          {canCreateAnyProject ? (
             <CreateButton href="/projects/new">
               <ButtonIcon>
                 <IconPlus />
@@ -429,16 +434,18 @@ export function ProjectsScreen() {
 
               return (
                 <ProjectRow key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
-                  <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
+                  <ProjectTopleft>
+                    <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
+                    <OrganizationPill>{clientOrganizationName}</OrganizationPill>
+                  </ProjectTopleft>
+                  
                   {attentionCount > 0 ? (
                     <ProjectAttentionBadge>{attentionCount > 99 ? "99+" : attentionCount}</ProjectAttentionBadge>
                   ) : null}
-                  <ProjectMark>{getProjectMark(project)}</ProjectMark>
-
+                  <ProjectMark>{getProjectMark(project)}</ProjectMark> 
                   <ProjectSummary>
                     <SummaryTitle>{project.name}</SummaryTitle>
                     <SummaryPills>
-                      <SummaryPill>{clientOrganizationName}</SummaryPill>
                       <SummaryPill>{primaryContactLabel}</SummaryPill>
                       <SummaryPill>{contactNumberLabel}</SummaryPill>
                     </SummaryPills>
@@ -477,10 +484,6 @@ export function ProjectsScreen() {
                         : 0}
                     </MetaStrong>
                   </MetaColumn>
-
-                  <ArrowWrap>
-                    <IconArrowRight />
-                  </ArrowWrap>
                 </ProjectRow>
               );
             })
@@ -958,7 +961,7 @@ const ProjectRow = styled(Link)<{ $attention?: boolean }>`
   align-items: center;
   gap: 20px;
   height: 125px;
-  padding: 34px 20px 22px;
+  padding: 40px 20px 22px;
   border-radius: 24px;
   text-decoration: none;
   border-color: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)")};
@@ -983,11 +986,13 @@ const ProjectRow = styled(Link)<{ $attention?: boolean }>`
     }
   }
 `;
+const ProjectTopleft = styled.div`
+  position: absolute;
+  top: 5px;
+  left: 18px;
+`;
 
 const ProjectIdBadge = styled.span`
-  position: absolute;
-  top: 12px;
-  left: 18px;
   color: var(--color-text-light);
   font-size: 0.62rem;
   font-weight: 700;
@@ -1057,6 +1062,19 @@ const SummaryPill = styled.span`
   background: rgba(244, 241, 237, 0.96);
   color: #7b6f62;
   font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+`;
+
+const OrganizationPill = styled.div`
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(244, 241, 237, 0.96);
+  color: #7b6f62;
+  font-size: 0.68rem;
   font-weight: 600;
   white-space: nowrap;
 `;

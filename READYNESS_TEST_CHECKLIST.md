@@ -187,6 +187,7 @@ Use this checklist to decide whether the app is ready for production-like usage.
 - Confirm there are no maximum update depth errors.
 - Confirm there are no duplicate key warnings in task/project lists.
 - Confirm there are no missing-column Supabase errors in the browser console.
+
 - Confirm project detail and task detail routes do not 404 unexpectedly.
 
 ## 14. Final Technical Checks

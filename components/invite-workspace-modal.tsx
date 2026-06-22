@@ -20,6 +20,7 @@ type InviteWorkspaceModalProps = {
   variant: InviteVariant;
   initialClientOrganizationId?: string;
   lockClientOrganization?: boolean;
+  allowedClientOrganizationIds?: string[];
 };
 
 export function InviteWorkspaceModal({
@@ -28,6 +29,7 @@ export function InviteWorkspaceModal({
   variant,
   initialClientOrganizationId,
   lockClientOrganization = false,
+  allowedClientOrganizationIds,
 }: InviteWorkspaceModalProps) {
   const { createInvitation, state } = useAppState();
   const roleFieldRef = useRef<HTMLDivElement | null>(null);
@@ -43,7 +45,15 @@ export function InviteWorkspaceModal({
   const [organizationOpen, setOrganizationOpen] = useState(false);
   const [dropdownDirection, setDropdownDirection] = useState<"up" | "down">("down");
   const [dropdownMaxHeight, setDropdownMaxHeight] = useState(220);
-  const clientOrganizations = state.clientOrganizations;
+  const clientOrganizations = useMemo(() => {
+    if (!allowedClientOrganizationIds?.length) {
+      return state.clientOrganizations;
+    }
+
+    return state.clientOrganizations.filter((organization) =>
+      allowedClientOrganizationIds.includes(organization.id),
+    );
+  }, [allowedClientOrganizationIds, state.clientOrganizations]);
 
   const resolvedRole = variant === "client" ? "client" : role;
   const title = inviteLink
@@ -74,6 +84,14 @@ export function InviteWorkspaceModal({
   useEffect(() => {
     setClientOrganizationId(initialClientOrganizationId ?? "");
   }, [initialClientOrganizationId, open]);
+
+  useEffect(() => {
+    if (!open || variant !== "client" || clientOrganizationId || !clientOrganizations.length) {
+      return;
+    }
+
+    setClientOrganizationId(initialClientOrganizationId ?? clientOrganizations[0]?.id ?? "");
+  }, [clientOrganizationId, clientOrganizations, initialClientOrganizationId, open, variant]);
 
   useEffect(() => {
     if (!roleOpen && !organizationOpen) {

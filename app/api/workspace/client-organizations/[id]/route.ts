@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
-import { canEditClient, getUserClientOrganizationIds } from "@/lib/permissions";
+import { canDeleteClient, canEditClient, getUserClientOrganizationIds } from "@/lib/permissions";
 
 export async function PATCH(
   request: NextRequest,
@@ -48,6 +48,61 @@ export async function PATCH(
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireWorkspaceUser(request);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const { id } = await params;
+  const { supabase, user } = auth;
+
+  if (!canDeleteClient(user.role)) {
+    return NextResponse.json({ error: "Only managers can delete organizations" }, { status: 403 });
+  }
+
+  const { error: projectsError } = await supabase
+    .from("projects")
+    .update({ client_organization_id: null })
+    .eq("client_organization_id", id);
+
+  if (projectsError) {
+    return NextResponse.json({ error: projectsError.message }, { status: 500 });
+  }
+
+  const { error: invitesError } = await supabase
+    .from("invitations")
+    .delete()
+    .eq("client_organization_id", id);
+
+  if (invitesError) {
+    return NextResponse.json({ error: invitesError.message }, { status: 500 });
+  }
+
+  const { error: membershipsError } = await supabase
+    .from("client_organization_liaisons")
+    .delete()
+    .eq("client_organization_id", id);
+
+  if (membershipsError && !membershipsError.message.includes('relation "client_organization_liaisons" does not exist')) {
+    return NextResponse.json({ error: membershipsError.message }, { status: 500 });
+  }
+
+  const { error: deleteError } = await supabase
+    .from("client_organizations")
+    .delete()
+    .eq("id", id);
+
+  if (deleteError) {
+    return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

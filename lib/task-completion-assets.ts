@@ -62,23 +62,38 @@ export function parseTaskCompletionState(value?: string | null): TaskCompletionS
         ? record.history
             .filter(
               (item): item is TaskCompletionVersionSnapshot =>
-                Boolean(item && typeof item === "object" && typeof item.id === "string"),
+                Boolean(item && typeof item === "object" && typeof (item as any).id === "string"),
             )
-            .map((item): TaskCompletionVersionSnapshot => ({
-              id: item.id,
-              label:
+            .map((item): TaskCompletionVersionSnapshot => {
+              const safeId = typeof item.id === "string" && item.id.trim().length > 0 ? item.id : getVersionLabel("internal", 1);
+
+              const safeKind: TaskCompletionVersionKind = item.kind === "submitted" ? "submitted" : "internal";
+
+              const safeNumber = typeof item.number === "number" && Number.isFinite(item.number) && item.number >= 1 ? item.number : 1;
+
+              const safeAssets = sanitizeAssets(Array.isArray(item.assets) ? item.assets : []);
+
+              const safeLabel =
                 typeof item.label === "string" && item.label.trim().length > 0
                   ? item.label
-                  : getVersionLabel(item.kind ?? "internal", item.number ?? 1),
-              kind: item.kind === "submitted" ? "submitted" : "internal",
-              number: typeof item.number === "number" && Number.isFinite(item.number) ? item.number : 1,
-              assets: sanitizeAssets(Array.isArray(item.assets) ? item.assets : []),
-              createdAt:
+                  : getVersionLabel(safeKind, safeNumber);
+
+              const safeCreatedAt =
                 typeof item.createdAt === "string" && item.createdAt.trim().length > 0
                   ? item.createdAt
-                  : new Date(0).toISOString(),
-            }))
+                  : new Date(0).toISOString();
+
+              return {
+                id: safeId,
+                label: safeLabel,
+                kind: safeKind,
+                number: safeNumber,
+                assets: safeAssets,
+                createdAt: safeCreatedAt,
+              };
+            })
         : [];
+
 
       return {
         schema: TASK_COMPLETION_SCHEMA,
@@ -202,6 +217,13 @@ export function startNextTaskCompletionVersion(
     currentAssets: [],
     internalVersion: kind === "internal" ? state.internalVersion + 1 : state.internalVersion,
     submittedVersion: kind === "submitted" ? state.submittedVersion + 1 : state.submittedVersion,
+  };
+}
+
+export function bumpSubmittedVersion(state: TaskCompletionState): TaskCompletionState {
+  return {
+    ...state,
+    submittedVersion: state.submittedVersion + 1,
   };
 }
 

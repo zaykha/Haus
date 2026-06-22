@@ -107,40 +107,54 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
     [canReturnToTodo],
   );
   const versionOptions = useMemo(() => {
-    const historyOptions = completionState.history
-      .slice()
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .map((snapshot) => ({
-        id: snapshot.id,
-        label: snapshot.label,
-        assets: snapshot.assets,
-        isCurrent: false,
-      }));
+    // Build options based on internal versions (IV). If an internal version
+    // has a matching submitted snapshot (same assets), annotate it with (SV#).
+    const history = completionState.history.slice();
+    const internalSnapshots = history
+      .filter((s) => s.kind === "internal")
+      .map((s) => ({ number: s.number, assets: s.assets, id: s.id, label: s.label }));
+    const submittedSnapshots = history.filter((s) => s.kind === "submitted");
 
-    if (isLocked) {
-      if (historyOptions.length === 0 && currentVersionAssets.length > 0) {
-        return [
-          {
-            id: "current",
-            label: getCurrentTaskCompletionLabel(completionState),
-            assets: currentVersionAssets,
-            isCurrent: false,
-          },
-        ];
-      }
+    const assetsKey = (arr: string[]) => JSON.stringify([...arr].sort());
 
-      return historyOptions;
+    const internalMap = new Map<number, { id: string; label: string; assets: string[] }>();
+    internalSnapshots.forEach((s) => internalMap.set(s.number, { id: s.id, label: s.label, assets: s.assets }));
+
+    // include current in-progress internal version if present
+    const currentInternalNumber = completionState.currentVersionKind === "internal" ? completionState.internalVersion : null;
+    if (currentInternalNumber !== null && !internalMap.has(currentInternalNumber)) {
+      internalMap.set(currentInternalNumber, {
+        id: `IV${currentInternalNumber}`,
+        label: `IV${currentInternalNumber}`,
+        assets: completionState.currentAssets,
+      });
     }
 
-    return [
-      {
-        id: "current",
-        label: `${getCurrentTaskCompletionLabel(completionState)} (Current)`,
-        assets: editableCurrentAssets,
-        isCurrent: true,
-      },
-      ...historyOptions,
-    ];
+    const numbers = Array.from(internalMap.keys()).sort((a, b) => a - b);
+
+    const options = numbers.map((n) => {
+      const entry = internalMap.get(n)!;
+      const matchingSubmitted = submittedSnapshots.find((s) => assetsKey(s.assets) === assetsKey(entry.assets));
+      const svLabel = matchingSubmitted ? `(SV${matchingSubmitted.number})` : "";
+      const isCurrent = currentInternalNumber === n && completionState.currentVersionKind === "internal";
+      const label = `${entry.label}${svLabel ? ` ${svLabel}` : ""}${isCurrent ? " (Current)" : ""}`;
+      return { id: entry.id, label, assets: entry.assets, isCurrent };
+    });
+
+    // if locked and there are no options, show the current label
+    if (isLocked && options.length === 0 && currentVersionAssets.length > 0) {
+      return [
+        {
+          id: "current",
+          label: getCurrentTaskCompletionLabel(completionState),
+          assets: currentVersionAssets,
+          isCurrent: false,
+        },
+      ];
+    }
+
+    // always show options (current may be included above)
+    return options;
   }, [completionState, currentVersionAssets, editableCurrentAssets, isLocked]);
   const allAssets = useMemo(
     () => [
@@ -211,15 +225,39 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
       return;
     }
 
-    setPendingUploads((current) => [
-      ...current,
-      ...files.map((file) => ({
+    const existingValues = new Set<string>([
+      ...editableCurrentAssets,
+      ...completionLinks,
+    ]);
+
+    const nextUploads: PendingCompletionUpload[] = [];
+    for (const file of files) {
+      const alreadyPending = pendingUploads.some(
+        (u) => u.file.name === file.name && u.file.size === file.size,
+      );
+
+      const dupInExisting = Array.from(existingValues).some((v) => v.endsWith(file.name));
+
+      if (alreadyPending || dupInExisting) {
+        // skip duplicates
+        continue;
+      }
+
+      nextUploads.push({
         file,
         previewUrl: URL.createObjectURL(file),
         isImage: file.type.startsWith("image/"),
         label: file.name,
-      })),
-    ]);
+      });
+    }
+
+    if (nextUploads.length === 0) {
+      setError("No new files to add (duplicates were skipped).");
+      event.target.value = "";
+      return;
+    }
+
+    setPendingUploads((current) => [...current, ...nextUploads]);
     setError("");
     event.target.value = "";
   };
@@ -232,6 +270,16 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
 
     if (!isTaskCompletionLink(nextLink)) {
       setError("Enter a valid https:// link.");
+      return;
+    }
+
+    // Prevent duplicate links or links that match existing assets
+    if (
+      completionLinks.includes(nextLink) ||
+      editableCurrentAssets.includes(nextLink) ||
+      pendingUploads.some((u) => u.previewUrl === nextLink)
+    ) {
+      setError("This link is already added.");
       return;
     }
 
@@ -521,7 +569,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
                 <UploadEmptyState>
                   Add screenshots, files, or links for {getCurrentTaskCompletionLabel(completionState)}. Previous versions are read-only.
                 </UploadEmptyState>
-                <UploadTileGrid>
+                <UploadTileGrid $horizontal={allAssets.length > 2}>
                   {allAssets.map((asset) => (
                     <UploadAssetTile key={asset.key}>
                       {asset.isImage ? (
@@ -614,11 +662,15 @@ const ModalBackdrop = styled.div`
   inset: 0;
   z-index: 95;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   padding: 20px;
   background: rgba(28, 29, 28, 0.36);
   backdrop-filter: blur(8px);
+
+  @media (max-width: 767px) {
+  align-items: flex-start;
+  }
 `;
 
 const LoadingOverlay = styled.div`
@@ -632,13 +684,16 @@ const LoadingOverlay = styled.div`
 const ModalCard = styled.section`
   ${cardSurface}
   width: min(100%, 620px);
-  max-height: 80vh;
   display: flex;
   flex-direction: column;
   gap: 18px;
   overflow-y: auto;
   padding: 22px;
   border-radius: 26px;
+
+  @media (max-width: 767px) {
+    max-height: 80vh;
+  }
 `;
 
 const ModalHeader = styled.div`
@@ -937,14 +992,26 @@ const UploadCount = styled.span`
   font-weight: 600;
 `;
 
-const UploadTileGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+const UploadTileGrid = styled.div<{ $horizontal?: boolean }>`
   gap: 10px;
+  ${({ $horizontal }) =>
+    $horizontal
+      ? css`
+          display: flex;
+          flex-direction: row;
+          align-items: flex-start;
+          overflow-x: auto;
+          padding-bottom: 6px;
+          scrollbar-width: thin;
+        `
+      : css`
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
 
-  ${desktop} {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+          ${desktop} {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+        `}
 `;
 
 const UploadAssetTile = styled.div`
@@ -952,10 +1019,12 @@ const UploadAssetTile = styled.div`
   display: grid;
   gap: 8px;
   min-height: 124px;
+  max-width: 154px;
   padding: 10px;
   border-radius: 16px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   background: rgba(255, 255, 255, 0.94);
+  flex: 0 0 220px;
 `;
 
 const SubmittedAssetCard = styled.div`
@@ -978,6 +1047,7 @@ const UploadDropTile = styled.label`
   border: 1px dashed rgba(47, 93, 80, 0.28);
   background: rgba(244, 248, 246, 0.92);
   cursor: pointer;
+  flex: 0 0 220px;
 `;
 
 const UploadDropInner = styled.div`

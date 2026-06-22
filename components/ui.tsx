@@ -38,7 +38,7 @@ export function BottomNav() {
         <IconFolder />
       ) : item.label === "Tasks" ? (
         <IconList />
-      ) : item.label === "Team" || item.label === "Clients" ? (
+      ) : item.label === "Team" || item.label === "Clients" || item.label === "Liaisons" ? (
         <IconUsers />
       ) : null,
   }));

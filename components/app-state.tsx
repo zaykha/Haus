@@ -32,6 +32,7 @@ import {
   canAssignTask,
   canCreateClient,
   canCreateProject,
+  canCreateProjectForOrganization,
   canCreateTask,
   canDeleteClient,
   canDeleteProject,
@@ -39,6 +40,7 @@ import {
   canDeleteTeamMember,
   canEditProject,
   canEditTask,
+  canInviteClientsForOrganization,
   canInviteUsers,
   canUpdateTeamRole,
   canUpdateTaskStatus as canUserUpdateTaskStatus,
@@ -140,6 +142,7 @@ interface AppStateContextValue {
       address?: string;
     },
   ) => Promise<void>;
+  deleteClientOrganization: (organizationId: string) => Promise<void>;
   updateTeamMemberRole: (memberId: string, role: Exclude<Role, "client">) => Promise<void>;
   deleteTeamMember: (memberId: string) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
@@ -683,7 +686,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const resolvedClientOrganizationId = project.clientOrganizationId;
 
-    ensureAuthorized(canCreateProject(user.role), "Only managers can create projects");
+    ensureAuthorized(
+      canCreateProject(user.role) || canCreateProjectForOrganization(user, resolvedClientOrganizationId),
+      "You can only create projects for your own organization",
+    );
     ensureAuthorized(
       ensureClientOrganizationExists(state.clientOrganizations, resolvedClientOrganizationId),
       "Project client organization must exist",
@@ -865,6 +871,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await apiRequest<{ ok: true }>(`/api/workspace/client-organizations/${organizationId}`, {
       method: "PATCH",
       body: JSON.stringify(organization),
+    });
+
+    await refreshWorkspace(user);
+  };
+
+  const deleteClientOrganization: AppStateContextValue["deleteClientOrganization"] = async (
+    organizationId,
+  ) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    ensureAuthorized(canDeleteClient(user.role), "Only managers can delete organizations");
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    await apiRequest<{ ok: true }>(`/api/workspace/client-organizations/${organizationId}`, {
+      method: "DELETE",
     });
 
     await refreshWorkspace(user);
@@ -1149,7 +1175,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Unauthorized");
     }
 
-    ensureAuthorized(canInviteUsers(user.role), "Only managers can create invitations");
+    const canCreateInvite =
+      payload.role === "client"
+        ? canInviteClientsForOrganization(user, payload.clientOrganizationId ?? null)
+        : canInviteUsers(user.role);
+    ensureAuthorized(canCreateInvite, "You can only invite clients into your own organization");
     if (payload.role === "client") {
       ensureAuthorized(
         ensureClientOrganizationExists(state.clientOrganizations, payload.clientOrganizationId ?? ""),
@@ -1324,6 +1354,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         updateClient,
         createClientOrganization,
         updateClientOrganization,
+        deleteClientOrganization,
         updateTeamMemberRole,
         deleteTeamMember,
         deleteProject,

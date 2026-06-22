@@ -25,6 +25,14 @@ export function canCreateProject(role: Role) {
   return isManagerRole(role);
 }
 
+export function canCreateProjectForOrganization(user: Pick<User, "role" | "clientOrganizationId" | "clientOrganizationIds">, clientOrganizationId: string | null | undefined) {
+  if (!clientOrganizationId) {
+    return false;
+  }
+
+  return isManagerRole(user.role) || (user.role === "client" && getUserClientOrganizationIds(user).includes(clientOrganizationId));
+}
+
 export function canEditProject(role: Role) {
   return isManagerRole(role);
 }
@@ -83,6 +91,14 @@ export function canUpdateTeamRole(role: Role) {
 
 export function canInviteUsers(role: Role) {
   return isManagerRole(role);
+}
+
+export function canInviteClientsForOrganization(user: Pick<User, "role" | "clientOrganizationId" | "clientOrganizationIds">, clientOrganizationId: string | null | undefined) {
+  if (!clientOrganizationId) {
+    return false;
+  }
+
+  return isManagerRole(user.role) || (user.role === "client" && getUserClientOrganizationIds(user).includes(clientOrganizationId));
 }
 
 export function canViewProject(user: User, project: Project) {

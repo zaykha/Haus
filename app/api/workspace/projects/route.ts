@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
-import { canCreateProject } from "@/lib/permissions";
+import { canCreateProject, canCreateProjectForOrganization } from "@/lib/permissions";
 
 export async function POST(request: NextRequest) {
   const auth = await requireWorkspaceUser(request);
@@ -9,10 +9,6 @@ export async function POST(request: NextRequest) {
   }
 
   const { supabase, user } = auth;
-  if (!canCreateProject(user.role)) {
-    return NextResponse.json({ error: "Only managers can create projects" }, { status: 403 });
-  }
-
   const body = (await request.json()) as {
     projectRequestName?: string;
     requestedDate?: string;
@@ -43,6 +39,11 @@ export async function POST(request: NextRequest) {
   }
 
   let resolvedClientOrganizationId = body.clientOrganizationId?.trim() ?? "";
+
+  const canCreateRequestedProject = canCreateProject(user.role) || canCreateProjectForOrganization(user, resolvedClientOrganizationId);
+  if (!canCreateRequestedProject) {
+    return NextResponse.json({ error: "You can only create projects for your own organization" }, { status: 403 });
+  }
 
   if (resolvedClientOrganizationId) {
     const { data: organization } = await supabase
