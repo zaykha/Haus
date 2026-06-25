@@ -53,6 +53,8 @@ type ClientOrganizationRecord = {
   name: string;
   type: "internal" | "external" | null;
   status: "active" | "inactive" | null;
+  logo_url: string | null;
+  brand_color: string | null;
   phone: string | null;
   address: string | null;
   created_at: string;
@@ -246,6 +248,42 @@ function normalizeProjectStatus(status: string | null | undefined): ProjectStatu
   }
 }
 
+function deriveProjectStageFromTasks(
+  tasks: Project["tasks"],
+  currentStage: string | null | undefined,
+): ProjectStage {
+  const normalizedCurrentStage = normalizeProjectStage(currentStage);
+
+  if (normalizedCurrentStage === "On Hold") {
+    return "On Hold";
+  }
+
+  if (tasks.length === 0) {
+    return "Waiting List";
+  }
+
+  const allTodo = tasks.every((task) => task.status === "todo");
+  if (allTodo) {
+    return "Waiting List";
+  }
+
+  const allComplete = tasks.every((task) => task.status === "approved");
+  if (allComplete) {
+    return "Complete";
+  }
+
+  const hasPendingReviewTask = tasks.some(
+    (task) =>
+      task.status === "review" ||
+      (task.status === "done" && task.managerReviewStatus === "internal"),
+  );
+  if (hasPendingReviewTask) {
+    return "Pending Review";
+  }
+
+  return "WIP";
+}
+
 function isMissingRelationError(message: string | undefined) {
   return Boolean(message && message.includes('relation "project_activity" does not exist'));
 }
@@ -290,7 +328,7 @@ export async function GET(request: NextRequest) {
     supabase.from("departments").select("id, name, created_at").order("name", { ascending: true }),
     supabase
       .from("client_organizations")
-      .select("id, name, type, status, phone, address, created_at")
+      .select("id, name, type, status, logo_url, brand_color, phone, address, created_at")
       .order("created_at", { ascending: true }),
     supabase
       .from("profiles")
@@ -551,12 +589,9 @@ export async function GET(request: NextRequest) {
   );
 
   const allProjects: Project[] = projects.map((project) => {
-    const workflowStage = normalizeProjectStage(
-      project.stage,
-    );
-    const workflowStatus = normalizeProjectStatus(
-      project.stage,
-    );
+    const projectTasks = tasksByProject.get(project.id) ?? [];
+    const workflowStage = deriveProjectStageFromTasks(projectTasks, project.stage);
+    const workflowStatus = normalizeProjectStatus(workflowStage);
 
     return {
     id: project.id,
@@ -586,7 +621,7 @@ export async function GET(request: NextRequest) {
     status: workflowStatus,
     dueDate: project.due_date ?? "",
     staffIds: staffIdsByProject.get(project.id) ?? [],
-    tasks: tasksByProject.get(project.id) ?? [],
+    tasks: projectTasks,
     files: filesByProject.get(project.id) ?? [],
     comments: commentsByProject.get(project.id) ?? [],
     feedback: feedbackByProject.get(project.id) ?? [],
@@ -623,6 +658,8 @@ export async function GET(request: NextRequest) {
         name: organization.name,
         type: organization.type ?? undefined,
         status: organization.status ?? undefined,
+        logoUrl: organization.logo_url ?? undefined,
+        brandColor: organization.brand_color ?? undefined,
         phone: organization.phone ?? undefined,
         address: organization.address ?? undefined,
         createdAt: organization.created_at,

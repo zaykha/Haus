@@ -326,6 +326,19 @@ export function DashboardScreen() {
       return projectRows;
     }
 
+    const getStagePriority = (status: ProjectStatus) => {
+      switch (status) {
+        case "review":
+          return 0;
+        case "revision":
+          return 1;
+        case "active":
+          return 2;
+        default:
+          return 3;
+      }
+    };
+
     return [...projectRows]
       .map((project) => ({
         ...project,
@@ -333,13 +346,23 @@ export function DashboardScreen() {
           (task) => task.status === "done" && task.managerReviewStatus === "internal",
         ).length,
       }))
-      .filter((project) => project.attentionCount > 0)
+      .filter((project) => project.status === "review" || project.status === "revision" || project.status === "active")
       .sort((left, right) => {
-        if (right.attentionCount !== left.attentionCount) {
-          return right.attentionCount - left.attentionCount;
+        const leftStagePriority = getStagePriority(left.status);
+        const rightStagePriority = getStagePriority(right.status);
+
+        if (leftStagePriority !== rightStagePriority) {
+          return leftStagePriority - rightStagePriority;
         }
 
-        return new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime();
+        const leftDue = new Date(left.dueDate).getTime();
+        const rightDue = new Date(right.dueDate).getTime();
+
+        if (leftDue !== rightDue) {
+          return leftDue - rightDue;
+        }
+
+        return right.attentionCount - left.attentionCount;
       });
   }, [isClient, isDesigner, projectRows, safeUser]);
 

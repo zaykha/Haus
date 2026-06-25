@@ -39,6 +39,8 @@ export interface ClientOrganization {
   name: string;
   type?: "internal" | "external";
   status?: "active" | "inactive";
+  logoUrl?: string;
+  brandColor?: string;
   phone?: string;
   address?: string;
   createdAt?: string;

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PropsWithChildren, useMemo } from "react";
 import { useAppState } from "@/components/app-state";
+import { useChatUnreadTotal } from "@/components/chat/use-chat-unread-total";
 import { getPrimaryNavItems } from "@/lib/navigation";
 import { getAttentionTaskCount } from "@/lib/task-attention";
 
@@ -27,6 +28,7 @@ export function BottomNav() {
     }
     return getAttentionTaskCount(user, state.projects);
   }, [state.projects, user]);
+  const chatBadgeCount = useChatUnreadTotal(user);
   const badgeLabel = user?.role === "client" ? "Projects" : "Tasks";
 
   const items = getPrimaryNavItems(user?.role).map((item) => ({
@@ -38,6 +40,8 @@ export function BottomNav() {
         <IconFolder />
       ) : item.label === "Tasks" ? (
         <IconList />
+      ) : item.label === "Chat" ? (
+        <IconChat />
       ) : item.label === "Team" || item.label === "Clients" || item.label === "Liaisons" ? (
         <IconUsers />
       ) : null,
@@ -59,6 +63,9 @@ export function BottomNav() {
             {item.icon}
             {item.label === badgeLabel && taskBadgeCount > 0 ? (
               <span className="nav-badge">{taskBadgeCount > 99 ? "99+" : taskBadgeCount}</span>
+            ) : null}
+            {item.label === "Chat" && chatBadgeCount > 0 ? (
+              <span className="nav-badge">{chatBadgeCount > 99 ? "99+" : chatBadgeCount}</span>
             ) : null}
           </span>
           <span className="nav-label">{item.label}</span>
@@ -108,6 +115,17 @@ function IconUsers() {
     </svg>
   );
 }
+
+function IconChat() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4z" />
+      <path d="M7.5 9.5h9" />
+      <path d="M7.5 13h6" />
+    </svg>
+  );
+}
+
 
 export function PageHeader({
   eyebrow,

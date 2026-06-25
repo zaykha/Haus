@@ -10,7 +10,8 @@ import { FilterModal } from "@/components/filter-modal";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { UserAvatar } from "@/components/user-avatar";
-import { canCreateProject as canCreateProjectPermission, canCreateProjectForOrganization, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
+import { getClientBrandStyle } from "@/lib/client-branding";
+import { canCreateProject as canCreateProjectPermission, canCreateProjectForOrganization, canViewProject, getUserClientOrganizationIds, getVisibleTasksForUser } from "@/lib/permissions";
 import { getAttentionTasksForProject } from "@/lib/task-attention";
 import { formatProjectStage, formatRole } from "@/lib/display";
 import { Project, ProjectWorkflowStage } from "@/lib/types";
@@ -18,6 +19,7 @@ import { Project, ProjectWorkflowStage } from "@/lib/types";
 type StageFilterKey = "all" | ProjectWorkflowStage;
 type SortKey = "due_date" | "name" | "created_at_desc" | "created_at_asc";
 const MOBILE_BATCH_SIZE = 20;
+const TABLE_BATCH_SIZE = 20;
 
 const desktopNav = [
   { label: "Home", href: "/dashboard", icon: <IconHome /> },
@@ -126,6 +128,7 @@ export function ProjectsScreen() {
   const searchParams = useSearchParams();
   const [currentPage, setCurrentPage] = useState(1);
   const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
+  const [desktopTableVisibleCount, setDesktopTableVisibleCount] = useState(TABLE_BATCH_SIZE);
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<StageFilterKey>("all");
@@ -133,14 +136,18 @@ export function ProjectsScreen() {
   const [organizationFilter, setOrganizationFilter] = useState("all");
   const [sort, setSort] = useState<SortKey>("due_date");
   const [showFilters, setShowFilters] = useState(false);
+  const [showSort, setShowSort] = useState(false);
+  const [desktopView, setDesktopView] = useState<"cards" | "table">("table");
   const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
+  const desktopTableWrapRef = useRef<HTMLElement | null>(null);
+  const desktopTableLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const quickFilter = searchParams.get("quick") ?? "";
   const appliedFilterCount =
     (quickFilter ? 1 : 0) +
     (stageFilter !== "all" ? 1 : 0) +
     (priorityFilter !== "all" ? 1 : 0) +
-    (organizationFilter !== "all" ? 1 : 0) +
-    (sort !== "due_date" ? 1 : 0);
+    (organizationFilter !== "all" ? 1 : 0);
+  const appliedSortCount = sort !== "due_date" ? 1 : 0;
 
   // Keep hooks unconditionally called: ESLint rules-of-hooks
   const visibleProjects = state.projects.filter((project) => (user ? canViewProject(user, project) : false));
@@ -190,6 +197,20 @@ export function ProjectsScreen() {
     [visibleProjects],
   );
   const roleLabel = user ? formatRole(user.role).toUpperCase() : "";
+  const canToggleDesktopView = user ? user.role === "client" || canManage : false;
+  const currentClientOrganization = useMemo(
+    () =>
+      user?.role === "client"
+        ? state.clientOrganizations.find((organization) =>
+            getUserClientOrganizationIds(user).includes(organization.id),
+          ) ?? null
+        : null,
+    [state.clientOrganizations, user],
+  );
+  const clientBrandStyle = useMemo(
+    () => getClientBrandStyle(currentClientOrganization),
+    [currentClientOrganization],
+  );
 
   const filteredProjects = useMemo(() => {
     const loweredSearch = search.trim().toLowerCase();
@@ -257,6 +278,7 @@ export function ProjectsScreen() {
     (activePage - 1) * pageSize,
     activePage * pageSize,
   );
+  const tableProjects = filteredProjects.slice(0, desktopTableVisibleCount);
   const mobileProjects = filteredProjects.slice(0, mobileVisibleCount);
   const rangeStart = totalProjects ? (activePage - 1) * pageSize + 1 : 0;
   const rangeEnd = totalProjects ? Math.min(activePage * pageSize, totalProjects) : 0;
@@ -270,7 +292,8 @@ export function ProjectsScreen() {
   useEffect(() => {
     if (!user) return;
     setMobileVisibleCount(MOBILE_BATCH_SIZE);
-  }, [user, search, stageFilter, priorityFilter, organizationFilter, sort, visibleProjects.length]);
+    setDesktopTableVisibleCount(TABLE_BATCH_SIZE);
+  }, [user, search, stageFilter, priorityFilter, organizationFilter, sort, visibleProjects.length, desktopView]);
 
   useEffect(() => {
     if (!user) return;
@@ -297,12 +320,38 @@ export function ProjectsScreen() {
     return () => observer.disconnect();
   }, [user, filteredProjects.length]);
 
+  useEffect(() => {
+    if (!user || desktopView !== "table") return;
+
+    const root = desktopTableWrapRef.current;
+    const node = desktopTableLoadMoreRef.current;
+    if (!root || !node) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) {
+          return;
+        }
+
+        setDesktopTableVisibleCount((current) =>
+          Math.min(current + TABLE_BATCH_SIZE, filteredProjects.length),
+        );
+      },
+      { root, rootMargin: "180px 0px" },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [desktopView, filteredProjects.length, user]);
+
   if (!ready) {
     return <ListScreenSkeleton title="Projects" />;
   }
 
   return (
-    <PageShell>
+    <PageShell style={user?.role === "client" ? clientBrandStyle : undefined}>
       {user ? <AppSidebar user={user} activeLabel="Projects" /> : null}
 
       <Content>
@@ -335,7 +384,7 @@ export function ProjectsScreen() {
           <FilterModal
             open={showFilters}
             title="Filter projects"
-            description="Adjust project filtering and sorting."
+            description="Adjust project filtering."
             sections={[
               {
                 id: "stageFilter",
@@ -357,6 +406,28 @@ export function ProjectsScreen() {
                 searchable: true,
                 searchPlaceholder: "Search organizations...",
               },
+            ]}
+            values={{ stageFilter, priorityFilter, organizationFilter }}
+            onApply={(nextValues) => {
+              setStageFilter(nextValues.stageFilter as StageFilterKey);
+              setPriorityFilter(nextValues.priorityFilter);
+              setOrganizationFilter(nextValues.organizationFilter);
+              setCurrentPage(1);
+            }}
+            onReset={() => {
+              setStageFilter("all");
+              setPriorityFilter("all");
+              setOrganizationFilter("all");
+              setCurrentPage(1);
+              router.replace(pathname);
+            }}
+            onClose={() => setShowFilters(false)}
+          />
+          <FilterModal
+            open={showSort}
+            title="Sort projects"
+            description="Adjust project sorting."
+            sections={[
               {
                 id: "sort",
                 label: "Sort by",
@@ -368,23 +439,18 @@ export function ProjectsScreen() {
                 ],
               },
             ]}
-            values={{ stageFilter, priorityFilter, organizationFilter, sort }}
+            values={{ sort }}
             onApply={(nextValues) => {
-              setStageFilter(nextValues.stageFilter as StageFilterKey);
-              setPriorityFilter(nextValues.priorityFilter);
-              setOrganizationFilter(nextValues.organizationFilter);
               setSort(nextValues.sort as SortKey);
               setCurrentPage(1);
             }}
             onReset={() => {
-              setStageFilter("all");
-              setPriorityFilter("all");
-              setOrganizationFilter("all");
               setSort("due_date");
               setCurrentPage(1);
-              router.replace(pathname);
             }}
-            onClose={() => setShowFilters(false)}
+            onClose={() => setShowSort(false)}
+            applyLabel="Apply sort"
+            resetLabel="Default sort"
           />
           <SearchControls onSubmit={handleSearchSubmit}>
             <SearchWrap>
@@ -406,6 +472,17 @@ export function ProjectsScreen() {
                   <IconFilter />
                 </ButtonIcon>
               </FilterButton>
+              <FilterButton
+                type="button"
+                aria-label="Open sorting"
+                aria-expanded={showSort}
+                onClick={() => setShowSort(true)}
+              >
+                {appliedSortCount ? <FilterBadge>{appliedSortCount}</FilterBadge> : null}
+                <ButtonIcon>
+                  <IconSort />
+                </ButtonIcon>
+              </FilterButton>
             </FilterMenuWrap>
             <SearchButton type="submit" aria-label="Search projects">
               <ButtonIcon>
@@ -413,6 +490,25 @@ export function ProjectsScreen() {
               </ButtonIcon>
             </SearchButton>
           </SearchControls>
+
+          {canToggleDesktopView ? (
+            <ProjectsDesktopViewToggleGroup aria-label="Project view">
+              <ProjectsDesktopViewButton
+                type="button"
+                $active={desktopView === "cards"}
+                onClick={() => setDesktopView("cards")}
+              >
+                Cards
+              </ProjectsDesktopViewButton>
+              <ProjectsDesktopViewButton
+                type="button"
+                $active={desktopView === "table"}
+                onClick={() => setDesktopView("table")}
+              >
+                Table
+              </ProjectsDesktopViewButton>
+            </ProjectsDesktopViewToggleGroup>
+          ) : null}
 
           {canCreateAnyProject ? (
             <CreateButton href="/projects/new">
@@ -424,76 +520,144 @@ export function ProjectsScreen() {
           ) : null}
         </Toolbar>
 
-        <DesktopList>
-          {paginatedProjects.length ? (
-            paginatedProjects.map((project) => {
-              const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
-              const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
-              const contactNumberLabel = project.contactNumber?.trim() || "No contact number";
-              const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
+        {desktopView === "cards" || !canToggleDesktopView ? (
+          <DesktopList>
+            {paginatedProjects.length ? (
+              paginatedProjects.map((project) => {
+                const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
+                const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
+                const contactNumberLabel = project.contactNumber?.trim() || "No contact number";
+                const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
 
-              return (
-                <ProjectRow key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
-                  <ProjectTopleft>
-                    <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
-                    <OrganizationPill>{clientOrganizationName}</OrganizationPill>
-                  </ProjectTopleft>
-                  
-                  {attentionCount > 0 ? (
-                    <ProjectAttentionBadge>{attentionCount > 99 ? "99+" : attentionCount}</ProjectAttentionBadge>
-                  ) : null}
-                  <ProjectMark>{getProjectMark(project)}</ProjectMark> 
-                  <ProjectSummary>
-                    <SummaryTitle>{project.name}</SummaryTitle>
-                    <SummaryPills>
-                      <SummaryPill>{primaryContactLabel}</SummaryPill>
-                      <SummaryPill>{contactNumberLabel}</SummaryPill>
-                    </SummaryPills>
-                  </ProjectSummary>
+                return (
+                  <ProjectRow key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
+                    <ProjectTopleft>
+                      <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
+                      <OrganizationPill>{clientOrganizationName}</OrganizationPill>
+                    </ProjectTopleft>
+                    
+                    {attentionCount > 0 ? (
+                      <ProjectAttentionBadge>{attentionCount > 99 ? "99+" : attentionCount}</ProjectAttentionBadge>
+                    ) : null}
+                    <ProjectMark>{getProjectMark(project)}</ProjectMark> 
+                    <ProjectSummary>
+                      <SummaryTitle>{project.name}</SummaryTitle>
+                      <SummaryPills>
+                        <SummaryPill>{primaryContactLabel}</SummaryPill>
+                        <SummaryPill>{contactNumberLabel}</SummaryPill>
+                      </SummaryPills>
+                    </ProjectSummary>
 
-                  <MetaColumn $grow>
-                    <MetaLabel>Stage</MetaLabel>
-                    <MetaStrong>{formatProjectStage(project.stage)}</MetaStrong>
-                    <ProjectStageProgress stage={project.stage} size="sm" />
-                  </MetaColumn>
+                    <MetaColumn $grow>
+                      <MetaLabel>Stage</MetaLabel>
+                      <MetaStrong>{formatProjectStage(project.stage)}</MetaStrong>
+                      <ProjectStageProgress stage={project.stage} size="sm" />
+                    </MetaColumn>
 
-                  <MetaColumn>
-                    <MetaLabel>Due date</MetaLabel>
-                    <MetaStrong>{formatDueDate(project.dueDate)}</MetaStrong>
-                  </MetaColumn>
+                    <MetaColumn>
+                      <MetaLabel>Due date</MetaLabel>
+                      <MetaStrong>{formatDueDate(project.dueDate)}</MetaStrong>
+                    </MetaColumn>
 
-                  <MetaColumn>
-                    <MetaLabel>Staff</MetaLabel>
-                    <AvatarStack>
-                      {project.staffIds.slice(0, 3).map((staffId) => (
-                        <Avatar key={staffId}>
-                          {(userNames.get(staffId) ?? "?").slice(0, 1)}
-                        </Avatar>
-                      ))}
-                      {project.staffIds.length > 3 ? (
-                        <Avatar $muted>+{project.staffIds.length - 3}</Avatar>
-                      ) : null}
-                    </AvatarStack>
-                  </MetaColumn>
+                    <MetaColumn>
+                      <MetaLabel>Staff</MetaLabel>
+                      <AvatarStack>
+                        {project.staffIds.slice(0, 3).map((staffId) => (
+                          <Avatar key={staffId}>
+                            {(userNames.get(staffId) ?? "?").slice(0, 1)}
+                          </Avatar>
+                        ))}
+                        {project.staffIds.length > 3 ? (
+                          <Avatar $muted>+{project.staffIds.length - 3}</Avatar>
+                        ) : null}
+                      </AvatarStack>
+                    </MetaColumn>
 
-                  <MetaColumn $narrow>
-                    <MetaLabel>Open tasks</MetaLabel>
-                    <MetaStrong>
-                      {user
-                        ? getVisibleTasksForUser(user, project).filter((task) => task.status !== "approved").length
-                        : 0}
-                    </MetaStrong>
-                  </MetaColumn>
-                </ProjectRow>
-              );
-            })
-          ) : (
-            <EmptyCard>
-              <EmptyTitle>No projects found</EmptyTitle>
-              <EmptyCopy>Try another search term or create a new project workspace.</EmptyCopy>
-            </EmptyCard>
-          )}
-        </DesktopList>
+                    <MetaColumn $narrow>
+                      <MetaLabel>Open tasks</MetaLabel>
+                      <MetaStrong>
+                        {user
+                          ? getVisibleTasksForUser(user, project).filter((task) => task.status !== "approved").length
+                          : 0}
+                      </MetaStrong>
+                    </MetaColumn>
+                  </ProjectRow>
+                );
+              })
+            ) : (
+              <EmptyCard>
+                <EmptyTitle>No projects found</EmptyTitle>
+                <EmptyCopy>Try another search term or create a new project workspace.</EmptyCopy>
+              </EmptyCard>
+            )}
+          </DesktopList>
+        ) : (
+          <DesktopTableWrap ref={desktopTableWrapRef}>
+            {tableProjects.length ? (
+              <>
+                <DesktopTable>
+                  <thead>
+                    <tr>
+                      <th>Project</th>
+                      <th>Organization</th>
+                      <th>Stage</th>
+                      <th>Due date</th>
+                      <th>Primary contact</th>
+                      <th>Contact number</th>
+                      <th>Open tasks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableProjects.map((project) => {
+                      const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
+                      const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
+                      const contactNumberLabel = project.contactNumber?.trim() || "No contact number";
+                      const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
+
+                      return (
+                        <DesktopTableRow
+                          key={project.id}
+                          $attention={attentionCount > 0}
+                          onClick={() => {
+                            void router.push(`/projects/${project.id}`);
+                          }}
+                        >
+                          <td>
+                            <TableProjectCell>
+                              <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
+                              <strong>{project.name}</strong>
+                            </TableProjectCell>
+                          </td>
+                          <td>
+                            <OrganizationPill>{clientOrganizationName}</OrganizationPill>
+                          </td>
+                          <td>
+                            <TableStageCell>
+                              <span>{formatProjectStage(project.stage)}</span>
+                              <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
+                            </TableStageCell>
+                          </td>
+                          <td>{formatDueDate(project.dueDate)}</td>
+                          <td>{primaryContactLabel}</td>
+                          <td>{contactNumberLabel}</td>
+                          <td>{user ? getVisibleTasksForUser(user, project).filter((task) => task.status !== "approved").length : 0}</td>
+                        </DesktopTableRow>
+                      );
+                    })}
+                  </tbody>
+                </DesktopTable>
+                {desktopTableVisibleCount < filteredProjects.length ? (
+                  <DesktopTableLoadMoreSentinel ref={desktopTableLoadMoreRef} />
+                ) : null}
+              </>
+            ) : (
+              <EmptyCard>
+                <EmptyTitle>No projects found</EmptyTitle>
+                <EmptyCopy>Try another search term or create a new project workspace.</EmptyCopy>
+              </EmptyCard>
+            )}
+          </DesktopTableWrap>
+        )}
 
         <MobileList>
           {mobileProjects.length ? (
@@ -535,7 +699,7 @@ export function ProjectsScreen() {
 
         {mobileVisibleCount < filteredProjects.length ? <LoadMoreSentinel ref={mobileLoadMoreRef} /> : null}
 
-        {filteredProjects.length ? (
+        {filteredProjects.length && (desktopView !== "table" || !canToggleDesktopView) ? (
           <PaginationBar>
             <CountText>
               Showing {rangeStart} to {rangeEnd} of {totalProjects} projects
@@ -609,7 +773,11 @@ const Content = styled.section`
     border-radius: 0 26px 26px 0;
     background:
       radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
-      linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84));
+      linear-gradient(
+        180deg,
+        var(--client-brand-soft-panel, rgba(252, 249, 244, 0.92)),
+        rgba(247, 243, 237, 0.84)
+      );
   }
 `;
 
@@ -731,6 +899,31 @@ const Toolbar = styled.section`
   }
 `;
 
+const ProjectsDesktopViewToggleGroup = styled.div`
+  display: none;
+
+  ${desktop} {
+  ${controlSurface}
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+  }
+`;
+
+const ProjectsDesktopViewButton = styled.button<{ $active?: boolean }>`
+  min-height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: ${({ $active }) => ($active ? "var(--client-brand-primary, #214f39)" : "transparent")};
+  color: ${({ $active }) => ($active ? "var(--client-brand-on-primary, #fff)" : "var(--color-text-muted)")};
+  font-size: 0.7rem;
+  font-weight: 600;
+`;
+
 const SearchControls = styled.form`
   display: flex;
   align-items: stretch;
@@ -780,7 +973,8 @@ const SearchInput = styled.input`
 `;
 
 const FilterMenuWrap = styled.div`
-  position: relative;
+  display: flex;
+  gap: 10px;
 `;
 
 const FilterButton = styled.button`
@@ -815,8 +1009,8 @@ const FilterBadge = styled.span`
 `;
 
 const SearchButton = styled(FilterButton)`
-  background: var(--color-primary);
-  color: #fff;
+  background: var(--client-brand-primary, var(--color-primary));
+  color: var(--client-brand-on-primary, #fff);
 `;
 
 const FilterPopup = styled.div`
@@ -855,8 +1049,8 @@ const CreateButton = styled(Link)`
   padding: 0 16px;
   border: 0;
   border-radius: 10px;
-  background: var(--color-primary);
-  color: #fff;
+  background: var(--client-brand-primary, var(--color-primary));
+  color: var(--client-brand-on-primary, #fff);
   font-size: 14px;
   font-weight: 600;
   box-shadow: 0 14px 26px rgba(31, 68, 57, 0.16);
@@ -951,6 +1145,102 @@ const DesktopList = styled.section`
     flex-direction: column;
     gap: 14px;
     margin-top: 18px;
+  }
+`;
+
+const DesktopTableWrap = styled.section`
+  display: none;
+
+  ${desktop} {
+    ${cardSurface}
+    display: block;
+    margin-top: 18px;
+    border-radius: 24px;
+    overflow: auto;
+    max-height: 650px;
+  }
+`;
+
+const DesktopTableLoadMoreSentinel = styled.div`
+  height: 1px;
+`;
+
+const DesktopTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 16px 18px;
+    border-bottom: 1px solid rgba(230, 224, 215, 0.95);
+    background: rgba(255, 255, 255, 0.98);
+    color: var(--color-text-light);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 14px 16px;
+    border-top: 1px solid rgba(240, 235, 228, 0.9);
+    vertical-align: middle;
+    font-size: 0.82rem;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  tbody tr:first-child td {
+    border-top: 0;
+  }
+`;
+
+const DesktopTableRow = styled.tr<{ $attention?: boolean }>`
+  background: ${({ $attention }) => ($attention ? "rgba(255, 244, 244, 0.92)" : "transparent")};
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+
+  &:hover {
+    background: ${({ $attention }) => ($attention ? "rgba(255, 232, 232, 0.98)" : "rgba(252, 241, 226, 0.98)")};
+    box-shadow: inset 0 0 0 1px rgba(220, 208, 194, 0.75);
+  }
+`;
+
+const TableProjectCell = styled.div`
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+
+  strong {
+    font-size: 0.88rem;
+    color: var(--color-text);
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+`;
+
+const TableStageCell = styled.div`
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+
+  span {
+    font-size: 0.76rem;
+    font-weight: 500;
+    color: var(--color-text);
+    white-space: nowrap;
   }
 `;
 
@@ -1425,6 +1715,17 @@ function IconFilter() {
       <path d="M4 7h16" />
       <path d="M7 12h10" />
       <path d="M10 17h4" />
+    </svg>
+  );
+}
+
+function IconSort() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 6v12" />
+      <path d="m5 9 3-3 3 3" />
+      <path d="M16 18V6" />
+      <path d="m13 15 3 3 3-3" />
     </svg>
   );
 }

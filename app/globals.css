@@ -144,6 +144,12 @@ textarea:focus {
   min-height: 100vh;
 }
 
+@media (max-width: 1099px) {
+  .app-content {
+    min-height: auto;
+  }
+}
+
 .auth-screen,
 .page-stack {
   position: relative;

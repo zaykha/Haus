@@ -18,6 +18,7 @@ import { formatRole } from "@/lib/display";
 import { canCreateClient, getUserClientOrganizationIds } from "@/lib/permissions";
 
 type ClientFilter = "all" | "active" | "feedback" | "approvals" | "inactive";
+type ClientSortKey = "name" | "created_at_desc" | "created_at_asc";
 const PAGE_SIZE = 6;
 const MOBILE_BATCH_SIZE = 20;
 const desktop = "@media (min-width: 768px)";
@@ -76,6 +77,8 @@ export function ClientsScreen() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ClientFilter>("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [sort, setSort] = useState<ClientSortKey>("name");
+  const [showSort, setShowSort] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [showCreateOrganizationModal, setShowCreateOrganizationModal] = useState(false);
   const [organizationName, setOrganizationName] = useState("");
@@ -88,6 +91,7 @@ export function ClientsScreen() {
   const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
   const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const appliedFilterCount = filter !== "all" ? 1 : 0;
+  const appliedSortCount = sort !== "name" ? 1 : 0;
 
   useEffect(() => {
     if (isCreatingOrganization) {
@@ -99,6 +103,10 @@ export function ClientsScreen() {
   const roleLabel = formatRole(viewerRole).toUpperCase();
   const canManage = canCreateClient(viewerRole);
   const clients = useMemo(() => buildClientOrganizationRows(state), [state]);
+  const clientCreatedAtById = useMemo(
+    () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization.createdAt ?? ""])),
+    [state.clientOrganizations],
+  );
   const viewerClientOrganizationIds = useMemo(
     () => (user ? getUserClientOrganizationIds(user) : []),
     [user],
@@ -113,7 +121,7 @@ export function ClientsScreen() {
 
   const filteredClients = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return visibleClients.filter((client) => {
+    const nextClients = visibleClients.filter((client) => {
       const matchesSearch =
         !q ||
         client.name.toLowerCase().includes(q) ||
@@ -139,7 +147,24 @@ export function ClientsScreen() {
 
       return matchesSearch && matchesFilter;
     });
-  }, [filter, search, visibleClients]);
+    return [...nextClients].sort((left, right) => {
+      if (sort === "created_at_desc") {
+        return (
+          new Date(clientCreatedAtById.get(right.id) ?? 0).getTime() -
+          new Date(clientCreatedAtById.get(left.id) ?? 0).getTime()
+        );
+      }
+
+      if (sort === "created_at_asc") {
+        return (
+          new Date(clientCreatedAtById.get(left.id) ?? 0).getTime() -
+          new Date(clientCreatedAtById.get(right.id) ?? 0).getTime()
+        );
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  }, [clientCreatedAtById, filter, search, sort, visibleClients]);
 
   const totalCount = visibleClients.length;
   const activeCount = visibleClients.filter((client) => client.status === "active").length;
@@ -411,6 +436,34 @@ export function ClientsScreen() {
             }}
             onClose={() => setShowFilters(false)}
           />
+          <FilterModal
+            open={showSort}
+            title="Sort client organizations"
+            description="Adjust organization sorting."
+            sections={[
+              {
+                id: "sort",
+                label: "Sort by",
+                options: [
+                  { value: "name", label: "Name" },
+                  { value: "created_at_desc", label: "Newest to Oldest" },
+                  { value: "created_at_asc", label: "Oldest to Newest" },
+                ],
+              },
+            ]}
+            values={{ sort }}
+            onApply={(nextValues) => {
+              setSort(nextValues.sort as ClientSortKey);
+              setCurrentPage(1);
+            }}
+            onReset={() => {
+              setSort("name");
+              setCurrentPage(1);
+            }}
+            onClose={() => setShowSort(false)}
+            applyLabel="Apply sort"
+            resetLabel="Default sort"
+          />
           <SearchControls
             onSubmit={(event: FormEvent<HTMLFormElement>) => {
               event.preventDefault();
@@ -435,6 +488,17 @@ export function ClientsScreen() {
                 {appliedFilterCount ? <FilterBadge>{appliedFilterCount}</FilterBadge> : null}
                 <ActionIcon>
                   <IconFilter />
+                </ActionIcon>
+              </FilterButton>
+              <FilterButton
+                type="button"
+                aria-label="Open sorting"
+                aria-expanded={showSort}
+                onClick={() => setShowSort(true)}
+              >
+                {appliedSortCount ? <FilterBadge>{appliedSortCount}</FilterBadge> : null}
+                <ActionIcon>
+                  <IconSort />
                 </ActionIcon>
               </FilterButton>
             </FilterMenuWrap>
@@ -794,7 +858,8 @@ const SearchInput = styled.input`
 `;
 
 const FilterMenuWrap = styled.div`
-  position: relative;
+  display: flex;
+  gap: 10px;
 `;
 
 const FilterButton = styled.button`
@@ -1569,6 +1634,17 @@ function IconFilter() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 7h16M7 12h10M10 17h4" />
+    </svg>
+  );
+}
+
+function IconSort() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 6v12" />
+      <path d="m5 9 3-3 3 3" />
+      <path d="M16 18V6" />
+      <path d="m13 15 3 3 3-3" />
     </svg>
   );
 }

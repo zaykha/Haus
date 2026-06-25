@@ -11,7 +11,8 @@ import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { FilterModal } from "@/components/filter-modal";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { UserAvatar } from "@/components/user-avatar";
-import { canCreateTask, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
+import { getClientBrandStyle } from "@/lib/client-branding";
+import { canCreateTask, canViewProject, getUserClientOrganizationIds, getVisibleTasksForUser } from "@/lib/permissions";
 import { taskNeedsAttention } from "@/lib/task-attention";
 import { formatLabel, formatRole, getTaskStatusLabel } from "@/lib/display";
 import { Project, TaskManagerReviewStatus, TaskPriority, TaskStatus } from "@/lib/types";
@@ -65,6 +66,7 @@ const tablet = "@media (min-width: 768px) and (max-width: 1099px)";
 const tabletUp = "@media (min-width: 768px)";
 const desktop = "@media (min-width: 1100px)";
 const MOBILE_BATCH_SIZE = 20;
+const TABLE_BATCH_SIZE = 20;
 
 const sideNavItems = [
   { label: "Home", href: "/dashboard", icon: <IconHome /> },
@@ -205,11 +207,13 @@ export function TasksScreen() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [priorityFilter, setPriorityFilter] = useState<DerivedPriority | "all">("all");
   const [projectFilter, setProjectFilter] = useState("all");
-  const [sort, setSort] = useState<SortKey>("priority");
+  const [sort, setSort] = useState<SortKey>("due_date");
   const [showFilters, setShowFilters] = useState(false);
+  const [showSort, setShowSort] = useState(false);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [activeDesignerTaskId, setActiveDesignerTaskId] = useState<string | null>(null);
+  const [desktopView, setDesktopView] = useState<"cards" | "table">("table");
   const [taskSelect, setTaskSelect] = useState<"project" | "assignee" | "status" | null>(null);
   const [newTaskProjectId, setNewTaskProjectId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -218,14 +222,17 @@ export function TasksScreen() {
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
   const [visibleCount, setVisibleCount] = useState(MOBILE_BATCH_SIZE);
+  const [desktopTableVisibleCount, setDesktopTableVisibleCount] = useState(TABLE_BATCH_SIZE);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const desktopTableWrapRef = useRef<HTMLElement | null>(null);
+  const desktopTableLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const quickFilter = searchParams.get("quick") ?? "";
   const appliedFilterCount =
     (quickFilter ? 1 : 0) +
     (filter !== "all" ? 1 : 0) +
     (priorityFilter !== "all" ? 1 : 0) +
-    (projectFilter !== "all" ? 1 : 0) +
-    (sort !== "priority" ? 1 : 0);
+    (projectFilter !== "all" ? 1 : 0);
+  const appliedSortCount = sort !== "due_date" ? 1 : 0;
 
   const visibleProjects = useMemo(
     () => (user ? state.projects.filter((project) => canViewProject(user, project)) : []),
@@ -253,6 +260,19 @@ export function TasksScreen() {
   const organizationNames = useMemo(
     () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization.name])),
     [state.clientOrganizations],
+  );
+  const currentClientOrganization = useMemo(
+    () =>
+      user?.role === "client"
+        ? state.clientOrganizations.find((organization) =>
+            getUserClientOrganizationIds(user).includes(organization.id),
+          ) ?? null
+        : null,
+    [state.clientOrganizations, user],
+  );
+  const clientBrandStyle = useMemo(
+    () => getClientBrandStyle(currentClientOrganization),
+    [currentClientOrganization],
   );
 
   const roleLabel = user ? formatRole(user.role).toUpperCase() : "";
@@ -386,14 +406,17 @@ export function TasksScreen() {
   }, [allTasks, filter, priorityFilter, projectFilter, quickFilter, search, sort]);
 
   const visibleTasks = filteredTasks.slice(0, visibleCount);
+  const desktopTableTasks = filteredTasks.slice(0, desktopTableVisibleCount);
   const hasMoreTasks = visibleCount < filteredTasks.length;
+  const hasMoreDesktopTableTasks = desktopTableVisibleCount < filteredTasks.length;
   const activeDesignerTask = activeDesignerTaskId
     ? allTasks.find((task) => task.id === activeDesignerTaskId) ?? null
     : null;
 
   useEffect(() => {
     setVisibleCount(MOBILE_BATCH_SIZE);
-  }, [filter, priorityFilter, projectFilter, search, sort]);
+    setDesktopTableVisibleCount(TABLE_BATCH_SIZE);
+  }, [desktopView, filter, priorityFilter, projectFilter, search, sort]);
 
   useEffect(() => {
     const node = loadMoreRef.current;
@@ -413,6 +436,30 @@ export function TasksScreen() {
     observer.observe(node);
     return () => observer.disconnect();
   }, [filteredTasks.length, hasMoreTasks]);
+
+  useEffect(() => {
+    if (desktopView !== "table") {
+      return;
+    }
+
+    const root = desktopTableWrapRef.current;
+    const node = desktopTableLoadMoreRef.current;
+    if (!root || !node || !hasMoreDesktopTableTasks) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setDesktopTableVisibleCount((current) => Math.min(current + TABLE_BATCH_SIZE, filteredTasks.length));
+        }
+      },
+      { root, rootMargin: "220px 0px" },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [desktopView, filteredTasks.length, hasMoreDesktopTableTasks]);
 
   if (!ready) {
     return <ListScreenSkeleton title="Tasks" showStats={false} />;
@@ -470,7 +517,7 @@ export function TasksScreen() {
   };
 
   return (
-    <Shell>
+    <Shell style={isClient ? clientBrandStyle : undefined}>
       {isCreatingTask ? (
         <PopupLoadingOverlay role="status" aria-live="polite">
           <div className="auth-loading-card">
@@ -723,6 +770,26 @@ export function TasksScreen() {
                 searchable: true,
                 searchPlaceholder: "Search projects...",
               },
+            ]}
+            values={{ filter, priorityFilter, projectFilter }}
+            onApply={(nextValues) => {
+              setFilter(nextValues.filter as FilterKey);
+              setPriorityFilter(nextValues.priorityFilter as DerivedPriority | "all");
+              setProjectFilter(nextValues.projectFilter);
+            }}
+            onReset={() => {
+              setFilter("all");
+              setPriorityFilter("all");
+              setProjectFilter("all");
+              router.replace(pathname);
+            }}
+            onClose={() => setShowFilters(false)}
+          />
+          <FilterModal
+            open={showSort}
+            title="Sort tasks"
+            description="Adjust task sorting."
+            sections={[
               {
                 id: "sort",
                 label: "Sort by",
@@ -734,21 +801,16 @@ export function TasksScreen() {
                 ],
               },
             ]}
-            values={{ filter, priorityFilter, projectFilter, sort }}
+            values={{ sort }}
             onApply={(nextValues) => {
-              setFilter(nextValues.filter as FilterKey);
-              setPriorityFilter(nextValues.priorityFilter as DerivedPriority | "all");
-              setProjectFilter(nextValues.projectFilter);
               setSort(nextValues.sort as SortKey);
             }}
             onReset={() => {
-              setFilter("all");
-              setPriorityFilter("all");
-              setProjectFilter("all");
-              setSort("priority");
-              router.replace(pathname);
+              setSort("due_date");
             }}
-            onClose={() => setShowFilters(false)}
+            onClose={() => setShowSort(false)}
+            applyLabel="Apply sort"
+            resetLabel="Default sort"
           />
           <SearchControls onSubmit={handleSearchSubmit}>
             <SearchWrap>
@@ -770,6 +832,17 @@ export function TasksScreen() {
                   <IconFilter />
                 </ActionIcon>
               </FilterButton>
+              <FilterButton
+                type="button"
+                aria-label="Open sorting"
+                aria-expanded={showSort}
+                onClick={() => setShowSort(true)}
+              >
+                {appliedSortCount ? <FilterBadge>{appliedSortCount}</FilterBadge> : null}
+                <ActionIcon>
+                  <IconSort />
+                </ActionIcon>
+              </FilterButton>
             </FilterMenuWrap>
             <SearchButton type="submit" aria-label="Search tasks">
               <ActionIcon>
@@ -786,9 +859,99 @@ export function TasksScreen() {
               <span>Task</span>
             </CreateButton>
           ) : null}
+
+          <DesktopViewToggleGroup aria-label="Task view">
+            <DesktopViewToggleButton
+              type="button"
+              $active={desktopView === "cards"}
+              onClick={() => setDesktopView("cards")}
+            >
+              Cards
+            </DesktopViewToggleButton>
+            <DesktopViewToggleButton
+              type="button"
+              $active={desktopView === "table"}
+              onClick={() => setDesktopView("table")}
+            >
+              Table
+            </DesktopViewToggleButton>
+          </DesktopViewToggleGroup>
         </Toolbar>
 
-        <TaskList>
+        <DesktopPanel ref={desktopTableWrapRef} $visible={desktopView === "table"}>
+          {filteredTasks.length ? (
+            <>
+              <TaskTableHeader>
+                <span>Task</span>
+                <span>Project</span>
+                <span>Company</span>
+                <span>Assignee</span>
+                <span>Due date</span>
+                <span>Status</span>
+                <span>Priority</span>
+              </TaskTableHeader>
+              <TaskTable>
+                {desktopTableTasks.map((task) => {
+                  const statusTone = getStatusTone(task.status);
+                  const priorityTone = getPriorityTone(task.priority);
+                  const isTaskClickable = isDesigner && task.assigneeId === user.id;
+                  const taskHref =
+                    isClient ? `/projects/${task.projectId}` : `/projects/${task.projectId}/tasks/${task.id}`;
+                  const rowContent = (
+                    <TaskDesktopRowGrid>
+                      <TaskDesktopPrimary>
+                        <TaskDesktopMark>{task.projectMark}</TaskDesktopMark>
+                        <TaskDesktopPrimaryCopy>
+                          <strong>{task.title}</strong>
+                        </TaskDesktopPrimaryCopy>
+                      </TaskDesktopPrimary>
+                      <TaskDesktopText>{task.projectName}</TaskDesktopText>
+                      <TaskDesktopText>{task.clientOrganizationName}</TaskDesktopText>
+                      <TaskDesktopText>
+                        {task.assigneeName}
+                        {task.assigneePhone ? ` · ${task.assigneePhone}` : ""}
+                      </TaskDesktopText>
+                      <TaskDesktopText>{formatDueDate(task.dueDate)}</TaskDesktopText>
+                      <TaskDesktopPill style={{ background: statusTone.bg, color: statusTone.fg }}>
+                        {statusTone.label}
+                      </TaskDesktopPill>
+                      <TaskDesktopPill style={{ background: priorityTone.bg, color: priorityTone.fg }}>
+                        {priorityTone.label}
+                      </TaskDesktopPill>
+                    </TaskDesktopRowGrid>
+                  );
+
+                  return isTaskClickable ? (
+                    <DesktopTaskButtonRow
+                      key={task.id}
+                      $attention={task.needsAttention}
+                      type="button"
+                      onClick={() => openDesignerTaskModal(task)}
+                    >
+                      {rowContent}
+                    </DesktopTaskButtonRow>
+                  ) : (
+                    <DesktopTaskLinkRow
+                      key={task.id}
+                      $attention={task.needsAttention}
+                      href={taskHref}
+                    >
+                      {rowContent}
+                    </DesktopTaskLinkRow>
+                  );
+                })}
+                {hasMoreDesktopTableTasks ? <LoadMoreSentinel ref={desktopTableLoadMoreRef} aria-hidden="true" /> : null}
+              </TaskTable>
+            </>
+          ) : (
+            <EmptyState>
+              <strong>No tasks found</strong>
+              <p>Try another search term or adjust the selected status filter.</p>
+            </EmptyState>
+          )}
+        </DesktopPanel>
+
+        <TaskList $hideOnDesktop={desktopView === "table"}>
           {filteredTasks.length ? (
             visibleTasks.map((task) => {
               const statusTone = getStatusTone(task.status);
@@ -903,7 +1066,7 @@ const Shell = styled.main`
     display: flex;
     align-items: flex-start;
     padding: 8px;
-    background: rgba(255, 255, 255, 0.58);
+    background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
   }
 `;
 
@@ -1013,7 +1176,11 @@ const Content = styled.section`
     border-radius: 0 26px 26px 0;
     background:
       radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
-      linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84));
+      linear-gradient(
+        180deg,
+        var(--client-brand-soft-panel, rgba(252, 249, 244, 0.92)),
+        rgba(247, 243, 237, 0.84)
+      );
   }
 `;
 
@@ -1128,7 +1295,8 @@ const SearchInput = styled.input`
 `;
 
 const FilterMenuWrap = styled.div`
-  position: relative;
+  display: flex;
+  gap: 10px;
 `;
 
 const FilterButton = styled.button`
@@ -1166,8 +1334,8 @@ const FilterBadge = styled.span`
 `;
 
 const SearchButton = styled(FilterButton)`
-  background: #1f4339;
-  color: #fff;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
 `;
 
 const FilterPopup = styled.div`
@@ -1208,8 +1376,8 @@ const CreateButton = styled.button`
   padding: 0 16px;
   border: 0;
   border-radius: 10px;
-  background: #1f4339;
-  color: #fff;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
   font-size: 0.9rem;
   font-weight: 700;
   box-shadow: 0 14px 26px rgba(31, 68, 57, 0.16);
@@ -1219,20 +1387,48 @@ const CreateButton = styled.button`
   }
 `;
 
-const DesktopPanel = styled.section`
-  ${cardSurface}
+const DesktopViewToggleGroup = styled.div`
   display: none;
-  border-radius: 22px;
-  overflow: hidden;
 
   ${desktop} {
-    display: block;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid rgba(230, 224, 215, 0.95);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: var(--shadow-sm);
+    flex: 0 0 auto;
+  }
+`;
+
+const DesktopViewToggleButton = styled.button<{ $active?: boolean }>`
+  min-height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: ${({ $active }) => ($active ? "var(--client-brand-primary, #214f39)" : "transparent")};
+  color: ${({ $active }) => ($active ? "var(--client-brand-on-primary, #fff)" : "var(--color-text-muted)")};
+  font-size: 0.7rem;
+  font-weight: 600;
+`;
+
+const DesktopPanel = styled.section<{ $visible?: boolean }>`
+  display: none;
+
+  ${desktop} {
+    ${cardSurface}
+    display: ${({ $visible }) => ($visible ? "block" : "none")};
+    border-radius: 22px;
+    overflow: auto;
+    max-height: 650px;
   }
 `;
 
 const TaskTableHeader = styled.div`
   display: grid;
-  grid-template-columns: 40px 1.6fr 1.4fr 1.2fr 1fr 1fr 1fr 60px;
+  grid-template-columns: minmax(220px, 1.6fr) minmax(140px, 1.1fr) minmax(180px, 1.2fr) minmax(180px, 1.2fr) minmax(110px, 0.8fr) minmax(110px, 0.8fr) minmax(100px, 0.7fr);
   align-items: center;
   gap: 16px;
   padding: 18px 20px;
@@ -1241,6 +1437,10 @@ const TaskTableHeader = styled.div`
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.98);
 `;
 
 const TaskTable = styled.div`
@@ -1265,9 +1465,11 @@ const taskRowSurfaceCss = css<{ $attention?: boolean }>`
     &:hover {
       transform: translateY(-2px);
       background: ${({ $attention }) =>
-        $attention ? "rgba(255, 244, 244, 0.96)" : "rgba(255, 248, 239, 0.92)"};
+        $attention ? "rgba(255, 232, 232, 0.98)" : "rgba(252, 241, 226, 0.98)"};
       border-color: ${({ $attention }) => ($attention ? "#d94b4b" : "rgba(220, 208, 194, 0.95)")};
-      box-shadow: 0 14px 28px rgba(31, 31, 31, 0.08);
+      box-shadow:
+        inset 0 0 0 1px rgba(220, 208, 194, 0.75),
+        0 14px 28px rgba(31, 31, 31, 0.08);
       color: #1f4339;
     }
   }
@@ -1290,13 +1492,80 @@ const DesktopTaskButtonRow = styled.button<{ $attention?: boolean }>`
   text-align: left;
 `;
 
-const TaskList = styled.section`
+const TaskDesktopRowGrid = styled.div`
+  display: grid;
+  grid-template-columns: minmax(220px, 1.6fr) minmax(140px, 1.1fr) minmax(180px, 1.2fr) minmax(180px, 1.2fr) minmax(110px, 0.8fr) minmax(110px, 0.8fr) minmax(100px, 0.7fr);
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+`;
+
+const TaskDesktopPrimary = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+`;
+
+const TaskDesktopMark = styled.div`
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
+  color: #8c7040;
+  font-size: 0.82rem;
+  font-weight: 700;
+`;
+
+const TaskDesktopPrimaryCopy = styled.div`
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+
+  strong {
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+`;
+
+const TaskDesktopText = styled.span`
+  min-width: 0;
+  color: var(--color-text);
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const TaskDesktopPill = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+`;
+
+const TaskList = styled.section<{ $hideOnDesktop?: boolean }>`
   display: grid;
   gap: 12px;
 
   margin-top: 6px;
 
   ${desktop} {
+    display: ${({ $hideOnDesktop }) => ($hideOnDesktop ? "none" : "grid")};
     gap: 14px;
     margin-top: 4px;
   }
@@ -2227,6 +2496,17 @@ function IconFilter() {
       <path d="M4 6h16" />
       <path d="M7 12h10" />
       <path d="M10 18h4" />
+    </svg>
+  );
+}
+
+function IconSort() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 6v12" />
+      <path d="m5 9 3-3 3 3" />
+      <path d="M16 18V6" />
+      <path d="m13 15 3 3 3-3" />
     </svg>
   );
 }

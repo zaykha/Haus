@@ -18,6 +18,8 @@ export const appConfig = {
     process.env.NEXT_PUBLIC_SUPABASE_USER_PROFILE_IMAGES_BUCKET || "user-profile-images",
   organizationProfileImagesBucket:
     process.env.NEXT_PUBLIC_SUPABASE_ORGANIZATION_PROFILE_IMAGES_BUCKET || "organization-profile-images",
+  chatImagesBucket:
+    process.env.NEXT_PUBLIC_SUPABASE_CHAT_IMAGES_BUCKET || "chat-images",
 };
 
 export const isSupabaseConfigured = Boolean(

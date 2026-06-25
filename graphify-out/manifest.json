@@ -79,6 +79,11 @@
     "ast_hash": "6d971b27b23ca69a0705c310ce805c21",
     "semantic_hash": ""
   },
+  "/Users/thihanaing/Haus/app/(app)/chat/page.tsx": {
+    "mtime": 1782197540.5948184,
+    "ast_hash": "dda53de2225a65c3f743bf75553db0c0",
+    "semantic_hash": ""
+  },
   "/Users/thihanaing/Haus/app/(app)/projects/page.tsx": {
     "mtime": 1780902961.919398,
     "ast_hash": "9380ca1dc8576e757be6a579c588a6dd",
@@ -122,6 +127,21 @@
   "/Users/thihanaing/Haus/app/api/tasks/upload-deliverable/route.ts": {
     "mtime": 1781686040.5722466,
     "ast_hash": "138eb8fcfc99e475b98029ad12dd64cb",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/api/chat/upload-image/route.ts": {
+    "mtime": 1782367711.3582492,
+    "ast_hash": "42f0cc4bc86b336afc1058e6d8dc9ed3",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/api/chat/conversations/start/route.ts": {
+    "mtime": 1782357855.977604,
+    "ast_hash": "5bcb7d71d4e63d07f93ea5a886fbf4b5",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/app/api/chat/conversations/[id]/route.ts": {
+    "mtime": 1782376865.1540272,
+    "ast_hash": "7bbff8a9906de8a22db0b72c565733ff",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/projects/upload-reference/route.ts": {
@@ -170,8 +190,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/tasks/[taskId]/route.ts": {
-    "mtime": 1781864340.341948,
-    "ast_hash": "1338d26a9665ba104691e557e0570bbe",
+    "mtime": 1782140380.3266125,
+    "ast_hash": "ad25d58cdb65e1eef6513551cd0727f2",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/workflow/route.ts": {
@@ -185,8 +205,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/state/route.ts": {
-    "mtime": 1781966453.4391048,
-    "ast_hash": "fa33093ef5fa1aefea73e32c074fbd29",
+    "mtime": 1782383826.6724737,
+    "ast_hash": "246c88b3734c2659f1aac429d37b031c",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/profile/route.ts": {
@@ -247,6 +267,11 @@
   "/Users/thihanaing/Haus/supabase/migrations/20260616_projects_drop_legacy_status_columns.sql": {
     "mtime": 1781617162.525034,
     "ast_hash": "8462e6dec695dafc27d46a5d54e2cd55",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/supabase/migrations/20260623_chat_system.sql": {
+    "mtime": 1782197039.5745366,
+    "ast_hash": "ad4d1c3c65ce4c65d4653e84f12fd8ea",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/supabase/migrations/20260620_profile_avatar_path.sql": {
@@ -335,8 +360,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/tasks-screen.tsx": {
-    "mtime": 1782103123.9027498,
-    "ast_hash": "9d4cd35d01d22e0871856b8cd125453b",
+    "mtime": 1782392389.9126863,
+    "ast_hash": "c77006a61ed6bae3ba5ebca527fa2f1e",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/user-avatar.tsx": {
@@ -345,8 +370,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/client-organization-detail-screen.tsx": {
-    "mtime": 1782135554.2384925,
-    "ast_hash": "412a3dd1bd1936ca8825408bf7d502ed",
+    "mtime": 1782137981.744797,
+    "ast_hash": "12ce6578e1d157606102e6b82fc4cbfe",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/page-skeletons.tsx": {
@@ -380,18 +405,18 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/projects-screen.tsx": {
-    "mtime": 1782134506.327307,
-    "ast_hash": "0c977db016576868fd89e2d5f7eb978c",
+    "mtime": 1782386066.801341,
+    "ast_hash": "fc4a12cb56d6fe8bbfb1e8c599a20448",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/app-state.tsx": {
-    "mtime": 1782134427.5721786,
+    "mtime": 1782134428.572177,
     "ast_hash": "6eaf88a0899dbb179a4f726882a83a95",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/task-detail-screen.tsx": {
-    "mtime": 1782044330.836333,
-    "ast_hash": "824acfcb754a10800f58e4c592da65dd",
+    "mtime": 1782194924.7036602,
+    "ast_hash": "ff827a2e5b00a9e0fb696935e640a5a2",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/confirm-action-modal.tsx": {
@@ -415,8 +440,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/app-sidebar.tsx": {
-    "mtime": 1782135832.5982394,
-    "ast_hash": "09d6effe0e36244acb5bcf7c984f4e9d",
+    "mtime": 1782366413.0403938,
+    "ast_hash": "378372304955d69e1e83dae3202c49b3",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/avatar-picker.tsx": {
@@ -425,8 +450,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/designer-task-modal.tsx": {
-    "mtime": 1781951025.889714,
-    "ast_hash": "07b2daa856c8bb7095e544ea24ccdd6b",
+    "mtime": 1782140690.7831361,
+    "ast_hash": "43e298fa67942eac299ed192bdc283df",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/project-form.tsx": {
@@ -455,8 +480,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/dashboard-screen.tsx": {
-    "mtime": 1782102290.8957763,
-    "ast_hash": "85bcef0fdd51885e9f47ebd8e59e6a7d",
+    "mtime": 1782383293.6808784,
+    "ast_hash": "2e626379895531fddcdbc7373b56b3ab",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/clients-screen.tsx": {
@@ -465,8 +490,23 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/ui.tsx": {
-    "mtime": 1782135836.8786442,
-    "ast_hash": "95fdfc5f0979cd8ae3cdbb64c18ff07f",
+    "mtime": 1782366424.702948,
+    "ast_hash": "56421cdccf7079ac9d4fa04f03730cc5",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/chat/use-chat-unread-total.ts": {
+    "mtime": 1782366759.1414998,
+    "ast_hash": "3781d477258838fe28a1ea3a4f1a7dae",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/chat/start-chat-options.tsx": {
+    "mtime": 1782379031.949232,
+    "ast_hash": "fe45cc55375f3a9ae90d3ee8469b71ed",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/components/chat/chat-screen.tsx": {
+    "mtime": 1782380471.6368084,
+    "ast_hash": "bb8cc0e64b1dd69092f19d2054f613ce",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/.codex/hooks.json": {
@@ -485,8 +525,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/navigation.ts": {
-    "mtime": 1782135828.4557927,
-    "ast_hash": "35dea70c4676b8fffb50c2033eee6e26",
+    "mtime": 1782197484.936389,
+    "ast_hash": "dcec96e7e10640c5f794cac5a7eb9db0",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/invitations.ts": {
@@ -525,8 +565,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/config.ts": {
-    "mtime": 1781768441.3315787,
-    "ast_hash": "c39dcdd2f58cfe373ccb2f6141cc794e",
+    "mtime": 1782367693.5759583,
+    "ast_hash": "910f0e8124a3770ca9d26904f6f428bc",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/task-attention.ts": {
@@ -555,8 +595,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/task-completion-assets.ts": {
-    "mtime": 1781861378.2728584,
-    "ast_hash": "a4fc5652d601bf1533a8f5ebe20cd058",
+    "mtime": 1782192942.109264,
+    "ast_hash": "be9a0a444587cbf10c97b8c418e2d8d9",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/supabase/admin.ts": {
@@ -575,13 +615,18 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/TODO.md": {
-    "mtime": 1781092407.764393,
-    "ast_hash": "6d0dd3154d1c8206801448ef67be4113",
+    "mtime": 1782209540.7444327,
+    "ast_hash": "32d3a13fc7a9c92b638c9122659198ec",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/README.md": {
     "mtime": 1781231327.5787175,
     "ast_hash": "83b21582d3322fc3bd4e1b78d09d8d2f",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/TODO_CHAT_START_NEW_CHAT.md": {
+    "mtime": 1782212612.5414739,
+    "ast_hash": "d48b74c1e0a0d65690da2e9721cd73c4",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/design.md": {
@@ -627,6 +672,11 @@
   "/Users/thihanaing/Haus/docs/ENVIRONMENT_VARIABLES.md": {
     "mtime": 1781231292.2102997,
     "ast_hash": "167cbf0d921e00a1c41ca243e326df6a",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/docs/chat-image-attachments.md": {
+    "mtime": 1782368737.9661484,
+    "ast_hash": "73a85314adde0cd96195a0a5896d6d3c",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/public/haus_logo.png": {

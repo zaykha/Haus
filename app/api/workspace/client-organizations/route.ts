@@ -17,6 +17,8 @@ export async function POST(request: NextRequest) {
     name?: string;
     type?: "internal" | "external";
     status?: "active" | "inactive";
+    logoUrl?: string;
+    brandColor?: string;
     phone?: string;
     address?: string;
   };
@@ -31,6 +33,8 @@ export async function POST(request: NextRequest) {
       name: body.name.trim(),
       type: body.type ?? "external",
       status: body.status ?? "active",
+      logo_url: body.logoUrl?.trim() || null,
+      brand_color: body.brandColor?.trim() || null,
       phone: (body.type ?? "external") === "external" ? body.phone?.trim() || null : null,
       address: (body.type ?? "external") === "external" ? body.address?.trim() || null : null,
     })

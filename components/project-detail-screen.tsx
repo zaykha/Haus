@@ -9,7 +9,9 @@ import { useAppState } from "@/components/app-state";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
+import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { ProjectForm, ProjectFormValues } from "@/components/project-form";
+import { getClientBrandStyle } from "@/lib/client-branding";
 import {
   canCreateTask,
   canDeleteProject,
@@ -42,7 +44,6 @@ import {
 } from "@/lib/display";
 import { taskNeedsAttention } from "@/lib/task-attention";
 
-const workflowTimelineStages: ProjectStage[] = ["Waiting List", "WIP", "Pending Review", "Complete"];
 const desktop = "@media (min-width: 1100px)";
 
 type DerivedPriority = "high" | "medium" | "low";
@@ -177,15 +178,6 @@ function getReferenceLabel(value: string) {
   }
 }
 
-function getWorkflowTimelineIndex(stage: ProjectStage) {
-  if (stage === "On Hold") {
-    return 1;
-  }
-
-  const index = workflowTimelineStages.indexOf(stage);
-  return index >= 0 ? index : 0;
-}
-
 function startOfDay(value: Date) {
   return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
 }
@@ -313,6 +305,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [showCreateTaskPanel, setShowCreateTaskPanel] = useState(false);
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
   const [showReferencePanel, setShowReferencePanel] = useState(false);
+  const [showActivityPanel, setShowActivityPanel] = useState(false);
   const [mobileWorkspacePanel, setMobileWorkspacePanel] = useState<
     "summary" | "version" | "feedback" | "activity" | null
   >(null);
@@ -398,6 +391,10 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const clientOrganization = project.clientOrganizationId
     ? organizationsById.get(project.clientOrganizationId) ?? null
     : null;
+  const clientBrandStyle = useMemo(
+    () => getClientBrandStyle(user?.role === "client" ? clientOrganization : null),
+    [clientOrganization, user?.role],
+  );
   const primaryClientContact =
     (project.primaryClientContactId
       ? state.users.find((candidate) => candidate.id === project.primaryClientContactId)
@@ -647,8 +644,6 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     versionClientFeedback,
     versionInternalNotes,
   ]);
-  const workflowTimelineIndex = getWorkflowTimelineIndex(project.stage);
-
   const deliverableTaskOptions = useMemo<DeliverableTaskOption[]>(() => {
     return taskRows
       .map((task) => {
@@ -1147,6 +1142,43 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
             )}
           </ModalCard>
         </ModalBackdrop>
+      ) : null}
+
+      {showActivityPanel ? (
+        <ActivityModalBackdrop onClick={() => setShowActivityPanel(false)}>
+          <ActivityModalCard onClick={(event) => event.stopPropagation()}>
+            <ModalHeader>
+              <div>
+                <ModalTitle>Recent Activity</ModalTitle>
+                <ModalDescription>
+                  Review the full project activity timeline without leaving this screen.
+                </ModalDescription>
+              </div>
+              <ModalClose type="button" onClick={() => setShowActivityPanel(false)} aria-label="Close">
+                <IconClose />
+              </ModalClose>
+            </ModalHeader>
+            <ActivityList>
+              {recentActivity.length ? (
+                recentActivity.map((item) => (
+                  <ActivityItemCard key={item.id}>
+                    <ActivityAvatar>{getUserInitial(item.actor)}</ActivityAvatar>
+                    <div>
+                      <ActivityText>
+                        <strong>{item.actor}</strong> {item.detail}
+                      </ActivityText>
+                      <ActivityMeta>
+                        {formatShortDate(item.createdAt)} · {formatTime(item.createdAt)}
+                      </ActivityMeta>
+                    </div>
+                  </ActivityItemCard>
+                ))
+              ) : (
+                <EmptyState>No recent activity yet.</EmptyState>
+              )}
+            </ActivityList>
+          </ActivityModalCard>
+        </ActivityModalBackdrop>
       ) : null}
 
       {mobileWorkspacePanel ? (
@@ -2156,7 +2188,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
       ) : null}
 
 
-      <Shell>
+      <Shell style={user?.role === "client" ? clientBrandStyle : undefined}>
         <AppSidebar user={user} activeLabel="Projects" />
 
         <Content>
@@ -2343,39 +2375,20 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
               <IconSpark />
               Creative Advice
             </HeroDetailPill>
+            <WorkflowInlinePill>
+              <WorkflowInlineCopy>
+                <MetaLabel>Project Workflow</MetaLabel>
+                {project.stage === "On Hold" ? (
+                  <Badge style={{ background: projectStatusTone.bg, color: projectStatusTone.fg }}>
+                    {formatProjectStage(project.stage)}
+                  </Badge>
+                ) : null}
+              </WorkflowInlineCopy>
+              <WorkflowInlineProgress>
+                <ProjectStageProgress stage={project.stage} size="md" />
+              </WorkflowInlineProgress>
+            </WorkflowInlinePill>
           </HeroPillRow>
-
-          <WorkflowPanel>
-            <WorkflowHeader>
-              <MetaLabel>Project Workflow</MetaLabel>
-              {project.stage === "On Hold" ? (
-                <Badge style={{ background: projectStatusTone.bg, color: projectStatusTone.fg }}>
-                  {formatProjectStage(project.stage)}
-                </Badge>
-              ) : null}
-            </WorkflowHeader>
-
-            <WorkflowRail>
-              <WorkflowLine />
-              <WorkflowLineFill $progress={workflowTimelineIndex / (workflowTimelineStages.length - 1)} />
-              <WorkflowStageGrid>
-                {workflowTimelineStages.map((option, index) => {
-                  const isComplete = index < workflowTimelineIndex;
-                  const isCurrent = index === workflowTimelineIndex;
-                  const isUpcoming = index > workflowTimelineIndex;
-
-                  return (
-                    <WorkflowStageItem key={option}>
-                      <WorkflowNode $complete={isComplete} $current={isCurrent} $upcoming={isUpcoming}>
-                        {isComplete ? <IconCheckTiny /> : null}
-                      </WorkflowNode>
-                      <WorkflowStageLabel>{formatProjectStage(option)}</WorkflowStageLabel>
-                    </WorkflowStageItem>
-                  );
-                })}
-              </WorkflowStageGrid>
-            </WorkflowRail>
-          </WorkflowPanel>
         </HeroDesktopGrid>
 
         <HeroMobileStack>
@@ -2486,27 +2499,9 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   </Badge>
                 ) : null}
               </WorkflowHeader>
-
-              <WorkflowRail>
-                <WorkflowLine />
-                <WorkflowLineFill $progress={workflowTimelineIndex / (workflowTimelineStages.length - 1)} />
-                <WorkflowStageGrid>
-                  {workflowTimelineStages.map((option, index) => {
-                    const isComplete = index < workflowTimelineIndex;
-                    const isCurrent = index === workflowTimelineIndex;
-                    const isUpcoming = index > workflowTimelineIndex;
-
-                    return (
-                      <WorkflowStageItem key={option}>
-                        <WorkflowNode $complete={isComplete} $current={isCurrent} $upcoming={isUpcoming}>
-                          {isComplete ? <IconCheckTiny /> : null}
-                        </WorkflowNode>
-                        <WorkflowStageLabel>{formatProjectStage(option)}</WorkflowStageLabel>
-                      </WorkflowStageItem>
-                    );
-                  })}
-                </WorkflowStageGrid>
-              </WorkflowRail>
+              <WorkflowProgressWrap>
+                <ProjectStageProgress stage={project.stage} size="md" />
+              </WorkflowProgressWrap>
 
               {/* <OverviewDetailsGrid>
                 <DetailChip>
@@ -2924,13 +2919,13 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           <SummaryCard className="panel">
             <PanelHeader>
               <h2>Recent Activity</h2>
-              <InlineLink as={Link} href={showWorkspaceTools ? "#workspace-tools" : "#project-tasks"}>
+              <InlineActionButton type="button" onClick={() => setShowActivityPanel(true)}>
                 View all
-              </InlineLink>
+              </InlineActionButton>
             </PanelHeader>
             <ActivityList id="workspace-tools">
               {recentActivity.length ? (
-                recentActivity.map((item) => (
+                recentActivity.slice(0, 3).map((item) => (
                   <ActivityItemCard key={item.id}>
                     <ActivityAvatar>{getUserInitial(item.actor)}</ActivityAvatar>
                     <div>
@@ -2982,7 +2977,7 @@ const Shell = styled.main`
     display: flex;
     align-items: flex-start;
     padding: 8px;
-    background: rgba(255, 255, 255, 0.58);
+    background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
     min-height: 100vh;
   }
 `;
@@ -2998,7 +2993,11 @@ const Content = styled.section`
     border-radius: 0 22px 22px 0;
     background:
       radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
-      linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84));
+      linear-gradient(
+        180deg,
+        var(--client-brand-soft-panel, rgba(252, 249, 244, 0.92)),
+        rgba(247, 243, 237, 0.84)
+      );
   }
 `;
 
@@ -3649,6 +3648,28 @@ const HeroPillRow = styled.div`
   flex-wrap: wrap;
 `;
 
+const WorkflowInlinePill = styled.div`
+  ${cardSurface}
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  flex-wrap: wrap;
+`;
+
+const WorkflowInlineCopy = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+`;
+
+const WorkflowInlineProgress = styled.div`
+  min-width: 128px;
+`;
+
 const HeroDetailPill = styled.button`
   ${outlineButton}
   min-height: 40px;
@@ -3692,73 +3713,8 @@ const WorkflowHeader = styled.div`
   gap: 12px;
 `;
 
-const WorkflowRail = styled.div`
-  position: relative;
-  padding: 12px 10px 0;
-`;
-
-const WorkflowLine = styled.div`
-  position: absolute;
-  top: 24px;
-  left: 28px;
-  right: 28px;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(204, 187, 154, 0.46);
-`;
-
-const WorkflowLineFill = styled.div<{ $progress: number }>`
-  position: absolute;
-  top: 24px;
-  left: 28px;
-  height: 2px;
-  width: calc(
-    ((100% - 56px) * ${({ $progress }) => $progress}) +
-      ${({ $progress }) => ($progress > 0 ? "20px" : "0px")}
-  );
-  border-radius: 999px;
-  background: #b98a33;
-`;
-
-const WorkflowStageGrid = styled.div`
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-`;
-
-const WorkflowStageItem = styled.div`
-  display: grid;
-  justify-items: center;
-  gap: 8px;
-  text-align: center;
-`;
-
-const WorkflowNode = styled.span<{ $complete?: boolean; $current?: boolean; $upcoming?: boolean }>`
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid
-    ${({ $complete, $current }) =>
-      $complete || $current ? "#c08f36" : "rgba(220, 213, 205, 0.95)"};
-  background: ${({ $complete, $current }) => ($complete || $current ? "#fff" : "#fff")};
-  color: #c08f36;
-  box-shadow: ${({ $current }) => ($current ? "0 0 0 4px rgba(192, 143, 54, 0.14)" : "none")};
-
-  svg {
-    width: 9px;
-    height: 9px;
-  }
-`;
-
-const WorkflowStageLabel = styled.span`
-  color: #5d544b;
-  font-size: 0.8rem;
-  font-weight: 700;
-  line-height: 1.2;
+const WorkflowProgressWrap = styled.div`
+  padding-top: 4px;
 `;
 
 const OverviewDetailsGrid = styled.div`
@@ -3866,8 +3822,8 @@ const PrimaryActionButton = styled.button`
   min-height: 40px;
   border: 0;
   border-radius: 10px;
-  background: #214f39;
-  color: #fff;
+  background: var(--client-brand-primary, #214f39);
+  color: var(--client-brand-on-primary, #fff);
   box-shadow: 0 16px 34px rgba(33, 79, 57, 0.22);
   display: inline-flex;
   align-items: center;
@@ -4388,8 +4344,9 @@ const TaskReviewActionButton = styled.button<{ $active?: boolean }>`
   padding: 0 14px;
   border-radius: 999px;
   border: 1px solid ${({ $active }) => ($active ? "transparent" : "rgba(230, 224, 215, 0.95)")};
-  background: ${({ $active }) => ($active ? "#214f39" : "rgba(255, 255, 255, 0.92)")};
-  color: ${({ $active }) => ($active ? "#fff" : "#214f39")};
+  background: ${({ $active }) =>
+    $active ? "var(--client-brand-primary, #214f39)" : "rgba(255, 255, 255, 0.92)"};
+  color: ${({ $active }) => ($active ? "var(--client-brand-on-primary, #fff)" : "var(--client-brand-primary, #214f39)")};
   font-size: 0.84rem;
   font-weight: 700;
 `;
@@ -4935,6 +4892,21 @@ const ModalCard = styled.section`
   padding: 18px;
   display: grid;
   gap: 14px;
+`;
+
+const ActivityModalBackdrop = styled(ModalBackdrop)`
+  @media (max-width: 767px) {
+    display: flex;
+    align-items: flex-start;
+    justify-content: stretch;
+    padding: 12px 10px;
+  }
+`;
+
+const ActivityModalCard = styled(ModalCard)`
+  width: min(100%, 760px);
+  max-height: 80vh;
+  overflow-y: auto;
 `;
 
 const TaskPopupCard = styled(ModalCard)`

@@ -25,6 +25,8 @@ export function FilterModal({
   onApply,
   onReset,
   onClose,
+  applyLabel = "Apply filters",
+  resetLabel = "Reset",
 }: {
   open: boolean;
   title: string;
@@ -34,6 +36,8 @@ export function FilterModal({
   onApply: (values: Record<string, string>) => void;
   onReset?: () => void;
   onClose: () => void;
+  applyLabel?: string;
+  resetLabel?: string;
 }) {
   const [draftValues, setDraftValues] = useState<Record<string, string>>(values);
   const [openSelect, setOpenSelect] = useState<string | null>(null);
@@ -169,7 +173,7 @@ export function FilterModal({
               setSearchValues({});
             }}
           >
-            Reset
+            {resetLabel}
           </GhostButton>
           <PrimaryButton
             type="button"
@@ -178,7 +182,7 @@ export function FilterModal({
               onClose();
             }}
           >
-            Apply filters
+            {applyLabel}
           </PrimaryButton>
         </Footer>
       </Panel>

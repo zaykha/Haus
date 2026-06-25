@@ -15,6 +15,7 @@ import { formatRole } from "@/lib/display";
 import { canCreateClient, getUserClientOrganizationIds } from "@/lib/permissions";
 
 type LiaisonFilter = "all" | "assigned" | "unassigned" | "active" | "inactive";
+type LiaisonSortKey = "name" | "created_at_desc" | "created_at_asc";
 
 const PAGE_SIZE = 6;
 const desktop = "@media (min-width: 768px)";
@@ -93,6 +94,8 @@ export function LiaisonsScreen() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<LiaisonFilter>("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [sort, setSort] = useState<LiaisonSortKey>("name");
+  const [showSort, setShowSort] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedLiaisonId, setSelectedLiaisonId] = useState<string | null>(null);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
@@ -104,6 +107,7 @@ export function LiaisonsScreen() {
   const [isDeletingLiaison, setIsDeletingLiaison] = useState(false);
   const [showInviteLiaisonModal, setShowInviteLiaisonModal] = useState(false);
   const appliedFilterCount = filter !== "all" ? 1 : 0;
+  const appliedSortCount = sort !== "name" ? 1 : 0;
 
   const viewerRole = user?.role ?? "client";
   const roleLabel = formatRole(viewerRole).toUpperCase();
@@ -145,7 +149,7 @@ export function LiaisonsScreen() {
   const filteredLiaisons = useMemo(() => {
     const q = search.trim().toLowerCase();
 
-    return visibleLiaisons.filter((liaison) => {
+    const nextLiaisons = visibleLiaisons.filter((liaison) => {
       const matchesSearch =
         !q ||
         liaison.name.toLowerCase().includes(q) ||
@@ -169,7 +173,18 @@ export function LiaisonsScreen() {
 
       return matchesSearch && matchesFilter;
     });
-  }, [filter, search, visibleLiaisons]);
+    return [...nextLiaisons].sort((left, right) => {
+      if (sort === "created_at_desc") {
+        return new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime();
+      }
+
+      if (sort === "created_at_asc") {
+        return new Date(left.createdAt ?? 0).getTime() - new Date(right.createdAt ?? 0).getTime();
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  }, [filter, search, sort, visibleLiaisons]);
 
   const totalCount = visibleLiaisons.length;
   const assignedCount = visibleLiaisons.filter((liaison) => !liaison.isUnassigned).length;
@@ -484,6 +499,34 @@ export function LiaisonsScreen() {
             }}
             onClose={() => setShowFilters(false)}
           />
+          <FilterModal
+            open={showSort}
+            title="Sort liaisons"
+            description="Adjust liaison sorting."
+            sections={[
+              {
+                id: "sort",
+                label: "Sort by",
+                options: [
+                  { value: "name", label: "Name" },
+                  { value: "created_at_desc", label: "Newest to Oldest" },
+                  { value: "created_at_asc", label: "Oldest to Newest" },
+                ],
+              },
+            ]}
+            values={{ sort }}
+            onApply={(nextValues) => {
+              setSort(nextValues.sort as LiaisonSortKey);
+              setCurrentPage(1);
+            }}
+            onReset={() => {
+              setSort("name");
+              setCurrentPage(1);
+            }}
+            onClose={() => setShowSort(false)}
+            applyLabel="Apply sort"
+            resetLabel="Default sort"
+          />
           <SearchControls
             onSubmit={(event: FormEvent<HTMLFormElement>) => {
               event.preventDefault();
@@ -507,6 +550,17 @@ export function LiaisonsScreen() {
               {appliedFilterCount ? <FilterBadge>{appliedFilterCount}</FilterBadge> : null}
               <ActionIcon>
                 <IconFilter />
+              </ActionIcon>
+            </FilterButton>
+            <FilterButton
+              type="button"
+              aria-label="Open sorting"
+              aria-expanded={showSort}
+              onClick={() => setShowSort(true)}
+            >
+              {appliedSortCount ? <FilterBadge>{appliedSortCount}</FilterBadge> : null}
+              <ActionIcon>
+                <IconSort />
               </ActionIcon>
             </FilterButton>
             <SearchButton type="submit" aria-label="Search liaisons">
@@ -1696,6 +1750,17 @@ function IconFilter() {
       <path d="M4 6h16" />
       <path d="M7 12h10" />
       <path d="M10 18h4" />
+    </svg>
+  );
+}
+
+function IconSort() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 6v12" />
+      <path d="m5 9 3-3 3 3" />
+      <path d="M16 18V6" />
+      <path d="m13 15 3 3 3-3" />
     </svg>
   );
 }

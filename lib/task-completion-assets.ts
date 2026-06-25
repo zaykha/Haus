@@ -24,6 +24,17 @@ function sanitizeAssets(values: string[]) {
   return values.map((value) => value.trim()).filter(Boolean);
 }
 
+export function sameTaskCompletionAssets(a: string[], b: string[]) {
+  const left = sanitizeAssets(a).sort();
+  const right = sanitizeAssets(b).sort();
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
 function createDefaultState(): TaskCompletionState {
   return {
     schema: TASK_COMPLETION_SCHEMA,
@@ -204,6 +215,21 @@ export function recordTaskCompletionSnapshot(
     currentVersionKind: kind,
     currentAssets: sanitizedAssets,
     history: [...state.history.filter((item) => item.id !== id), snapshot],
+  };
+}
+
+export function recordSubmittedTaskCompletionSnapshot(
+  state: TaskCompletionState,
+  assets: string[],
+): TaskCompletionState {
+  const sanitizedAssets = sanitizeAssets(assets);
+  const nextState = recordTaskCompletionSnapshot(state, "submitted", sanitizedAssets);
+
+  return {
+    ...nextState,
+    currentVersionKind: "submitted",
+    currentAssets: sanitizedAssets,
+    submittedVersion: state.submittedVersion + 1,
   };
 }
 

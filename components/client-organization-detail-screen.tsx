@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
+import { BrandColorPicker } from "@/components/brand-color-picker";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { UserAvatar } from "@/components/user-avatar";
+import { getClientBrandStyle, normalizeHexColor } from "@/lib/client-branding";
 import {
   buildLiaisonRows,
   buildClientOrganizationRows,
@@ -17,6 +19,8 @@ import {
   getClientOrganizationStatusLabel,
 } from "@/lib/client-organizations";
 import { formatProjectStage, formatRole, getProjectStatusLabel } from "@/lib/display";
+import { optimizeImageToWebp } from "@/lib/image-upload";
+import { uploadOrganizationLogo } from "@/lib/organization-logo-upload";
 import {
   canCreateClient,
   canCreateProjectForOrganization,
@@ -27,6 +31,7 @@ import {
 
 const desktop = "@media (min-width: 768px)";
 const TASKS_PAGE_SIZE = 5;
+const SECTION_LIST_CAP = 4;
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -116,6 +121,20 @@ function getRelativeActivityLabel(value: string) {
   return `${days}d ago`;
 }
 
+function getTaskTone(status: string) {
+  switch (status) {
+    case "in_progress":
+      return { fg: "#4770d8", bg: "#e6efff", label: "In progress" };
+    case "review":
+      return { fg: "#ca8a22", bg: "#fff1da", label: "Review" };
+    case "approved":
+    case "done":
+      return { fg: "#5ca16d", bg: "#e5f4e8", label: "Completed" };
+    default:
+      return { fg: "#8d857b", bg: "#f4f1ed", label: "To do" };
+  }
+}
+
 type ClientOrganizationDetailScreenProps = {
   organizationId: string;
   homeMode?: boolean;
@@ -126,6 +145,7 @@ export function ClientOrganizationDetailScreen({
   homeMode = false,
 }: ClientOrganizationDetailScreenProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { state, user, deleteClient, deleteClientOrganization, revokeInvitation, updateClientOrganization, updateClient } =
     useAppState();
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -143,9 +163,12 @@ export function ClientOrganizationDetailScreen({
   const [name, setName] = useState("");
   const [type, setType] = useState<"internal" | "external">("external");
   const [status, setStatus] = useState<"active" | "inactive">("active");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [brandColor, setBrandColor] = useState("#1F4339");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [openEditSelect, setOpenEditSelect] = useState<"type" | "status" | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [showAssignLiaisonModal, setShowAssignLiaisonModal] = useState(false);
   const [selectedAssignableLiaisonId, setSelectedAssignableLiaisonId] = useState("");
   const [assignLiaisonOpen, setAssignLiaisonOpen] = useState(false);
@@ -156,6 +179,7 @@ export function ClientOrganizationDetailScreen({
   const [isAssigning, setIsAssigning] = useState(false);
   const [isRemovingOrganization, setIsRemovingOrganization] = useState(false);
   const [showManageOrganizations, setShowManageOrganizations] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   const rows = useMemo(() => buildClientOrganizationRows(state), [state]);
   const liaisonRows = useMemo(() => buildLiaisonRows(state), [state]);
@@ -216,6 +240,8 @@ export function ClientOrganizationDetailScreen({
     setName(rawOrganization.name);
     setType(rawOrganization.type ?? "external");
     setStatus(rawOrganization.status ?? "active");
+    setLogoUrl(rawOrganization.logoUrl ?? "");
+    setBrandColor(rawOrganization.brandColor ?? "#1F4339");
     setPhone(rawOrganization.phone ?? "");
     setAddress(rawOrganization.address ?? "");
   }, [rawOrganization]);
@@ -223,6 +249,35 @@ export function ClientOrganizationDetailScreen({
   useEffect(() => {
     setSelectedTasksPage(1);
   }, [organization?.id]);
+
+  const brandStyle = useMemo(() => getClientBrandStyle(rawOrganization), [rawOrganization]);
+  const editBrandStyle = useMemo(() => getClientBrandStyle({ brandColor }), [brandColor]);
+  const isClientViewer = user?.role === "client";
+  const canEditOrganization =
+    Boolean(user) &&
+    (canManage ||
+      (isClientViewer &&
+        Boolean(
+          organization?.organizationId &&
+            getUserClientOrganizationIds(user).includes(organization.organizationId),
+        )));
+  const canInviteOrganizationClients = user
+    ? canInviteClientsForOrganization(user, organization?.organizationId ?? null)
+    : false;
+
+  useEffect(() => {
+    if (homeMode || !canEditOrganization) {
+      return;
+    }
+
+    if (searchParams.get("edit") !== "branding") {
+      return;
+    }
+
+    setShowEditModal(true);
+    setOpenEditSelect(null);
+    router.replace(`/clients/${organizationId}`);
+  }, [canEditOrganization, homeMode, organizationId, router, searchParams]);
 
   if (!user) {
     return null;
@@ -262,14 +317,6 @@ export function ClientOrganizationDetailScreen({
     );
   }
 
-  const canEditOrganization =
-    canManage ||
-    (user.role === "client" &&
-      Boolean(
-        organization.organizationId &&
-          getUserClientOrganizationIds(user).includes(organization.organizationId),
-      ));
-  const canInviteOrganizationClients = canInviteClientsForOrganization(user, organization.organizationId);
   const organizationProjects = state.projects
     .filter((project) =>
       organization.organizationId
@@ -287,6 +334,7 @@ export function ClientOrganizationDetailScreen({
     (selectedTasksPage - 1) * TASKS_PAGE_SIZE,
     selectedTasksPage * TASKS_PAGE_SIZE,
   );
+  const visibleMembers = organization.members.slice(0, SECTION_LIST_CAP);
   const pendingInvitations = state.invitations
     .filter(
       (invitation) =>
@@ -295,6 +343,7 @@ export function ClientOrganizationDetailScreen({
         invitation.clientOrganizationId === organization.organizationId,
     )
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const visiblePendingInvitations = pendingInvitations.slice(0, SECTION_LIST_CAP);
   const organizationActivities = organizationProjects
     .flatMap((project) =>
       project.activities.map((activity) => ({
@@ -309,21 +358,91 @@ export function ClientOrganizationDetailScreen({
   const activeProjects = organizationProjects.filter((project) => !isCompletedProject(project.status, project.stage));
   const projectsInReview = organizationProjects.filter((project) => isPendingReviewProject(project.status, project.stage));
   const completedProjects = organizationProjects.filter((project) => isCompletedProject(project.status, project.stage));
-  const pendingReviewItems = organization.openTasks.slice(0, 4);
+  const visibleOrganizationProjects = organizationProjects.slice(0, SECTION_LIST_CAP);
+  const visiblePendingProjects = organization.pendingProjects.slice(0, SECTION_LIST_CAP);
+  const pendingReviewItems = organization.openTasks.slice(0, 3);
+  const upcomingDeliveries = activeProjects
+    .slice()
+    .sort((left, right) => {
+      const leftDue = new Date(left.finalDeliverableDate ?? left.dueDate).getTime();
+      const rightDue = new Date(right.finalDeliverableDate ?? right.dueDate).getTime();
+
+      if (leftDue !== rightDue) {
+        return leftDue - rightDue;
+      }
+
+      return (left.projectRequestName || left.name).localeCompare(right.projectRequestName || right.name);
+    })
+    .slice(0, 3);
   const featuredProjects = activeProjects
     .slice()
-    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+    .sort((left, right) => {
+      const getStagePriority = (status: string) => {
+        switch (status) {
+          case "review":
+            return 0;
+          case "revision":
+            return 1;
+          case "active":
+            return 2;
+          default:
+            return 3;
+        }
+      };
+
+      const leftPriority = getStagePriority(left.status);
+      const rightPriority = getStagePriority(right.status);
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+
+      const leftDue = new Date(left.finalDeliverableDate ?? left.dueDate).getTime();
+      const rightDue = new Date(right.finalDeliverableDate ?? right.dueDate).getTime();
+      if (leftDue !== rightDue) {
+        return leftDue - rightDue;
+      }
+
+      return (left.projectRequestName || left.name).localeCompare(right.projectRequestName || right.name);
+    })
     .slice(0, 3);
 
   if (homeMode && user.role === "client") {
     return (
-      <Shell>
+      <Shell style={brandStyle}>
         <AppSidebar user={user} activeLabel="Home" />
         <Content>
           <Header>
             <div>
               <Eyebrow>Client Organization</Eyebrow>
-              <Title>{organization.name}</Title>
+              <ClientHeaderIdentity>
+                {rawOrganization?.logoUrl ? (
+                  <ClientLogo src={rawOrganization.logoUrl} alt={organization.name} />
+                ) : (
+                  <ClientMark>{getClientOrganizationMark(organization.name)}</ClientMark>
+                )}
+                <div>
+                  <ClientHeaderTitle>{organization.name}</ClientHeaderTitle>
+                  <InlinePills>
+                    <TypePill $type={organization.type}>
+                      {organization.type === "internal" ? "Internal" : "External"}
+                    </TypePill>
+                    {getClientOrganizationStatusLabel(organization) ? (
+                      <PendingPill $active={organization.status === "active"}>
+                        {getClientOrganizationStatusLabel(organization)}
+                      </PendingPill>
+                    ) : null}
+                    {canEditOrganization ? (
+                      <BrandConfigButton
+                        type="button"
+                        aria-label="Configure organization branding"
+                        onClick={() => router.push(`/clients/${organizationId}?edit=branding`)}
+                      >
+                        <IconSettings />
+                      </BrandConfigButton>
+                    ) : null}
+                  </InlinePills>
+                </div>
+              </ClientHeaderIdentity>
               <ClientHomeWelcome>
                 Welcome back, {user.name} <span aria-hidden="true">👋</span>
               </ClientHomeWelcome>
@@ -336,23 +455,6 @@ export function ClientOrganizationDetailScreen({
           </Header>
 
           <ClientHomeHero id="client-organization-overview">
-            <ClientHomeHeroBrand>
-              <ClientMark $large>{getClientOrganizationMark(organization.name)}</ClientMark>
-              <div>
-                <ClientHomeHeroTitle>{organization.name}</ClientHomeHeroTitle>
-                <InlinePills>
-                  <TypePill $type={organization.type}>
-                    {organization.type === "internal" ? "Internal" : "External"}
-                  </TypePill>
-                  {getClientOrganizationStatusLabel(organization) ? (
-                    <PendingPill $active={organization.status === "active"}>
-                      {getClientOrganizationStatusLabel(organization)}
-                    </PendingPill>
-                  ) : null}
-                </InlinePills>
-              </div>
-            </ClientHomeHeroBrand>
-
             <ClientHomeStats>
               <ClientMetricCard>
                 <MetricIcon $tone="success">
@@ -407,22 +509,26 @@ export function ClientOrganizationDetailScreen({
                       <ClientProjectCard key={project.id} href={`/projects/${project.id}`}>
                         <ClientProjectGlyph>{getClientOrganizationMark(project.projectRequestName || project.name)}</ClientProjectGlyph>
                         <ClientProjectBody>
-                          <ClientProjectHeading>
-                            <div>
-                              <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
-                              <ClientProjectSubtitle>{project.projectBrief || project.description || "Project in progress"}</ClientProjectSubtitle>
-                            </div>
+                          <ClientProjectTop>
+                            <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
+                            <ClientProjectMetaGroup>
+                              <ClientProjectMetaLabel>Due date</ClientProjectMetaLabel>
+                              <ClientProjectMetaValue>{formatDate(project.finalDeliverableDate ?? project.dueDate)}</ClientProjectMetaValue>
+                            </ClientProjectMetaGroup>
+                            <ClientProjectMetaGroup>
+                              <ClientProjectMetaLabel>Stage</ClientProjectMetaLabel>
+                              <ClientProjectMetaValue>{formatProjectStage(project.stage)}</ClientProjectMetaValue>
+                            </ClientProjectMetaGroup>
+                            <ClientProjectMetaGroup>
+                              <ClientProjectMetaLabel>Progress</ClientProjectMetaLabel>
+                              <ProjectStageProgress stage={project.stage} size="sm" />
+                            </ClientProjectMetaGroup>
+                          </ClientProjectTop>
+                          <ClientProjectStatusRow>
                             <ClientProjectStatusPill style={{ background: tone.bg, color: tone.fg }}>
                               {getClientProjectStatusLabel(project.status, project.stage)}
                             </ClientProjectStatusPill>
-                          </ClientProjectHeading>
-                          <ClientProjectFooter>
-                            <InlineMeta>
-                              <IconCalendarMini />
-                              <span>Due {formatDate(project.finalDeliverableDate ?? project.dueDate)}</span>
-                            </InlineMeta>
-                            <ProjectStageProgress stage={project.stage} size="sm" />
-                          </ClientProjectFooter>
+                          </ClientProjectStatusRow>
                         </ClientProjectBody>
                       </ClientProjectCard>
                     );
@@ -461,6 +567,40 @@ export function ClientOrganizationDetailScreen({
                 </ClientHomeList>
               ) : (
                 <ClientMeta>No pending reviews right now.</ClientMeta>
+              )}
+            </ClientHomePanel>
+
+            <ClientHomePanel>
+              <SectionHeader>
+                <PanelTitle>Upcoming Deliveries</PanelTitle>
+                <SectionLink href="/projects">View all projects</SectionLink>
+              </SectionHeader>
+              {upcomingDeliveries.length ? (
+                <ClientHomeList>
+                  {upcomingDeliveries.map((project) => {
+                    const tone = getClientProjectTone(project.status, project.stage);
+                    return (
+                      <CompactDeliveryCard key={project.id} href={`/projects/${project.id}`}>
+                        <CompactDeliveryIcon>
+                          <IconCalendarMini />
+                        </CompactDeliveryIcon>
+                        <CompactDeliveryBody>
+                          <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
+                          <CompactDeliveryMeta>{formatProjectStage(project.stage)}</CompactDeliveryMeta>
+                          <CompactDeliveryMeta>Due {formatDate(project.finalDeliverableDate ?? project.dueDate)}</CompactDeliveryMeta>
+                        </CompactDeliveryBody>
+                        <CompactDeliveryStatusPill style={{ background: tone.bg, color: tone.fg }}>
+                          {getClientProjectStatusLabel(project.status, project.stage)}
+                        </CompactDeliveryStatusPill>
+                        <CompactDeliveryArrow>
+                          <IconChevronRight />
+                        </CompactDeliveryArrow>
+                      </CompactDeliveryCard>
+                    );
+                  })}
+                </ClientHomeList>
+              ) : (
+                <ClientMeta>No upcoming deliveries scheduled yet.</ClientMeta>
               )}
             </ClientHomePanel>
 
@@ -508,6 +648,8 @@ export function ClientOrganizationDetailScreen({
         name,
         type,
         status,
+        logoUrl,
+        brandColor: normalizeHexColor(brandColor) ?? "#1F4339",
         phone: type === "external" ? phone : "",
         address: type === "external" ? address : "",
       });
@@ -528,8 +670,36 @@ export function ClientOrganizationDetailScreen({
     setShowManageOrganizations(false);
   };
 
+  const handleLogoInputChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const optimizedBlob = await optimizeImageToWebp(file, { maxDimension: 1200, quality: 0.84 });
+      const optimizedFile = new File(
+        [optimizedBlob],
+        `${file.name.replace(/\.[^.]+$/, "") || "organization-logo"}.webp`,
+        { type: "image/webp" },
+      );
+      const uploadedUrl = await uploadOrganizationLogo(optimizedFile);
+      setLogoUrl(uploadedUrl);
+    } finally {
+      setIsUploadingLogo(false);
+      event.target.value = "";
+    }
+  };
+
   return (
-    <Shell>
+    <Shell style={user.role === "client" ? brandStyle : undefined}>
+      <BrandHiddenInput
+        ref={logoInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/jpg,image/webp"
+        onChange={handleLogoInputChange}
+      />
       <ConfirmActionModal
         open={showDeleteClientModal}
         title="Delete liaison"
@@ -1072,6 +1242,46 @@ export function ClientOrganizationDetailScreen({
                   </FloatingSelectField>
                 </FieldStack>
               </FieldGrid>
+              <BrandSection style={editBrandStyle}>
+                <BrandSectionHeader>
+                  <FieldLabel>Organization branding</FieldLabel>
+                  <ClientMeta>Upload a logo and choose the client brand color.</ClientMeta>
+                </BrandSectionHeader>
+                <BrandPreviewRow>
+                  {logoUrl ? (
+                    <BrandLogoPreview src={logoUrl} alt={name || organization.name} />
+                  ) : (
+                    <BrandMarkPreview>{getClientOrganizationMark(name || organization.name)}</BrandMarkPreview>
+                  )}
+                  <BrandPreviewMeta>
+                    <BrandPreviewChip>Primary tone preview</BrandPreviewChip>
+                    <ClientMeta>The softer background tone is derived automatically from the selected primary color.</ClientMeta>
+                  </BrandPreviewMeta>
+                </BrandPreviewRow>
+                <BrandActionRow>
+                  <SecondaryButton
+                    type="button"
+                    disabled={isSavingOrganization || isUploadingLogo}
+                    onClick={() => logoInputRef.current?.click()}
+                  >
+                    {isUploadingLogo ? "Uploading..." : "Upload logo"}
+                  </SecondaryButton>
+                  {logoUrl ? (
+                    <SecondaryButton
+                      type="button"
+                      disabled={isSavingOrganization || isUploadingLogo}
+                      onClick={() => setLogoUrl("")}
+                    >
+                      Remove logo
+                    </SecondaryButton>
+                  ) : null}
+                </BrandActionRow>
+                <BrandColorPicker
+                  value={brandColor}
+                  onChange={setBrandColor}
+                  disabled={isSavingOrganization}
+                />
+              </BrandSection>
               {type === "external" ? (
                 <FieldGrid>
                   <FieldStack>
@@ -1158,7 +1368,11 @@ export function ClientOrganizationDetailScreen({
 
         <HeroCard>
           <HeroTop>
-            <ClientMark>{getClientOrganizationMark(organization.name)}</ClientMark>
+            {rawOrganization?.logoUrl ? (
+              <ClientLogo src={rawOrganization.logoUrl} alt={organization.name} />
+            ) : (
+              <ClientMark>{getClientOrganizationMark(organization.name)}</ClientMark>
+            )}
             <div>
               <PanelTitle>{organization.name}</PanelTitle>
               <InlinePills>
@@ -1213,33 +1427,42 @@ export function ClientOrganizationDetailScreen({
             </SectionHeader>
             {organization.members.length ? (
               <List>
-                {organization.members.map((member) => {
+                {visibleMembers.map((member) => {
                   const canOpenLiaison =
                     Boolean(member.deletableUserId) && (canManage || member.deletableUserId === user.id);
+                  const liaisonMeta = member.company ? `${member.company}` : "";
 
                   if (!canOpenLiaison) {
                     return (
                       <Row key={member.id}>
-                        <div>
-                          <RowTitle>{member.name}</RowTitle>
-                          <ClientMeta>
-                            {member.email}
-                            {member.company ? ` · ${member.company}` : ""}
-                          </ClientMeta>
-                        </div>
+                        <RowLead>
+                          <RowGlyph>{member.name.slice(0, 1).toUpperCase()}</RowGlyph>
+                          <RowCopy>
+                            <RowTitle>{member.name}</RowTitle>
+                            <ClientMeta>{member.email}</ClientMeta>
+                            <RowMetaPills>
+                              <MetaPill>{member.company || organization.name}</MetaPill>
+                              {liaisonMeta ? <MetaPill>{liaisonMeta}</MetaPill> : null}
+                            </RowMetaPills>
+                          </RowCopy>
+                        </RowLead>
                       </Row>
                     );
                   }
 
                   return (
                     <LiaisonRowButton key={member.id} type="button" onClick={() => handleOpenEditLiaison(member)}>
-                      <div>
-                        <RowTitle>{member.name}</RowTitle>
-                        <ClientMeta>
-                          {member.email}
-                          {member.company ? ` · ${member.company}` : ""}
-                        </ClientMeta>
-                      </div>
+                      <RowLead>
+                        <RowGlyph>{member.name.slice(0, 1).toUpperCase()}</RowGlyph>
+                        <RowCopy>
+                          <RowTitle>{member.name}</RowTitle>
+                            <ClientMeta>{member.email}</ClientMeta>
+                          <RowMetaPills>
+                            <MetaPill>{member.company || organization.name}</MetaPill>
+                            {liaisonMeta ? <MetaPill>{liaisonMeta}</MetaPill> : null}
+                          </RowMetaPills>
+                        </RowCopy>
+                      </RowLead>
                     </LiaisonRowButton>
                   );
                 })}
@@ -1247,44 +1470,64 @@ export function ClientOrganizationDetailScreen({
             ) : (
               <ClientMeta>No liaisons linked to this organization yet.</ClientMeta>
             )}
+            {organization.members.length > SECTION_LIST_CAP ? (
+              <SectionCountNote>Showing {SECTION_LIST_CAP} of {organization.members.length} liaisons</SectionCountNote>
+            ) : null}
           </SectionCard>
 
           <SectionCard>
             <SectionHeader>
               <PanelTitle>Projects</PanelTitle>
             </SectionHeader>
-            {organizationProjects.length ? (
+            {visibleOrganizationProjects.length ? (
               <List>
-                {organizationProjects.map((project) => (
+                {visibleOrganizationProjects.map((project) => (
                   <RowCardLink key={project.id} href={`/projects/${project.id}`}>
-                    <div>
-                      <RowTitle>{project.name}</RowTitle>
-                      <ClientMeta>
-                        {formatShortDate(project.dueDate)} · {getClientProjectStatusLabel(project.status, project.stage)}
-                      </ClientMeta>
-                    </div>
+                    <RowLead>
+                      <RowIconTile>
+                        <IconBriefcase />
+                      </RowIconTile>
+                      <RowCopy>
+                        <RowTitle>{project.name}</RowTitle>
+                        <ClientMeta>Due {formatShortDate(project.dueDate)}</ClientMeta>
+                        <RowMetaPills>
+                          <MetaPill>{project.projectCode ?? "Project"}</MetaPill>
+                          <MetaPill>{getClientProjectStatusLabel(project.status)}</MetaPill>
+                        </RowMetaPills>
+                      </RowCopy>
+                    </RowLead>
                   </RowCardLink>
                 ))}
               </List>
             ) : (
               <ClientMeta>No projects linked to this organization yet.</ClientMeta>
             )}
+            {organizationProjects.length > SECTION_LIST_CAP ? (
+              <SectionCountNote>Showing {SECTION_LIST_CAP} of {organizationProjects.length} projects</SectionCountNote>
+            ) : null}
           </SectionCard>
 
           <SectionCard>
             <SectionHeader>
               <PanelTitle>Pending Liaison Invites</PanelTitle>
             </SectionHeader>
-            {pendingInvitations.length ? (
+            {visiblePendingInvitations.length ? (
               <List>
-                {pendingInvitations.map((invitation) => (
+                {visiblePendingInvitations.map((invitation) => (
                   <Row key={invitation.id}>
-                    <div>
-                      <RowTitle>{invitation.name}</RowTitle>
-                      <ClientMeta>
-                        {invitation.email} · Sent {formatDate(invitation.createdAt)}
-                      </ClientMeta>
-                    </div>
+                    <RowLead>
+                      <RowIconTile>
+                        <IconSparkMini />
+                      </RowIconTile>
+                      <RowCopy>
+                        <RowTitle>{invitation.name}</RowTitle>
+                        <ClientMeta>{invitation.email}</ClientMeta>
+                        <RowMetaPills>
+                          <MetaPill>Pending invite</MetaPill>
+                          <MetaPill>Sent {formatShortDate(invitation.createdAt)}</MetaPill>
+                        </RowMetaPills>
+                      </RowCopy>
+                    </RowLead>
                     {canManage ? (
                       <RowActionButton
                         type="button"
@@ -1305,28 +1548,40 @@ export function ClientOrganizationDetailScreen({
             ) : (
               <ClientMeta>No pending liaison invites for this organization.</ClientMeta>
             )}
+            {pendingInvitations.length > SECTION_LIST_CAP ? (
+              <SectionCountNote>Showing {SECTION_LIST_CAP} of {pendingInvitations.length} pending invites</SectionCountNote>
+            ) : null}
           </SectionCard>
 
           <SectionCard>
             <SectionHeader>
               <PanelTitle>Pending Items</PanelTitle>
             </SectionHeader>
-            {organization.pendingProjects.length ? (
+            {visiblePendingProjects.length ? (
               <List>
-                {organization.pendingProjects.map((project) => (
+                {visiblePendingProjects.map((project) => (
                   <RowCardLink key={project.id} href={`/projects/${project.id}`}>
-                    <div>
-                      <RowTitle>{project.name}</RowTitle>
-                      <ClientMeta>
-                        {getClientProjectStatusLabel(project.status)} · {formatShortDate(project.dueDate)}
-                      </ClientMeta>
-                    </div>
+                    <RowLead>
+                      <RowIconTile>
+                        <IconFolderMini />
+                      </RowIconTile>
+                      <RowCopy>
+                        <RowTitle>{project.name}</RowTitle>
+                        <ClientMeta>Due {formatShortDate(project.dueDate)}</ClientMeta>
+                        <RowMetaPills>
+                          <MetaPill>{getClientProjectStatusLabel(project.status)}</MetaPill>
+                        </RowMetaPills>
+                      </RowCopy>
+                    </RowLead>
                   </RowCardLink>
                 ))}
               </List>
             ) : (
               <ClientMeta>No pending items for this organization.</ClientMeta>
             )}
+            {organization.pendingProjects.length > SECTION_LIST_CAP ? (
+              <SectionCountNote>Showing {SECTION_LIST_CAP} of {organization.pendingProjects.length} pending items</SectionCountNote>
+            ) : null}
           </SectionCard>
 
           <SectionCard>
@@ -1336,17 +1591,28 @@ export function ClientOrganizationDetailScreen({
             {organization.openTasks.length ? (
               <>
                 <List>
-                  {paginatedTasks.map((task) => (
+                  {paginatedTasks.map((task) => {
+                    const taskTone = getTaskTone(task.status);
+                    return (
                     <Row key={task.id}>
-                      <div>
+                      <RowLead>
+                        <RowIconTile>
+                          <IconCheckBadge />
+                        </RowIconTile>
+                        <RowCopy>
                         <RowTitle>{task.title}</RowTitle>
-                        <ClientMeta>
-                          {task.projectName} · {task.assigneeName} · {formatTaskStatus(task.status)} · {formatPriority(task.priority)} · {formatShortDate(task.dueDate)}
-                        </ClientMeta>
-                      </div>
+                        <ClientMeta>{task.projectName}</ClientMeta>
+                        <RowMetaPills>
+                          <MetaPill>{task.assigneeName}</MetaPill>
+                          <MetaPill style={{ background: taskTone.bg, color: taskTone.fg }}>{formatTaskStatus(task.status)}</MetaPill>
+                          <MetaPill>{formatPriority(task.priority)}</MetaPill>
+                          <MetaPill>Due {formatShortDate(task.dueDate)}</MetaPill>
+                        </RowMetaPills>
+                      </RowCopy>
+                      </RowLead>
                       <RowLink href={`/projects/${task.projectId}`}>Open project</RowLink>
                     </Row>
-                  ))}
+                  )})}
                 </List>
                 <Footer>
                   <span>
@@ -1412,7 +1678,11 @@ const Content = styled.section`
     border-radius: 0 26px 26px 0;
     background:
       radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
-      linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84));
+      linear-gradient(
+        180deg,
+        var(--client-brand-soft-panel, rgba(252, 249, 244, 0.92)),
+        rgba(247, 243, 237, 0.84)
+      );
   }
 `;
 
@@ -1490,10 +1760,24 @@ const Subtitle = styled.p`
 
 const ClientHomeWelcome = styled.p`
   margin: 0;
-  color: #1f1f1f;
+  color: var(--client-brand-primary, #1f1f1f);
   font-size: 0.82rem;
   font-weight: 600;
   line-height: 1.4;
+`;
+
+const ClientHeaderIdentity = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 6px;
+`;
+
+const ClientHeaderTitle = styled.h1`
+  margin: 0;
+  font-size: clamp(1.28rem, 2.5vw, 1.72rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
 `;
 
 const HeaderAvatarLink = styled(Link)`
@@ -1513,6 +1797,16 @@ const HeaderAvatarLink = styled(Link)`
   @media (max-width: 767px) {
     display: none;
   }
+`;
+
+const ClientLogo = styled.img`
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 22px rgba(31, 31, 31, 0.08);
 `;
 
 const HeroCard = styled.section`
@@ -1615,19 +1909,7 @@ const ClientHomeHero = styled.section`
   gap: 14px;
   padding: 15px;
   border-radius: 20px;
-`;
-
-const ClientHomeHeroBrand = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-`;
-
-const ClientHomeHeroTitle = styled.h2`
-  margin: 0;
-  font-size: clamp(1.02rem, 1.9vw, 1.28rem);
-  line-height: 1.05;
-  letter-spacing: -0.04em;
+  background: var(--client-brand-soft-panel, rgba(255, 255, 255, 0.95));
 `;
 
 const ClientHomeStats = styled.div`
@@ -1731,6 +2013,51 @@ const List = styled.div`
   gap: 12px;
 `;
 
+const RowLead = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+`;
+
+const RowCopy = styled.div`
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+`;
+
+const RowGlyph = styled.div`
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #eadfce, #cfb89f);
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 800;
+`;
+
+const RowIconTile = styled.div`
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: rgba(244, 241, 237, 0.96);
+  color: var(--client-brand-primary, #1f4339);
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+`;
+
 const Row = styled.div`
   display: flex;
   align-items: center;
@@ -1746,6 +2073,7 @@ const RowTitle = styled.strong`
   display: block;
   margin-bottom: 4px;
   font-size: 0.9rem;
+  line-height: 1.35;
 `;
 
 const LiaisonRowButton = styled.button`
@@ -1829,6 +2157,33 @@ const ClientMeta = styled.p`
   line-height: 1.4;
 `;
 
+const RowMetaPills = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+`;
+
+const MetaPill = styled.span`
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(244, 241, 237, 0.96);
+  color: #7f7468;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  max-width: 100%;
+`;
+
+const SectionCountNote = styled.p`
+  margin: -2px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+`;
+
 const PrimaryButton = styled.button`
   min-height: 40px;
   display: inline-flex;
@@ -1838,8 +2193,8 @@ const PrimaryButton = styled.button`
   padding: 0 16px;
   border: 0;
   border-radius: 10px;
-  background: #1f4339;
-  color: #fff;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
   font-size: 0.9rem;
   font-weight: 700;
 
@@ -1861,8 +2216,8 @@ const PrimaryActionLink = styled(Link)`
   padding: 0 16px;
   border: 0;
   border-radius: 10px;
-  background: #1f4339;
-  color: #fff;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
   font-size: 0.9rem;
   font-weight: 700;
   text-decoration: none;
@@ -1920,7 +2275,7 @@ const LinkButton = styled.button`
   padding: 0;
   border: 0;
   background: transparent;
-  color: #1f4339;
+  color: var(--client-brand-primary, #1f4339);
   font-size: 0.84rem;
   font-weight: 700;
 `;
@@ -1945,8 +2300,8 @@ const PageButton = styled.button<{ $active?: boolean }>`
   padding: 0 14px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 12px;
-  background: ${({ $active }) => ($active ? "#1f4339" : "#fff")};
-  color: ${({ $active }) => ($active ? "#fff" : "var(--color-text)")};
+  background: ${({ $active }) => ($active ? "var(--client-brand-primary, #1f4339)" : "#fff")};
+  color: ${({ $active }) => ($active ? "var(--client-brand-on-primary, #fff)" : "var(--color-text)")};
   font-size: 0.9rem;
   font-weight: 700;
 `;
@@ -1976,23 +2331,115 @@ const ClientHomeList = styled.div`
 `;
 
 const SectionLink = styled(Link)`
-  color: #1f4339;
+  color: var(--client-brand-primary, #1f4339);
   font-size: 0.76rem;
   font-weight: 700;
   text-decoration: none;
+`;
+
+const BrandConfigButton = styled.button`
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--client-brand-primary, #1f4339);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    width: 13px;
+    height: 13px;
+  }
+`;
+
+const BrandHiddenInput = styled.input`
+  display: none;
+`;
+
+const BrandSection = styled.div`
+  ${cardSurface}
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--client-brand-soft-panel, rgba(255, 255, 255, 0.95));
+`;
+
+const BrandSectionHeader = styled.div`
+  display: grid;
+  gap: 4px;
+`;
+
+const BrandPreviewRow = styled.div`
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+`;
+
+const BrandLogoPreview = styled.img`
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  object-fit: cover;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(255, 255, 255, 0.94);
+`;
+
+const BrandMarkPreview = styled.div`
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
+  font-size: 1rem;
+  font-weight: 800;
+`;
+
+const BrandPreviewMeta = styled.div`
+  display: grid;
+  gap: 6px;
+`;
+
+const BrandPreviewChip = styled.span`
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
+  font-size: 0.7rem;
+  font-weight: 700;
+`;
+
+const BrandActionRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 `;
 
 const ClientProjectCard = styled(Link)`
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
   gap: 12px;
-  align-items: center;
-  padding: 10px 0;
-  border-top: 1px solid rgba(230, 224, 215, 0.65);
+  align-items: flex-start;
+  padding: 12px 0;
+  border-top: 1px solid rgba(230, 224, 215, 0.72);
   border-radius: 14px;
   text-decoration: none;
   color: inherit;
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
 
   &:first-child {
     padding-top: 0;
@@ -2001,6 +2448,7 @@ const ClientProjectCard = styled(Link)`
 
   &:hover {
     transform: translateY(-2px);
+    background: rgba(255, 248, 239, 0.82);
     box-shadow: 0 14px 24px rgba(31, 67, 57, 0.06);
   }
 
@@ -2023,61 +2471,65 @@ const ClientProjectGlyph = styled.div`
 
 const ClientProjectBody = styled.div`
   display: grid;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
-`;
-
-const ClientProjectHeading = styled.div`
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
 `;
 
 const ClientProjectTitle = styled.strong`
   color: #1f1f1f;
   font-size: 0.88rem;
   line-height: 1.25;
-`;
-
-const ClientProjectSubtitle = styled.span`
-  display: block;
-  margin-top: 2px;
-  color: #6f6558;
-  font-size: 0.76rem;
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 `;
 
-const InlineMeta = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #6f6558;
-  font-size: 0.76rem;
+const ClientProjectTop = styled.div`
+  display: grid;
+  gap: 8px;
 
-  svg {
-    width: 13px;
-    height: 13px;
+  ${desktop} {
+    grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(92px, auto));
+    align-items: start;
+    gap: 16px;
   }
 `;
 
-const ClientProjectFooter = styled.div`
+const ClientProjectMetaGroup = styled.div`
   display: grid;
-  gap: 6px;
+  gap: 2px;
+  min-width: 0;
+`;
+
+const ClientProjectMetaLabel = styled.span`
+  color: var(--color-text-light);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+`;
+
+const ClientProjectMetaValue = styled.strong`
+  color: #1f1f1f;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+`;
+
+const ClientProjectStatusRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
 `;
 
 const ClientProjectStatusPill = styled.span`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 24px;
+  min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 `;
 
@@ -2111,6 +2563,25 @@ const ClientReviewCard = styled(Link)`
   color: inherit;
 `;
 
+const CompactDeliveryCard = styled(ClientReviewCard)`
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 16px;
+  align-items: center;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease,
+    background-color 0.18s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 248, 239, 0.94);
+    border-color: rgba(220, 208, 194, 0.95);
+    box-shadow: 0 14px 24px rgba(31, 67, 57, 0.08);
+  }
+`;
+
 const ClientReviewIcon = styled.div`
   width: 44px;
   height: 44px;
@@ -2126,10 +2597,35 @@ const ClientReviewIcon = styled.div`
   }
 `;
 
+const CompactDeliveryIcon = styled(ClientReviewIcon)`
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+`;
+
 const ClientReviewBody = styled.div`
   display: grid;
   gap: 4px;
   min-width: 0;
+`;
+
+const CompactDeliveryBody = styled(ClientReviewBody)`
+  gap: 2px;
+
+  ${ClientProjectTitle} {
+    font-size: 0.82rem;
+    line-height: 1.2;
+  }
+`;
+
+const CompactDeliveryMeta = styled(ClientMeta)`
+  font-size: 0.72rem;
+  line-height: 1.2;
 `;
 
 const ClientReviewPill = styled.span`
@@ -2142,6 +2638,23 @@ const ClientReviewPill = styled.span`
   color: #c58911;
   font-size: 0.72rem;
   font-weight: 700;
+`;
+
+const CompactDeliveryStatusPill = styled(ClientProjectStatusPill)`
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 0.68rem;
+`;
+
+const CompactDeliveryArrow = styled(ClientProjectArrow)`
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+
+  svg {
+    width: 13px;
+    height: 13px;
+  }
 `;
 
 const ActivityList = styled.div`
@@ -2529,6 +3042,15 @@ function IconPlusMini() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 5v14" />
       <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function IconSettings() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3.8 13.8 5l2.2-.3 1 2 2 .9-.3 2.2 1.2 1.8-1.2 1.8.3 2.2-2 .9-1 2-2.2-.3L12 20.2 10.2 19l-2.2.3-1-2-2-.9.3-2.2L4.1 12l1.2-1.8-.3-2.2 2-.9 1-2 2.2.3z" />
+      <circle cx="12" cy="12" r="3.1" />
     </svg>
   );
 }

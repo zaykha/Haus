@@ -20,6 +20,7 @@ const MOBILE_BATCH_SIZE = 20;
 
 type RoleFilter = "all" | Role;
 type InternalRole = Exclude<Role, "client">;
+type TeamSortKey = "name" | "joined_desc" | "joined_asc";
 type MemberTaskRow = {
   id: string;
   title: string;
@@ -91,6 +92,8 @@ export function TeamScreen() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [sort, setSort] = useState<TeamSortKey>("name");
+  const [showSort, setShowSort] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
@@ -109,6 +112,7 @@ export function TeamScreen() {
   const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
   const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const appliedFilterCount = roleFilter !== "all" ? 1 : 0;
+  const appliedSortCount = sort !== "name" ? 1 : 0;
 
   const viewerRole = user?.role ?? "client";
   const canManageInvites = canInviteUsers(viewerRole);
@@ -182,7 +186,7 @@ export function TeamScreen() {
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return members.filter((member) => {
+    const nextMembers = members.filter((member) => {
       const matchesSearch =
         !q ||
         member.name.toLowerCase().includes(q) ||
@@ -193,7 +197,18 @@ export function TeamScreen() {
 
       return matchesSearch && matchesRole;
     });
-  }, [members, roleFilter, search]);
+    return [...nextMembers].sort((left, right) => {
+      if (sort === "joined_desc") {
+        return new Date(right.joinedAt ?? 0).getTime() - new Date(left.joinedAt ?? 0).getTime();
+      }
+
+      if (sort === "joined_asc") {
+        return new Date(left.joinedAt ?? 0).getTime() - new Date(right.joinedAt ?? 0).getTime();
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  }, [members, roleFilter, search, sort]);
 
   const invitationRows = useMemo(
     () =>
@@ -634,6 +649,34 @@ export function TeamScreen() {
             }}
             onClose={() => setShowFilters(false)}
           />
+          <FilterModal
+            open={showSort}
+            title="Sort team"
+            description="Adjust team sorting."
+            sections={[
+              {
+                id: "sort",
+                label: "Sort by",
+                options: [
+                  { value: "name", label: "Name" },
+                  { value: "joined_desc", label: "Newest to Oldest" },
+                  { value: "joined_asc", label: "Oldest to Newest" },
+                ],
+              },
+            ]}
+            values={{ sort }}
+            onApply={(nextValues) => {
+              setSort(nextValues.sort as TeamSortKey);
+              setCurrentPage(1);
+            }}
+            onReset={() => {
+              setSort("name");
+              setCurrentPage(1);
+            }}
+            onClose={() => setShowSort(false)}
+            applyLabel="Apply sort"
+            resetLabel="Default sort"
+          />
           <SearchControls onSubmit={handleSearchSubmit}>
             <SearchWrap>
               <SearchInput
@@ -652,6 +695,17 @@ export function TeamScreen() {
                 {appliedFilterCount ? <FilterBadge>{appliedFilterCount}</FilterBadge> : null}
                 <IconWrap>
                   <IconSliders />
+                </IconWrap>
+              </FilterButton>
+              <FilterButton
+                type="button"
+                aria-label="Open sorting"
+                aria-expanded={showSort}
+                onClick={() => setShowSort(true)}
+              >
+                {appliedSortCount ? <FilterBadge>{appliedSortCount}</FilterBadge> : null}
+                <IconWrap>
+                  <IconSort />
                 </IconWrap>
               </FilterButton>
             </FilterMenuWrap>
@@ -1204,7 +1258,8 @@ const SearchInput = styled.input`
 `;
 
 const FilterMenuWrap = styled.div`
-  position: relative;
+  display: flex;
+  gap: 10px;
 `;
 
 const FilterPopup = styled.div`
@@ -1882,6 +1937,17 @@ function IconSliders() {
       <circle cx="8" cy="6" r="1.5" fill="currentColor" stroke="none" />
       <circle cx="14" cy="12" r="1.5" fill="currentColor" stroke="none" />
       <circle cx="12" cy="18" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function IconSort() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 6v12" />
+      <path d="m5 9 3-3 3 3" />
+      <path d="M16 18V6" />
+      <path d="m13 15 3 3 3-3" />
     </svg>
   );
 }

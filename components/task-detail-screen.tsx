@@ -10,7 +10,8 @@ import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { useAppState } from "@/components/app-state";
 import { formatLabel, getTaskStatusLabel } from "@/lib/display";
-import { canEditTask, canViewProject } from "@/lib/permissions";
+import { canDeleteTask, canEditTask, canViewProject } from "@/lib/permissions";
+
 import {
   getCurrentTaskCompletionLabel,
   getTaskCompletionLabel,
@@ -18,6 +19,9 @@ import {
   isTaskCompletionLink,
   parseTaskCompletionAssets,
   parseTaskCompletionState,
+  recordSubmittedTaskCompletionSnapshot,
+  sameTaskCompletionAssets,
+  serializeTaskCompletionState,
 } from "@/lib/task-completion-assets";
 import { TaskPriority, TaskStatus } from "@/lib/types";
 
@@ -30,7 +34,8 @@ type TaskDetailScreenProps = {
 
 export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   const router = useRouter();
-  const { state, user, updateTask, updateTaskStatus } = useAppState();
+  const { state, user, updateTask, updateTaskStatus, deleteTask } = useAppState();
+
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<string | null>(null);
@@ -44,6 +49,8 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showReviseModal, setShowReviseModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   const [showCompleteForDesignerModal, setShowCompleteForDesignerModal] = useState(false);
   const [revisionComment, setRevisionComment] = useState("");
   const [error, setError] = useState("");
@@ -74,41 +81,80 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
 
     return taskAssets;
   }, [completionState.history.length, task?.managerReviewStatus, task?.status, taskAssets]);
+  
   const versionOptions = useMemo(() => {
-    // Build IV-based list and annotate IV entries with SV when assets match
-    const history = completionState.history.slice();
-    const internalSnapshots = history
-      .filter((s) => s.kind === "internal")
-      .map((s) => ({ number: s.number, assets: s.assets, id: s.id, label: s.label }));
-    const submittedSnapshots = history.filter((s) => s.kind === "submitted");
+    const internalSnapshots = completionState.history
+      .filter((snapshot) => snapshot.kind === "internal")
+      .sort((a, b) => a.number - b.number);
 
-    const assetsKey = (arr: string[]) => JSON.stringify([...arr].sort());
+    const submittedSnapshots = completionState.history
+      .filter((snapshot) => snapshot.kind === "submitted")
+      .sort((a, b) => a.number - b.number);
 
-    const internalMap = new Map<number, { id: string; label: string; assets: string[] }>();
-    internalSnapshots.forEach((s) => internalMap.set(s.number, { id: s.id, label: s.label, assets: s.assets }));
+    const matchedSubmittedIds = new Set<string>();
 
-    const currentInternalNumber = completionState.currentVersionKind === "internal" ? completionState.internalVersion : null;
-    if (currentInternalNumber !== null && !internalMap.has(currentInternalNumber)) {
-      internalMap.set(currentInternalNumber, {
-        id: `IV${currentInternalNumber}`,
-        label: `IV${currentInternalNumber}`,
-        assets: completionState.currentAssets,
+    const internalOptions = internalSnapshots.map((internalSnapshot) => {
+      const relatedSubmittedSnapshots = submittedSnapshots.filter((submittedSnapshot) => {
+        const matched = sameTaskCompletionAssets(submittedSnapshot.assets, internalSnapshot.assets);
+
+        if (matched) {
+          matchedSubmittedIds.add(submittedSnapshot.id);
+        }
+
+        return matched;
       });
-    }
 
-    const numbers = Array.from(internalMap.keys()).sort((a, b) => a - b);
+      const submittedLabels = relatedSubmittedSnapshots.map((snapshot) => snapshot.label);
 
-    const options = numbers.map((n) => {
-      const entry = internalMap.get(n)!;
-      const matchingSubmitted = submittedSnapshots.find((s) => assetsKey(s.assets) === assetsKey(entry.assets));
-      const svLabel = matchingSubmitted ? `(SV${matchingSubmitted.number})` : "";
-      const isCurrent = currentInternalNumber === n && completionState.currentVersionKind === "internal";
-      const label = `${entry.label}${svLabel ? ` ${svLabel}` : ""}${isCurrent ? " (Current)" : ""}`;
-      return { id: entry.id, label, assets: entry.assets, isCurrent };
+      const isCurrent = sameTaskCompletionAssets(
+        completionState.currentAssets,
+        internalSnapshot.assets,
+      );
+
+      const suffixParts = [...submittedLabels, isCurrent ? "Current" : null].filter(Boolean);
+
+      return {
+        id: internalSnapshot.id,
+        label:
+          suffixParts.length > 0
+            ? `${internalSnapshot.label} (${suffixParts.join(", ")})`
+            : internalSnapshot.label,
+        assets: internalSnapshot.assets,
+        isCurrent,
+        createdAt: internalSnapshot.createdAt,
+      };
     });
 
-    return options;
-  }, [completionState, currentVersionAssets]);
+    const orphanSubmittedOptions = submittedSnapshots
+      .filter((submittedSnapshot) => !matchedSubmittedIds.has(submittedSnapshot.id))
+      .map((submittedSnapshot) => {
+        const isCurrent = sameTaskCompletionAssets(
+          completionState.currentAssets,
+          submittedSnapshot.assets,
+        );
+
+        return {
+          id: submittedSnapshot.id,
+          label: isCurrent
+            ? `${submittedSnapshot.label} (Current)`
+            : submittedSnapshot.label,
+          assets: submittedSnapshot.assets,
+          isCurrent,
+          createdAt: submittedSnapshot.createdAt,
+        };
+      });
+
+    return [...internalOptions, ...orphanSubmittedOptions].sort((a, b) => {
+      const left = new Date(a.createdAt).getTime();
+      const right = new Date(b.createdAt).getTime();
+
+      if (Number.isNaN(left) || Number.isNaN(right)) {
+        return 0;
+      }
+
+      return left - right;
+    });
+  }, [completionState]);    
   const selectedVersion =
     versionOptions.find((option) => option.id === selectedVersionId) ?? versionOptions[0] ?? null;
 
@@ -216,22 +262,29 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   };
 
   const handleManagerSubmit = async () => {
-    // Close version dropdown whenever manager actions happen to avoid stale UI state.
     setVersionOpen(false);
     setIsSaving(true);
     setError("");
 
     try {
+      const nextCompletionState = recordSubmittedTaskCompletionSnapshot(
+        completionState,
+        completionState.currentAssets,
+      );
+
+      const nextCompletionScreenshotUrl = serializeTaskCompletionState(nextCompletionState);
+
       await updateTask(project.id, task.id, {
         title,
         assigneeId,
         status: "review",
         dueDate,
         priority,
-        completionScreenshotUrl: task.completionScreenshotUrl ?? null,
+        completionScreenshotUrl: nextCompletionScreenshotUrl,
         clientVisible: true,
         managerReviewStatus: "ready_for_client",
       });
+
       setShowSubmitConfirm(false);
       setRevisionComment("");
     } catch (nextError) {
@@ -306,6 +359,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
       <ConfirmActionModal
         open={showSubmitConfirm}
         title="Submit to client"
+
         description="This will send the current deliverables to the client for review."
         confirmLabel="Submit to client"
         busy={isSaving}
@@ -316,7 +370,36 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
         }}
         onConfirm={handleManagerSubmit}
       />
+      <ConfirmActionModal
+        open={showDeleteConfirm}
+        title="Delete task?"
+        description="This will permanently delete this task and related task records. This action cannot be undone."
+        confirmLabel="Delete Task"
+        cancelLabel="Cancel"
+        tone="danger"
+        busy={isSaving}
+        onCancel={() => {
+          if (!isSaving) {
+            setShowDeleteConfirm(false);
+          }
+        }}
+        onConfirm={async () => {
+          setError("");
+          setIsSaving(true);
+          try {
+            await deleteTask(project.id, task.id);
+            setShowDeleteConfirm(false);
+            setIsEditing(false);
+            router.push(`/projects/${project.id}`);
+          } catch (nextError) {
+            setError(nextError instanceof Error ? nextError.message : "Unable to delete task.");
+          } finally {
+            setIsSaving(false);
+          }
+        }}
+      />
       <DesignerTaskModal
+
         open={showCompleteForDesignerModal}
         task={
           task
@@ -390,7 +473,24 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
             <Subtitle>Review task details and update assignment, status, priority, or due date.</Subtitle>
           </div>
           <HeaderActions>
+            {canDeleteTask(user.role) ? (
+              <ActionButton
+                type="button"
+                onClick={() => {
+                  setError("");
+                  setShowDeleteConfirm(true);
+                }}
+                style={{
+                  background: "#c2544a",
+                  border: "1px solid rgba(194, 84, 74, 0.55)",
+                  color: "#fff",
+                }}
+              >
+                Delete Task
+              </ActionButton>
+            ) : null}
             {task.status === "in_progress" ? (
+
               <ActionButton
                 type="button"
                 onClick={() => setShowCompleteForDesignerModal(true)}
@@ -738,7 +838,7 @@ const Shell = styled.main`
     display: flex;
     align-items: flex-start;
     padding: 8px;
-    background: rgba(255, 255, 255, 0.58);
+    background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
   }
 `;
 
@@ -754,7 +854,11 @@ const Content = styled.section`
     border-radius: 0 26px 26px 0;
     background:
       radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
-      linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84));
+      linear-gradient(
+        180deg,
+        var(--client-brand-soft-panel, rgba(252, 249, 244, 0.92)),
+        rgba(247, 243, 237, 0.84)
+      );
   }
 `;
 
@@ -821,6 +925,8 @@ const ActionButton = styled.button`
 
 const Panel = styled.section`
   ${cardSurface}
+  position: relative;
+  overflow: visible;
   display: grid;
   gap: 14px;
   padding: 18px;
@@ -1123,6 +1229,7 @@ const TaskSelectMenu = styled.div`
   left: 0;
   right: 0;
   top: calc(100% + 8px);
+  z-index: 100;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1397,8 +1504,9 @@ const ReviewActionButton = styled.button<{ $active?: boolean }>`
   padding: 0 14px;
   border-radius: 999px;
   border: 1px solid ${({ $active }) => ($active ? "transparent" : "rgba(230, 224, 215, 0.95)")};
-  background: ${({ $active }) => ($active ? "#214f39" : "rgba(255, 255, 255, 0.92)")};
-  color: ${({ $active }) => ($active ? "#fff" : "#214f39")};
+  background: ${({ $active }) =>
+    $active ? "var(--client-brand-primary, #214f39)" : "rgba(255, 255, 255, 0.92)"};
+  color: ${({ $active }) => ($active ? "var(--client-brand-on-primary, #fff)" : "var(--client-brand-primary, #214f39)")};
   font-size: 0.86rem;
   font-weight: 700;
 `;

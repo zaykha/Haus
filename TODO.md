@@ -1,7 +1,7 @@
-# TODO
+- [ ] Inspect chat screen layout and align with shared app chrome (desktop AppSidebar + profile icon header)
+- [x] Update components/chat/chat-screen.tsx to include AppSidebar (activeLabel="Chat")
 
-- [ ] API: Add client-to-server endpoint under `app/api/workspace/projects/[id]/workflow/...` to update workflow status on client approve/request revision.
-- [ ] Client: Wire a new handler in `components/project-detail-screen.tsx` and call it from the client feedback popup submit before closing.
-- [ ] Ensure activity logging is consistent (insert into `project_activity`).
-- [ ] Test: approve/revision updates workflow immediately and modal can be reopened.
+- [ ] Add top-right profile icon header linking to /profile (desktop + mobile)
+- [ ] Preserve existing chat conversation list + message composer functionality
+- [ ] Sanity check for responsive behavior (desktop vs mobile/tablet)
 

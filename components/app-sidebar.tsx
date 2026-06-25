@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
+import { useChatUnreadTotal } from "@/components/chat/use-chat-unread-total";
 import { AppNavLabel, getPrimaryNavItems } from "@/lib/navigation";
 import { getAttentionTaskCount } from "@/lib/task-attention";
 import { User } from "@/lib/types";
@@ -26,6 +27,7 @@ export function AppSidebar({
   const taskBadgeCount = useMemo(() => {
     return getAttentionTaskCount(user, state.projects);
   }, [state.projects, user]);
+  const chatBadgeCount = useChatUnreadTotal(user);
   const badgeLabel: SidebarLabel = user.role === "client" ? "Projects" : "Tasks";
   const navItems: Array<{
     label: SidebarLabel;
@@ -40,6 +42,8 @@ export function AppSidebar({
         <IconFolder />
       ) : item.label === "Tasks" ? (
         <IconCheckCircle />
+      ) : item.label === "Chat" ? (
+        <IconChat />
       ) : item.label === "Team" ? (
         <IconUsers />
       ) : item.label === "Liaisons" ? (
@@ -61,6 +65,9 @@ export function AppSidebar({
                 <span>{item.label}</span>
                 {item.label === badgeLabel && taskBadgeCount > 0 ? (
                   <TaskBadge>{taskBadgeCount > 99 ? "99+" : taskBadgeCount}</TaskBadge>
+                ) : null}
+                {item.label === "Chat" && chatBadgeCount > 0 ? (
+                  <TaskBadge>{chatBadgeCount > 99 ? "99+" : chatBadgeCount}</TaskBadge>
                 ) : null}
               </SidebarLabelRow>
             </SidebarLink>
@@ -115,7 +122,7 @@ const sidebarItemCss = css<{ $active?: boolean }>`
   border: 0;
   border-radius: 10px;
   color: ${({ $active }) => ($active ? "var(--color-text)" : "var(--color-text-muted)")};
-  background: ${({ $active }) => ($active ? "#f5efe5" : "transparent")};
+  background: ${({ $active }) => ($active ? "var(--client-brand-soft-strong, #f5efe5)" : "transparent")};
   box-shadow: ${({ $active }) =>
     $active ? "inset 0 0 0 1px rgba(230, 224, 215, 0.9)" : "none"};
   text-align: left;
@@ -129,7 +136,8 @@ const sidebarItemCss = css<{ $active?: boolean }>`
 
   &:hover {
     color: var(--color-text);
-    background: ${({ $active }) => ($active ? "#f5efe5" : "rgba(245, 239, 229, 0.78)")};
+    background: ${({ $active }) =>
+      $active ? "var(--client-brand-soft-strong, #f5efe5)" : "var(--client-brand-soft, rgba(245, 239, 229, 0.78))"};
     box-shadow: ${({ $active }) =>
       $active
         ? "inset 0 0 0 1px rgba(230, 224, 215, 0.9)"
@@ -242,6 +250,16 @@ function IconChart() {
       <path d="M12 19V5" />
       <path d="M19 19v-7" />
       <path d="M4 19h16" />
+    </svg>
+  );
+}
+
+function IconChat() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4z" />
+      <path d="M7.5 9.5h9" />
+      <path d="M7.5 13h6" />
     </svg>
   );
 }

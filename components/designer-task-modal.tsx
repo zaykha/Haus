@@ -155,7 +155,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
 
     // always show options (current may be included above)
     return options;
-  }, [completionState, currentVersionAssets, editableCurrentAssets, isLocked]);
+  }, [completionState, currentVersionAssets, isLocked]);
   const allAssets = useMemo(
     () => [
       ...editableCurrentAssets.map((value) => ({

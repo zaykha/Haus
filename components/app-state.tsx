@@ -129,6 +129,8 @@ interface AppStateContextValue {
     name: string;
     type: "internal" | "external";
     status: "active" | "inactive";
+    logoUrl?: string;
+    brandColor?: string;
     phone?: string;
     address?: string;
   }) => Promise<{ id: string }>;
@@ -138,6 +140,8 @@ interface AppStateContextValue {
       name: string;
       type: "internal" | "external";
       status: "active" | "inactive";
+      logoUrl?: string;
+      brandColor?: string;
       phone?: string;
       address?: string;
     },
