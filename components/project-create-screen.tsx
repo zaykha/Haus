@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ProjectForm, ProjectFormValues } from "@/components/project-form";
 import { useAppState } from "@/components/app-state";
 import { ClientTitleLogo } from "@/components/client-title-logo";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { parseTabularDocument } from "@/lib/spreadsheet";
 import { canCreateProject, canCreateProjectForOrganization, getUserClientOrganizationIds } from "@/lib/permissions";
 import { formatRole } from "@/lib/display";
@@ -66,11 +67,20 @@ export function ProjectCreateScreen() {
   const [bulkSummary, setBulkSummary] = useState("");
   const dragDepthRef = useRef(0);
   const safeUser = user;
+  const { activeClientOrganization, activeClientOrganizationId, clientOrganizationIds } =
+    useActiveClientOrganization(safeUser, state.clientOrganizations);
   const canManage = safeUser ? canCreateProject(safeUser.role) : false;
   const departments = state.departments;
   const allowedClientOrganizationIds = useMemo(
-    () => (safeUser ? getUserClientOrganizationIds(safeUser) : []),
-    [safeUser],
+    () =>
+      safeUser?.role === "client"
+        ? activeClientOrganizationId
+          ? [activeClientOrganizationId]
+          : clientOrganizationIds
+        : safeUser
+          ? getUserClientOrganizationIds(safeUser)
+          : [],
+    [activeClientOrganizationId, clientOrganizationIds, safeUser],
   );
   const clientOrganizations = useMemo(
     () =>
@@ -80,19 +90,13 @@ export function ProjectCreateScreen() {
     [allowedClientOrganizationIds, safeUser?.role, state.clientOrganizations],
   );
   const clients = state.users.filter((candidate) => candidate.role === "client");
-  const currentClientOrganization = useMemo(
-    () =>
-      safeUser?.role === "client"
-        ? state.clientOrganizations.find((organization) => allowedClientOrganizationIds.includes(organization.id)) ?? null
-        : null,
-    [allowedClientOrganizationIds, safeUser?.role, state.clientOrganizations],
-  );
+  const currentClientOrganization = activeClientOrganization;
   const preselectedClientOrganizationId = searchParams.get("clientOrganizationId") ?? "";
   const resolvedClientOrganizationId = clientOrganizations.some(
     (organization) => organization.id === preselectedClientOrganizationId,
   )
     ? preselectedClientOrganizationId
-    : "";
+    : activeClientOrganizationId ?? "";
   const formInitialValues = useMemo<ProjectFormValues>(
     () => ({
       ...initialValues,

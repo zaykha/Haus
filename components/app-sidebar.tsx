@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { useChatUnreadTotal } from "@/components/chat/use-chat-unread-total";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { AppNavLabel, getPrimaryNavItems } from "@/lib/navigation";
 import { getAttentionTaskCount } from "@/lib/task-attention";
 import { User } from "@/lib/types";
@@ -24,6 +25,7 @@ export function AppSidebar({
   activeLabel: SidebarLabel;
 }) {
   const { state } = useAppState();
+  const { scopedHref } = useActiveClientOrganization(user, state.clientOrganizations);
   const taskBadgeCount = useMemo(() => {
     return getAttentionTaskCount(user, state.projects);
   }, [state.projects, user]);
@@ -59,7 +61,7 @@ export function AppSidebar({
         <Brand src="/haus_logo.png" alt="Haus" />
         <SidebarNav aria-label="Primary sections">
           {navItems.map((item) => (
-            <SidebarLink key={item.label} href={item.href} $active={item.label === activeLabel}>
+            <SidebarLink key={item.label} href={scopedHref(item.href)} $active={item.label === activeLabel}>
               <SidebarIcon>{item.icon}</SidebarIcon>
               <SidebarLabelRow>
                 <span>{item.label}</span>
@@ -95,7 +97,7 @@ const Sidebar = styled.aside`
     overflow-y: auto;
     border-right: 1px solid rgba(230, 224, 215, 0.95);
     border-radius: 26px 0 0 26px;
-    background: rgba(255, 255, 255, 0.62);
+    background: var(--client-brand-soft-panel, rgba(255, 255, 255, 0.62));
   }
 `;
 

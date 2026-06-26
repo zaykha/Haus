@@ -9,11 +9,11 @@ import { ClientOrganizationDetailScreen } from "@/components/client-organization
 import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DashboardScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { UserAvatar } from "@/components/user-avatar";
 import {
   canManageWorkspace,
   canViewProject,
-  getUserClientOrganizationIds,
   getVisibleTasksForUser,
 } from "@/lib/permissions";
 import { formatLabel, formatProjectStage, formatRole, getProjectStatusLabel, getTaskStatusLabel } from "@/lib/display";
@@ -194,6 +194,7 @@ export function DashboardScreen() {
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
 
   const safeUser = user;
+  const { activeClientOrganizationId } = useActiveClientOrganization(safeUser, state.clientOrganizations);
   const organizationNames = useMemo(
     () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization.name])),
     [state.clientOrganizations],
@@ -450,8 +451,7 @@ export function DashboardScreen() {
     }
   };
 
-  const clientHomeOrganizationId =
-    safeUser?.role === "client" ? getUserClientOrganizationIds(safeUser)[0] : null;
+  const clientHomeOrganizationId = safeUser?.role === "client" ? activeClientOrganizationId : null;
 
   if (!ready) {
     return <DashboardScreenSkeleton />;
@@ -1357,7 +1357,7 @@ const Shell = styled.main`
     display: flex;
     align-items: flex-start;
     padding: 8px;
-    background: rgba(255, 255, 255, 0.58);
+    background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
   }
 `;
 
@@ -1478,8 +1478,8 @@ const Content = styled.section`
     padding: 24px 28px 24px;
     border-radius: 0 26px 26px 0;
     background:
-      radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
-      linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84));
+      radial-gradient(circle at top center, rgba(255, 255, 255, 0.68), transparent 18%),
+      var(--client-brand-soft-panel, linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84)));
   }
 `;
 

@@ -29,16 +29,19 @@ export function getClientBrandStyle(
   organization?: Pick<ClientOrganization, "brandColor"> | null,
 ) {
   const primary = getOrganizationBrandColor(organization);
-  const soft = mixHexWithWhite(primary, 0.88);
-  const softStrong = mixHexWithWhite(primary, 0.78);
-  const softPanel = mixHexWithWhite(primary, 0.94);
+  const softStart = hexToRgba(primary, 0.34);
+  const softMid = hexToRgba(primary, 0.16);
+  const softStrongStart = hexToRgba(primary, 0.46);
+  const softStrongMid = hexToRgba(primary, 0.22);
+  const softPanelStart = hexToRgba(primary, 0.2);
+  const softPanelMid = hexToRgba(primary, 0.08);
   const textOnPrimary = getTextContrast(primary);
 
   return {
     "--client-brand-primary": primary,
-    "--client-brand-soft": soft,
-    "--client-brand-soft-strong": softStrong,
-    "--client-brand-soft-panel": softPanel,
+    "--client-brand-soft": `linear-gradient(135deg, ${softStart} 0%, ${softMid} 42%, #FFFFFF 100%)`,
+    "--client-brand-soft-strong": `linear-gradient(135deg, ${softStrongStart} 0%, ${softStrongMid} 46%, #FFFFFF 100%)`,
+    "--client-brand-soft-panel": `linear-gradient(145deg, ${softPanelStart} 0%, ${softPanelMid} 56%, #FFFFFF 100%)`,
     "--client-brand-on-primary": textOnPrimary,
   } as CSSProperties;
 }
@@ -73,4 +76,9 @@ function rgbToHex(r: number, g: number, b: number) {
   return `#${[r, g, b]
     .map((value) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0"))
     .join("")}`.toUpperCase();
+}
+
+function hexToRgba(hex: string, alpha: number) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
 }

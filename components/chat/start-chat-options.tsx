@@ -38,9 +38,11 @@ const [search, setSearch] = useState("");
 
 const currentUserOrgIds = useMemo(
   () =>
-    currentUser.clientOrganizationIds ??
-    (currentUser.clientOrganizationId ? [currentUser.clientOrganizationId] : []),
-  [currentUser.clientOrganizationId, currentUser.clientOrganizationIds],
+    clientOrganizationIds.length > 0
+      ? clientOrganizationIds
+      : currentUser.clientOrganizationIds ??
+        (currentUser.clientOrganizationId ? [currentUser.clientOrganizationId] : []),
+  [clientOrganizationIds, currentUser.clientOrganizationId, currentUser.clientOrganizationIds],
 );
 
 const isManager = role === "communication_manager" || role === "creative_manager";

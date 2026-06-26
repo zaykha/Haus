@@ -439,6 +439,7 @@ const REALTIME_WORKSPACE_TABLES = [
   "project_comments",
   "project_activity",
   "project_files",
+  "client_organizations",
   "client_organization_liaisons",
   "profiles",
 ] as const;

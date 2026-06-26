@@ -10,10 +10,12 @@ import { FilterModal } from "@/components/filter-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { UserAvatar } from "@/components/user-avatar";
+import { getClientBrandStyle } from "@/lib/client-branding";
 import { buildLiaisonRows } from "@/lib/client-organizations";
 import { formatRole } from "@/lib/display";
-import { canCreateClient, getUserClientOrganizationIds } from "@/lib/permissions";
+import { canCreateClient } from "@/lib/permissions";
 
 type LiaisonFilter = "all" | "assigned" | "unassigned" | "active" | "inactive";
 type LiaisonSortKey = "name" | "created_at_desc" | "created_at_asc";
@@ -114,20 +116,16 @@ export function LiaisonsScreen() {
   const viewerRole = user?.role ?? "client";
   const roleLabel = formatRole(viewerRole).toUpperCase();
   const canManage = canCreateClient(viewerRole);
-  const clientOrganizationIds = useMemo(
-    () => (user ? getUserClientOrganizationIds(user) : []),
-    [user],
+  const { activeClientOrganization, activeClientOrganizationId, clientOrganizationIds } =
+    useActiveClientOrganization(user, state.clientOrganizations);
+  const clientBrandStyle = useMemo(
+    () => getClientBrandStyle(viewerRole === "client" ? activeClientOrganization : null),
+    [activeClientOrganization, viewerRole],
   );
   const canInviteLiaisons = canManage || (viewerRole === "client" && clientOrganizationIds.length > 0);
   const inviteLockedToSingleOrganization = viewerRole === "client" && clientOrganizationIds.length === 1;
   const liaisons = useMemo(() => buildLiaisonRows(state), [state]);
-  const currentClientOrganization = useMemo(
-    () =>
-      viewerRole === "client"
-        ? state.clientOrganizations.find((organization) => clientOrganizationIds.includes(organization.id)) ?? null
-        : null,
-    [clientOrganizationIds, state.clientOrganizations, viewerRole],
-  );
+  const currentClientOrganization = activeClientOrganization;
   const selectedLiaison = selectedLiaisonId
     ? liaisons.find((liaison) => liaison.id === selectedLiaisonId) ?? null
     : null;
@@ -148,14 +146,12 @@ export function LiaisonsScreen() {
       viewerRole === "client"
         ? liaisons.filter((liaison) =>
             Boolean(
-              user &&
-              liaison.clientOrganizationIds.some((organizationId) =>
-                getUserClientOrganizationIds(user).includes(organizationId),
-              ),
+              activeClientOrganizationId &&
+              liaison.clientOrganizationIds.includes(activeClientOrganizationId),
             ),
           )
         : liaisons,
-    [liaisons, user, viewerRole],
+    [activeClientOrganizationId, liaisons, viewerRole],
   );
 
   const filteredLiaisons = useMemo(() => {
@@ -229,7 +225,7 @@ export function LiaisonsScreen() {
   }
 
   return (
-    <Shell>
+    <Shell style={viewerRole === "client" ? clientBrandStyle : undefined}>
       <InviteWorkspaceModal
         open={showInviteLiaisonModal}
         onClose={() => setShowInviteLiaisonModal(false)}
@@ -915,7 +911,7 @@ const Shell = styled.main`
     display: flex;
     align-items: flex-start;
     padding: 8px;
-    background: rgba(255, 255, 255, 0.58);
+    background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
   }
 `;
 
@@ -930,8 +926,8 @@ const Content = styled.section`
     padding: 24px 28px;
     border-radius: 0 26px 26px 0;
     background:
-      radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
-      linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84));
+      radial-gradient(circle at top center, rgba(255, 255, 255, 0.72), transparent 18%),
+      var(--client-brand-soft-panel, linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84)));
   }
 `;
 

@@ -5,6 +5,8 @@ import styled from "styled-components";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useAppState } from "@/components/app-state";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
+import { getClientBrandStyle } from "@/lib/client-branding";
 import type { Role, User } from "@/lib/types";
 import { UserAvatar } from "@/components/user-avatar";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -76,6 +78,21 @@ function formatTime(iso: string) {
 export function ChatScreen() {
   const { user, ready, state } = useAppState();
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const { activeClientOrganizationId, clientOrganizationIds } = useActiveClientOrganization(
+    user,
+    state.clientOrganizations,
+  );
+  const currentClientOrganization = useMemo(
+    () =>
+      user?.role === "client" && activeClientOrganizationId
+        ? state.clientOrganizations.find((organization) => organization.id === activeClientOrganizationId) ?? null
+        : null,
+    [activeClientOrganizationId, state.clientOrganizations, user?.role],
+  );
+  const clientBrandStyle = useMemo(
+    () => getClientBrandStyle(user?.role === "client" ? currentClientOrganization : null),
+    [currentClientOrganization, user?.role],
+  );
 
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
 
@@ -787,7 +804,7 @@ const userCanStartDirectChat = (targetUser: User) => {
   }
 
   if (user.role === "client") {
-    const myOrgIds = getUserOrgIds(user);
+    const myOrgIds = activeClientOrganizationId ? [activeClientOrganizationId] : getUserOrgIds(user);
     const targetOrgIds = getUserOrgIds(targetUser);
     const sameOrg = targetOrgIds.some((orgId) => myOrgIds.includes(orgId));
 
@@ -814,7 +831,8 @@ const userCanStartOrgChat = (organizationId: string) => {
   }
 
   if (user.role === "client") {
-    return getUserOrgIds(user).includes(organizationId);
+    const myOrgIds = activeClientOrganizationId ? [activeClientOrganizationId] : getUserOrgIds(user);
+    return myOrgIds.includes(organizationId);
   }
 
   return false;
@@ -1390,8 +1408,15 @@ const ensureDirectConversation = async (targetUserId: string) => {
           (conversation) =>
             conversation.type === "organization_group" && Boolean(conversation.client_organization_id),
         )
+        .filter(
+          (conversation) =>
+            !user ||
+            user.role !== "client" ||
+            !activeClientOrganizationId ||
+            conversation.client_organization_id === activeClientOrganizationId,
+        )
         .map((conversation) => conversation.client_organization_id as string),
-    [conversations],
+    [activeClientOrganizationId, conversations, user],
   );
   const selectedParticipantUsers = participants
     .map((participant) => state.users.find((candidate) => candidate.id === participant.user_id) ?? null)
@@ -1445,8 +1470,17 @@ const ensureDirectConversation = async (targetUserId: string) => {
         : conversationScope === "clients"
           ? conversation.type === "organization_group" || targetUser?.role === "client"
           : conversation.type === "internal_direct" && targetUser?.role !== "client";
+    const matchesActiveOrganization =
+      !user ||
+      user.role !== "client" ||
+      !activeClientOrganizationId ||
+      (conversation.type === "organization_group"
+        ? conversation.client_organization_id === activeClientOrganizationId
+        : targetUser?.role === "client"
+          ? getUserOrgIds(targetUser).includes(activeClientOrganizationId)
+          : true);
 
-    return matchesSearch && matchesScope;
+    return matchesSearch && matchesScope && matchesActiveOrganization;
   });
 
   const applyConversationSearch = () => {
@@ -1454,7 +1488,7 @@ const ensureDirectConversation = async (targetUserId: string) => {
   };
 
   return (
-    <PageShell>
+    <PageShell style={user?.role === "client" ? clientBrandStyle : undefined}>
       {safeUser ? <AppSidebar user={safeUser} activeLabel="Chat" /> : null}
 
       <Content>
@@ -1882,7 +1916,11 @@ const ensureDirectConversation = async (targetUserId: string) => {
                 users={state.users}
                 clientOrganizations={state.clientOrganizations}
                 clientOrganizationIds={
-                  user.clientOrganizationIds ?? (user.clientOrganizationId ? [user.clientOrganizationId] : [])
+                  user.role === "client"
+                    ? activeClientOrganizationId
+                      ? [activeClientOrganizationId]
+                      : clientOrganizationIds
+                    : user.clientOrganizationIds ?? (user.clientOrganizationId ? [user.clientOrganizationId] : [])
                 }
                 existingDirectUserIds={existingDirectUserIds}
                 existingOrganizationIds={existingOrganizationIds}
@@ -1929,8 +1967,8 @@ const PageShell = styled.main`
   padding: 8px 8px 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at top center, rgba(255, 255, 255, 0.82), transparent 28%),
-    linear-gradient(180deg, #f8f3eb 0%, #f6f0e6 100%);
+    radial-gradient(circle at top center, rgba(255, 255, 255, 0.72), transparent 24%),
+    var(--client-brand-soft, linear-gradient(180deg, #f8f3eb 0%, #f6f0e6 100%));
 
   ${desktop} {
     display: flex;
@@ -1953,7 +1991,7 @@ const Content = styled.section`
     height: calc(100vh - 16px);
     padding: 22px;
     border-radius: 0 30px 30px 0;
-    background: rgba(255, 255, 255, 0.36);
+    background: var(--client-brand-soft-panel, rgba(255, 255, 255, 0.36));
   }
 `;
 

@@ -5,13 +5,13 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ClientTitleLogo } from "@/components/client-title-logo";
 import { FilterModal } from "@/components/filter-modal";
 import { useAppState } from "@/components/app-state";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { UserAvatar } from "@/components/user-avatar";
 import {
   buildClientOrganizationRows,
-  getClientOrganizationMark,
   getClientOrganizationStatusLabel,
 } from "@/lib/client-organizations";
 import { formatRole } from "@/lib/display";
@@ -104,6 +104,18 @@ export function ClientsScreen() {
   const roleLabel = formatRole(viewerRole).toUpperCase();
   const canManage = canCreateClient(viewerRole);
   const clients = useMemo(() => buildClientOrganizationRows(state), [state]);
+
+  const clientLogoUrlById = useMemo(
+    () =>
+      new Map(
+        state.clientOrganizations.map((organization) => [
+          organization.id,
+          organization.logoUrl?.trim() ?? "",
+        ]),
+      ),
+    [state.clientOrganizations],
+  );
+
   const clientCreatedAtById = useMemo(
     () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization.createdAt ?? ""])),
     [state.clientOrganizations],
@@ -119,6 +131,15 @@ export function ClientsScreen() {
         : clients,
     [clients, viewerClientOrganizationIds, viewerRole],
   );
+
+  const renderClientLogo = (client: (typeof clients)[number]) => {
+    const logoUrl =
+      (client.organizationId ? clientLogoUrlById.get(client.organizationId) : "") ||
+      clientLogoUrlById.get(client.id) ||
+      "";
+
+    return <ClientLogoThumb organization={{ logoUrl, name: client.name }} />;
+  };
 
   const filteredClients = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -608,8 +629,8 @@ export function ClientsScreen() {
 
                 return (
                   <DesktopRow key={client.id} href={`/clients/${client.id}`}>
-                    <ClientCell>
-                      <ClientMark>{getClientOrganizationMark(client.name)}</ClientMark>
+                   <ClientCell>
+                      {renderClientLogo(client)}
                       <ClientCopy>
                         <ClientName>{client.name}</ClientName>
                         <InlinePills>
@@ -703,8 +724,8 @@ export function ClientsScreen() {
             paginatedClients.map((client) => (
               <MobileCard key={client.id} href={`/clients/${client.id}`}>
                 <MobileTop>
-                  <ClientMark>{getClientOrganizationMark(client.name)}</ClientMark>
-                  <ClientCopy>
+                  {renderClientLogo(client)}
+                    <ClientCopy>
                     <ClientName>{client.name}</ClientName>
                     <MobileSummaryRow>
                       <TypePill $type={client.type}>
@@ -763,8 +784,8 @@ export function ClientsScreen() {
             mobileClients.map((client) => (
                 <MobileCard key={client.id} href={`/clients/${client.id}`}>
                   <MobileTop>
-                    <ClientMark>{getClientOrganizationMark(client.name)}</ClientMark>
-                    <ClientCopy>
+                    {renderClientLogo(client)}
+                      <ClientCopy>
                       <ClientName>{client.name}</ClientName>
                       <MobileSummaryRow>
                         <TypePill $type={client.type}>
@@ -895,6 +916,29 @@ const Toolbar = styled.section`
   }
 `;
 
+const ClientLogoThumb = styled(ClientTitleLogo)`
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
+  box-shadow: 0 8px 18px rgba(104, 84, 54, 0.12);
+  display: grid;
+  place-items: center;
+  color: #8c7040;
+  font-size: 0.9rem;
+  font-weight: 700;
+
+  ${desktop} {
+    width: 46px;
+    height: 46px;
+    flex-basis: 46px;
+    font-size: 1rem;
+  }
+`;
+
 const ToolbarActions = styled.div`
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -902,10 +946,8 @@ const ToolbarActions = styled.div`
   width: 100%;
 
   ${desktop} {
-    display: flex;
     width: auto;
-    flex-wrap: wrap;
-    margin: auto;
+    flex-wrap: nowrap;
   }
 `;
 
@@ -915,7 +957,7 @@ const SearchControls = styled.form`
   gap: 10px;
 
   ${desktop} {
-    flex: 1;
+    flex: 1 1 auto;
   }
 `;
 

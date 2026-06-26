@@ -10,9 +10,10 @@ import { ClientTitleLogo } from "@/components/client-title-logo";
 import { FilterModal } from "@/components/filter-modal";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { UserAvatar } from "@/components/user-avatar";
 import { getClientBrandStyle } from "@/lib/client-branding";
-import { canCreateProject as canCreateProjectPermission, canCreateProjectForOrganization, canViewProject, getUserClientOrganizationIds, getVisibleTasksForUser } from "@/lib/permissions";
+import { canCreateProject as canCreateProjectPermission, canCreateProjectForOrganization, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { getAttentionTasksForProject } from "@/lib/task-attention";
 import { formatProjectStage, formatRole } from "@/lib/display";
 import { Project, ProjectWorkflowStage } from "@/lib/types";
@@ -149,9 +150,17 @@ export function ProjectsScreen() {
     (priorityFilter !== "all" ? 1 : 0) +
     (organizationFilter !== "all" ? 1 : 0);
   const appliedSortCount = sort !== "due_date" ? 1 : 0;
+  const { activeClientOrganization, activeClientOrganizationId } = useActiveClientOrganization(
+    user,
+    state.clientOrganizations,
+  );
 
   // Keep hooks unconditionally called: ESLint rules-of-hooks
-  const visibleProjects = state.projects.filter((project) => (user ? canViewProject(user, project) : false));
+  const visibleProjects = state.projects.filter(
+    (project) =>
+      (user ? canViewProject(user, project) : false) &&
+      (user?.role !== "client" || !activeClientOrganizationId || project.clientOrganizationId === activeClientOrganizationId),
+  );
   const canManage = user ? canCreateProjectPermission(user.role) : false;
   const canCreateAnyProject = Boolean(
     user &&
@@ -200,15 +209,7 @@ export function ProjectsScreen() {
   const roleLabel = user ? formatRole(user.role).toUpperCase() : "";
   const canToggleDesktopView = user ? user.role === "client" || canManage : false;
   const isClient = user?.role === "client";
-  const currentClientOrganization = useMemo(
-    () =>
-      user?.role === "client"
-        ? state.clientOrganizations.find((organization) =>
-            getUserClientOrganizationIds(user).includes(organization.id),
-          ) ?? null
-        : null,
-    [state.clientOrganizations, user],
-  );
+  const currentClientOrganization = activeClientOrganization;
   const clientBrandStyle = useMemo(
     () => getClientBrandStyle(currentClientOrganization),
     [currentClientOrganization],
@@ -755,6 +756,7 @@ const PageShell = styled.main`
   display: block;
   min-height: 100vh;
   padding: 18px 16px 24px;
+  background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
 
   ${tablet} {
     padding: 22px 28px calc(env(safe-area-inset-bottom) + 24px);
@@ -764,7 +766,7 @@ const PageShell = styled.main`
     display: flex;
     align-items: flex-start;
     padding: 8px;
-    background: rgba(255, 255, 255, 0.58);
+    background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
   }
 `;
 
@@ -779,12 +781,8 @@ const Content = styled.section`
     padding: 28px 34px 26px;
     border-radius: 0 26px 26px 0;
     background:
-      radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
-      linear-gradient(
-        180deg,
-        var(--client-brand-soft-panel, rgba(252, 249, 244, 0.92)),
-        rgba(247, 243, 237, 0.84)
-      );
+      radial-gradient(circle at top center, rgba(255, 255, 255, 0.68), transparent 18%),
+      var(--client-brand-soft-panel, linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84)));
   }
 `;
 

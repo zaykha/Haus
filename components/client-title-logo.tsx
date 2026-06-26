@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+import { getClientOrganizationMark } from "@/lib/client-organizations";
 import { ClientOrganization } from "@/lib/types";
 
 type ClientTitleLogoProps = {
@@ -10,8 +11,12 @@ type ClientTitleLogoProps = {
 };
 
 export function ClientTitleLogo({ organization, className }: ClientTitleLogoProps) {
-  if (!organization?.logoUrl) {
+  if (!organization) {
     return null;
+  }
+
+  if (!organization.logoUrl) {
+    return <div className={className}>{getClientOrganizationMark(organization.name ?? "Organization")}</div>;
   }
 
   return <img className={className} src={organization.logoUrl} alt={organization.name ?? "Organization logo"} />;

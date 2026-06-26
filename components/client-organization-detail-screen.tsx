@@ -6,6 +6,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "re
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { BrandColorPicker } from "@/components/brand-color-picker";
+import { ClientTitleLogo } from "@/components/client-title-logo";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
@@ -166,6 +167,7 @@ export function ClientOrganizationDetailScreen({
   const [name, setName] = useState("");
   const [type, setType] = useState<"internal" | "external">("external");
   const [status, setStatus] = useState<"active" | "inactive">("active");
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [brandColor, setBrandColor] = useState("#1F4339");
   const [phone, setPhone] = useState("");
@@ -183,6 +185,7 @@ export function ClientOrganizationDetailScreen({
   const [isRemovingOrganization, setIsRemovingOrganization] = useState(false);
   const [showManageOrganizations, setShowManageOrganizations] = useState(false);
   const [showPendingLiaisonsOnly, setShowPendingLiaisonsOnly] = useState(false);
+  const [showOrganizationSwitcher, setShowOrganizationSwitcher] = useState(false);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   const rows = useMemo(() => buildClientOrganizationRows(state), [state]);
@@ -245,6 +248,7 @@ export function ClientOrganizationDetailScreen({
     setType(rawOrganization.type ?? "external");
     setStatus(rawOrganization.status ?? "active");
     setLogoUrl(rawOrganization.logoUrl ?? "");
+    setLogoPreviewUrl("");
     setBrandColor(rawOrganization.brandColor ?? "#1F4339");
     setPhone(rawOrganization.phone ?? "");
     setAddress(rawOrganization.address ?? "");
@@ -256,6 +260,21 @@ export function ClientOrganizationDetailScreen({
 
   const brandStyle = useMemo(() => getClientBrandStyle(rawOrganization), [rawOrganization]);
   const editBrandStyle = useMemo(() => getClientBrandStyle({ brandColor }), [brandColor]);
+  const headerLogoUrl =
+    rawOrganization?.logoUrl?.trim() ||
+    state.clientOrganizations.find((candidate) => candidate.id === organization?.organizationId)?.logoUrl?.trim() ||
+    "";
+  const clientHomeOrganizations = useMemo(
+    () =>
+      user?.role === "client"
+        ? state.clientOrganizations.filter((candidate) =>
+            getUserClientOrganizationIds(user).includes(candidate.id),
+          )
+        : [],
+    [state.clientOrganizations, user],
+  );
+  const canSwitchClientHomeOrganization =
+    homeMode && user?.role === "client" && clientHomeOrganizations.length > 1;
   const isClientViewer = user?.role === "client";
   const canEditOrganization =
     Boolean(user) &&
@@ -419,19 +438,72 @@ export function ClientOrganizationDetailScreen({
   if (homeMode && user.role === "client") {
     return (
       <Shell style={brandStyle}>
+        {showOrganizationSwitcher ? (
+          <Overlay onClick={() => setShowOrganizationSwitcher(false)}>
+            <ModalCard onClick={(event) => event.stopPropagation()}>
+              <ModalHeader>
+                <div>
+                  <PanelTitle>Switch Organization</PanelTitle>
+                  <ClientMeta>Choose which organization dashboard to view.</ClientMeta>
+                </div>
+                <IconButton
+                  type="button"
+                  onClick={() => setShowOrganizationSwitcher(false)}
+                  aria-label="Close switch organization"
+                >
+                  <IconClose />
+                </IconButton>
+              </ModalHeader>
+              <OrganizationSwitchList>
+                {clientHomeOrganizations.map((clientOrganization) => {
+                  const isActiveOrganization = clientOrganization.id === organization.organizationId;
+                  return (
+                    <OrganizationSwitchButton
+                      key={clientOrganization.id}
+                      type="button"
+                      $active={isActiveOrganization}
+                      onClick={() => {
+                        setShowOrganizationSwitcher(false);
+                        router.replace(`/dashboard?org=${clientOrganization.id}`);
+                      }}
+                    >
+                      <OrganizationSwitchLogo organization={clientOrganization} />
+                      <OrganizationSwitchCopy>
+                        <strong>{clientOrganization.name}</strong>
+                        <span>{clientOrganization.type === "internal" ? "Internal" : "External"}</span>
+                      </OrganizationSwitchCopy>
+                      <OrganizationSwitchState>
+                        {isActiveOrganization ? "Current" : "Switch"}
+                      </OrganizationSwitchState>
+                    </OrganizationSwitchButton>
+                  );
+                })}
+              </OrganizationSwitchList>
+            </ModalCard>
+          </Overlay>
+        ) : null}
         <AppSidebar user={user} activeLabel="Home" />
         <Content>
           <Header>
             <div>
               <Eyebrow>Client Organization</Eyebrow>
               <ClientHeaderIdentity>
-                {rawOrganization?.logoUrl ? (
-                  <ClientLogo src={rawOrganization.logoUrl} alt={organization.name} />
-                ) : (
-                  <ClientMark>{getClientOrganizationMark(organization.name)}</ClientMark>
-                )}
+                <ClientLogo organization={rawOrganization} />
                 <div>
-                  <ClientHeaderTitle>{organization.name}</ClientHeaderTitle>
+                  {canSwitchClientHomeOrganization ? (
+                    <ClientHeaderSwitchButton
+                      type="button"
+                      onClick={() => setShowOrganizationSwitcher(true)}
+                      aria-label="Switch organization"
+                    >
+                      <ClientHeaderTitle>{organization.name}</ClientHeaderTitle>
+                      <HeaderSwitchIcon aria-hidden="true">
+                        <IconChevronDown />
+                      </HeaderSwitchIcon>
+                    </ClientHeaderSwitchButton>
+                  ) : (
+                    <ClientHeaderTitle>{organization.name}</ClientHeaderTitle>
+                  )}
                   <InlinePills>
                     <TypePill $type={organization.type}>
                       {organization.type === "internal" ? "Internal" : "External"}
@@ -647,7 +719,7 @@ export function ClientOrganizationDetailScreen({
 
   const handleSaveOrganization = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!rawOrganization) {
+    if (!rawOrganization || isUploadingLogo) {
       return;
     }
 
@@ -685,6 +757,9 @@ export function ClientOrganizationDetailScreen({
       return;
     }
 
+    const localPreviewUrl = URL.createObjectURL(file);
+    setLogoPreviewUrl(localPreviewUrl);
+
     setIsUploadingLogo(true);
     try {
       const optimizedBlob = await optimizeImageToWebp(file, { maxDimension: 1200, quality: 0.84 });
@@ -693,8 +768,10 @@ export function ClientOrganizationDetailScreen({
         `${file.name.replace(/\.[^.]+$/, "") || "organization-logo"}.webp`,
         { type: "image/webp" },
       );
+
       const uploadedUrl = await uploadOrganizationLogo(optimizedFile);
       setLogoUrl(uploadedUrl);
+      setLogoPreviewUrl(uploadedUrl);
     } finally {
       setIsUploadingLogo(false);
       event.target.value = "";
@@ -1257,8 +1334,8 @@ export function ClientOrganizationDetailScreen({
                   <ClientMeta>Upload a logo and choose the client brand color.</ClientMeta>
                 </BrandSectionHeader>
                 <BrandPreviewRow>
-                  {logoUrl ? (
-                    <BrandLogoPreview src={logoUrl} alt={name || organization.name} />
+                  {logoPreviewUrl || logoUrl ? (
+                    <BrandLogoPreview src={logoPreviewUrl || logoUrl} alt={name || organization.name} />
                   ) : (
                     <BrandMarkPreview>{getClientOrganizationMark(name || organization.name)}</BrandMarkPreview>
                   )}
@@ -1275,11 +1352,14 @@ export function ClientOrganizationDetailScreen({
                   >
                     {isUploadingLogo ? "Uploading..." : "Upload logo"}
                   </SecondaryButton>
-                  {logoUrl ? (
+                  {logoUrl || logoPreviewUrl ? (
                     <SecondaryButton
                       type="button"
                       disabled={isSavingOrganization || isUploadingLogo}
-                      onClick={() => setLogoUrl("")}
+                      onClick={() => {
+                        setLogoUrl("");
+                        setLogoPreviewUrl("");
+                      }}
                     >
                       Remove logo
                     </SecondaryButton>
@@ -1312,8 +1392,8 @@ export function ClientOrganizationDetailScreen({
                   </FieldStack>
                 </FieldGrid>
               ) : null}
-              <PrimaryButton type="submit" disabled={isSavingOrganization}>
-                {isSavingOrganization ? "Saving..." : "Save Organization"}
+              <PrimaryButton type="submit" disabled={isSavingOrganization || isUploadingLogo}>
+                {isUploadingLogo ? "Uploading logo..." : isSavingOrganization ? "Saving..." : "Save Organization"}
               </PrimaryButton>
             </ModalForm>
           </ModalCard>
@@ -1326,9 +1406,7 @@ export function ClientOrganizationDetailScreen({
             <Eyebrow>{roleLabel}</Eyebrow>
             {!homeMode && viewerRole !== "client" ? <BackLink href="/clients">← Back to clients</BackLink> : null}
             <TitleRow>
-              {user.role === "client" && rawOrganization?.logoUrl ? (
-                <HeaderClientLogo src={rawOrganization.logoUrl} alt={organization.name} />
-              ) : null}
+              <HeaderClientLogo organization={{ logoUrl: headerLogoUrl, name: organization.name }} />
               <Title>{organization.name}</Title>
               <HeaderInlinePills>
                 <TypePill $type={organization.type}>
@@ -1341,6 +1419,22 @@ export function ClientOrganizationDetailScreen({
                 ) : null}
               </HeaderInlinePills>
             </TitleRow>
+            <MobileHeaderIdentity>
+              <HeaderClientLogo organization={{ logoUrl: headerLogoUrl, name: organization.name }} />
+              <div>
+                <MobileHeaderTitle>{organization.name}</MobileHeaderTitle>
+                <HeaderInlinePills>
+                  <TypePill $type={organization.type}>
+                    {organization.type === "internal" ? "Internal" : "External"}
+                  </TypePill>
+                  {getClientOrganizationStatusLabel(organization) ? (
+                    <PendingPill $active={organization.status === "active"}>
+                      {getClientOrganizationStatusLabel(organization)}
+                    </PendingPill>
+                  ) : null}
+                </HeaderInlinePills>
+              </div>
+            </MobileHeaderIdentity>
             <Subtitle>
               {homeMode
                 ? "Home for your organization, current projects, and client-facing activity."
@@ -1713,7 +1807,7 @@ const Shell = styled.main`
     display: flex;
     align-items: stretch;
     padding: 8px;
-    background: rgba(255, 255, 255, 0.58);
+    background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
   }
 `;
 
@@ -1728,12 +1822,8 @@ const Content = styled.section`
     padding: 24px 28px;
     border-radius: 0 26px 26px 0;
     background:
-      radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
-      linear-gradient(
-        180deg,
-        var(--client-brand-soft-panel, rgba(252, 249, 244, 0.92)),
-        rgba(247, 243, 237, 0.84)
-      );
+      radial-gradient(circle at top center, rgba(255, 255, 255, 0.68), transparent 18%),
+      var(--client-brand-soft-panel, linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84)));
   }
 `;
 
@@ -1818,14 +1908,19 @@ const HeaderInlinePills = styled.div`
   min-width: 0;
 `;
 
-const HeaderClientLogo = styled.img`
+const HeaderClientLogo = styled(ClientTitleLogo)`
   width: 42px;
   height: 42px;
   border-radius: 14px;
   object-fit: cover;
+  display: grid;
+  place-items: center;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  background: rgba(255, 255, 255, 0.92);
-  flex: 0 0 auto;
+  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
+  color: #8c7040;
+  font-size: 0.9rem;
+  font-weight: 700;
+  flex: 0 0 42px;
 `;
 
 const Subtitle = styled.p`
@@ -1854,11 +1949,59 @@ const ClientHeaderIdentity = styled.div`
   margin: 4px 0 6px;
 `;
 
+const MobileHeaderIdentity = styled.div`
+  display: none;
+
+  @media (max-width: 767px) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 2px;
+  }
+`;
+
+const MobileHeaderTitle = styled.h1`
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+
+  ${desktop} {
+    display: none;
+  }
+`;
+
 const ClientHeaderTitle = styled.h1`
   margin: 0;
   font-size: clamp(1.28rem, 2.5vw, 1.72rem);
   line-height: 1;
   letter-spacing: -0.04em;
+`;
+
+const ClientHeaderSwitchButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+`;
+
+const HeaderSwitchIcon = styled.span`
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--client-brand-primary, #1f4339);
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
 `;
 
 const HeaderAvatarLink = styled(Link)`
@@ -1880,14 +2023,19 @@ const HeaderAvatarLink = styled(Link)`
   }
 `;
 
-const ClientLogo = styled.img`
+const ClientLogo = styled(ClientTitleLogo)`
   width: 56px;
   height: 56px;
   border-radius: 14px;
   object-fit: cover;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  background: rgba(255, 255, 255, 0.92);
+  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
   box-shadow: 0 10px 22px rgba(31, 31, 31, 0.08);
+  display: grid;
+  place-items: center;
+  color: #8c7040;
+  font-size: 1rem;
+  font-weight: 700;
 `;
 
 const ClientMark = styled.div<{ $large?: boolean }>`
@@ -2892,6 +3040,73 @@ const ModalForm = styled.form`
   display: flex;
   flex-direction: column;
   gap: 14px;
+`;
+
+const OrganizationSwitchList = styled.div`
+  display: grid;
+  gap: 10px;
+  max-height: min(58vh, 520px);
+  overflow-y: auto;
+  padding-right: 2px;
+`;
+
+const OrganizationSwitchButton = styled.button<{ $active?: boolean }>`
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid
+    ${({ $active }) => ($active ? "rgba(31, 67, 57, 0.24)" : "rgba(230, 224, 215, 0.95)")};
+  border-radius: 16px;
+  background: ${({ $active }) => ($active ? "rgba(250, 245, 237, 0.96)" : "rgba(255, 255, 255, 0.92)")};
+  text-align: left;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    border-color: rgba(31, 67, 57, 0.18);
+    box-shadow: 0 14px 24px rgba(31, 67, 57, 0.07);
+  }
+`;
+
+const OrganizationSwitchLogo = styled(ClientTitleLogo)`
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
+  color: #8c7040;
+  font-size: 0.92rem;
+  font-weight: 700;
+`;
+
+const OrganizationSwitchCopy = styled.div`
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+
+  strong {
+    font-size: 0.92rem;
+    line-height: 1.2;
+  }
+
+  span {
+    color: var(--color-text-muted);
+    font-size: 0.76rem;
+    line-height: 1.25;
+  }
+`;
+
+const OrganizationSwitchState = styled.span`
+  color: var(--client-brand-primary, #1f4339);
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
 `;
 
 const FloatingSelectField = styled.div<{ $filled?: boolean; $open?: boolean }>`

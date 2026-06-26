@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { PropsWithChildren, useMemo } from "react";
 import { useAppState } from "@/components/app-state";
 import { useChatUnreadTotal } from "@/components/chat/use-chat-unread-total";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { getPrimaryNavItems } from "@/lib/navigation";
 import { getAttentionTaskCount } from "@/lib/task-attention";
 
@@ -22,6 +23,7 @@ export function Shell({ children }: PropsWithChildren) {
 export function BottomNav() {
   const pathname = usePathname();
   const { user, state } = useAppState();
+  const { scopedHref } = useActiveClientOrganization(user, state.clientOrganizations);
   const taskBadgeCount = useMemo(() => {
     if (!user) {
       return 0;
@@ -56,7 +58,7 @@ export function BottomNav() {
       {items.map((item) => (
         <Link
           key={item.href}
-          href={item.href}
+          href={scopedHref(item.href)}
           className={pathname === item.href ? "nav-item active" : "nav-item"}
         >
           <span className="nav-icon" aria-hidden="true">

@@ -11,9 +11,10 @@ import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { FilterModal } from "@/components/filter-modal";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { UserAvatar } from "@/components/user-avatar";
 import { getClientBrandStyle } from "@/lib/client-branding";
-import { canCreateTask, canViewProject, getUserClientOrganizationIds, getVisibleTasksForUser } from "@/lib/permissions";
+import { canCreateTask, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { taskNeedsAttention } from "@/lib/task-attention";
 import { formatLabel, formatRole, getTaskStatusLabel } from "@/lib/display";
 import { Project, TaskManagerReviewStatus, TaskPriority, TaskStatus } from "@/lib/types";
@@ -234,10 +235,23 @@ export function TasksScreen() {
     (priorityFilter !== "all" ? 1 : 0) +
     (projectFilter !== "all" ? 1 : 0);
   const appliedSortCount = sort !== "due_date" ? 1 : 0;
+  const { activeClientOrganization, activeClientOrganizationId } = useActiveClientOrganization(
+    user,
+    state.clientOrganizations,
+  );
 
   const visibleProjects = useMemo(
-    () => (user ? state.projects.filter((project) => canViewProject(user, project)) : []),
-    [state.projects, user],
+    () =>
+      user
+        ? state.projects.filter(
+            (project) =>
+              canViewProject(user, project) &&
+              (user.role !== "client" ||
+                !activeClientOrganizationId ||
+                project.clientOrganizationId === activeClientOrganizationId),
+          )
+        : [],
+    [activeClientOrganizationId, state.projects, user],
   );
 
   const availableProjects = visibleProjects;
@@ -262,15 +276,7 @@ export function TasksScreen() {
     () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization.name])),
     [state.clientOrganizations],
   );
-  const currentClientOrganization = useMemo(
-    () =>
-      user?.role === "client"
-        ? state.clientOrganizations.find((organization) =>
-            getUserClientOrganizationIds(user).includes(organization.id),
-          ) ?? null
-        : null,
-    [state.clientOrganizations, user],
-  );
+  const currentClientOrganization = activeClientOrganization;
   const clientBrandStyle = useMemo(
     () => getClientBrandStyle(currentClientOrganization),
     [currentClientOrganization],
