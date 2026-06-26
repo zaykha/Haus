@@ -31,7 +31,10 @@ import {
 
 const desktop = "@media (min-width: 768px)";
 const TASKS_PAGE_SIZE = 5;
+const LIAISON_LIST_CAP = 4;
 const SECTION_LIST_CAP = 4;
+const PROJECT_LIST_CAP = 3;
+const PENDING_ITEMS_CAP = 3;
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -179,6 +182,7 @@ export function ClientOrganizationDetailScreen({
   const [isAssigning, setIsAssigning] = useState(false);
   const [isRemovingOrganization, setIsRemovingOrganization] = useState(false);
   const [showManageOrganizations, setShowManageOrganizations] = useState(false);
+  const [showPendingLiaisonsOnly, setShowPendingLiaisonsOnly] = useState(false);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   const rows = useMemo(() => buildClientOrganizationRows(state), [state]);
@@ -288,7 +292,7 @@ export function ClientOrganizationDetailScreen({
       <Shell>
         <AppSidebar user={user} activeLabel={activeLabel} />
         <Content>
-          {!homeMode ? <BackLink href="/clients">← Back to clients</BackLink> : null}
+          {!homeMode && viewerRole !== "client" ? <BackLink href="/clients">← Back to clients</BackLink> : null}
           <EmptyState>
             <strong>Organization not found</strong>
             <p>The requested client organization could not be found.</p>
@@ -307,7 +311,7 @@ export function ClientOrganizationDetailScreen({
       <Shell>
         <AppSidebar user={user} activeLabel={activeLabel} />
         <Content>
-          {!homeMode ? <BackLink href="/clients">← Back to clients</BackLink> : null}
+          {!homeMode && viewerRole !== "client" ? <BackLink href="/clients">← Back to clients</BackLink> : null}
           <EmptyState>
             <strong>Access denied</strong>
             <p>You can only view your own organization.</p>
@@ -334,7 +338,6 @@ export function ClientOrganizationDetailScreen({
     (selectedTasksPage - 1) * TASKS_PAGE_SIZE,
     selectedTasksPage * TASKS_PAGE_SIZE,
   );
-  const visibleMembers = organization.members.slice(0, SECTION_LIST_CAP);
   const pendingInvitations = state.invitations
     .filter(
       (invitation) =>
@@ -343,7 +346,14 @@ export function ClientOrganizationDetailScreen({
         invitation.clientOrganizationId === organization.organizationId,
     )
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const visiblePendingInvitations = pendingInvitations.slice(0, SECTION_LIST_CAP);
+  const visibleLiaisonRows = (
+    showPendingLiaisonsOnly
+      ? pendingInvitations.map((invitation) => ({ kind: "pending" as const, invitation }))
+      : [
+          ...organization.members.map((member) => ({ kind: "member" as const, member })),
+          ...pendingInvitations.map((invitation) => ({ kind: "pending" as const, invitation })),
+        ]
+  ).slice(0, LIAISON_LIST_CAP);
   const organizationActivities = organizationProjects
     .flatMap((project) =>
       project.activities.map((activity) => ({
@@ -358,8 +368,8 @@ export function ClientOrganizationDetailScreen({
   const activeProjects = organizationProjects.filter((project) => !isCompletedProject(project.status, project.stage));
   const projectsInReview = organizationProjects.filter((project) => isPendingReviewProject(project.status, project.stage));
   const completedProjects = organizationProjects.filter((project) => isCompletedProject(project.status, project.stage));
-  const visibleOrganizationProjects = organizationProjects.slice(0, SECTION_LIST_CAP);
-  const visiblePendingProjects = organization.pendingProjects.slice(0, SECTION_LIST_CAP);
+  const visibleOrganizationProjects = organizationProjects.slice(0, PROJECT_LIST_CAP);
+  const visiblePendingProjects = organization.pendingProjects.slice(0, PENDING_ITEMS_CAP);
   const pendingReviewItems = organization.openTasks.slice(0, 3);
   const upcomingDeliveries = activeProjects
     .slice()
@@ -431,13 +441,14 @@ export function ClientOrganizationDetailScreen({
                         {getClientOrganizationStatusLabel(organization)}
                       </PendingPill>
                     ) : null}
-                    {canEditOrganization ? (
+                  {canEditOrganization ? (
                       <BrandConfigButton
                         type="button"
                         aria-label="Configure organization branding"
                         onClick={() => router.push(`/clients/${organizationId}?edit=branding`)}
                       >
                         <IconSettings />
+                        <span>Edit</span>
                       </BrandConfigButton>
                     ) : null}
                   </InlinePills>
@@ -454,7 +465,7 @@ export function ClientOrganizationDetailScreen({
             </HeaderActions>
           </Header>
 
-          <ClientHomeHero id="client-organization-overview">
+          <ClientHomeHero>
             <ClientHomeStats>
               <ClientMetricCard>
                 <MetricIcon $tone="success">
@@ -504,13 +515,16 @@ export function ClientOrganizationDetailScreen({
               {featuredProjects.length ? (
                 <ClientHomeList>
                   {featuredProjects.map((project) => {
-                    const tone = getClientProjectTone(project.status, project.stage);
                     return (
                       <ClientProjectCard key={project.id} href={`/projects/${project.id}`}>
                         <ClientProjectGlyph>{getClientOrganizationMark(project.projectRequestName || project.name)}</ClientProjectGlyph>
                         <ClientProjectBody>
-                          <ClientProjectTop>
+                          <ClientHomeProjectHeader>
                             <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
+                            <ClientHomeProjectDue>{formatShortDate(project.finalDeliverableDate ?? project.dueDate)}</ClientHomeProjectDue>
+                          </ClientHomeProjectHeader>
+                          <ClientHomeProjectStage>{formatProjectStage(project.stage)}</ClientHomeProjectStage>
+                          <ClientProjectTop>
                             <ClientProjectMetaGroup>
                               <ClientProjectMetaLabel>Due date</ClientProjectMetaLabel>
                               <ClientProjectMetaValue>{formatDate(project.finalDeliverableDate ?? project.dueDate)}</ClientProjectMetaValue>
@@ -521,14 +535,9 @@ export function ClientOrganizationDetailScreen({
                             </ClientProjectMetaGroup>
                             <ClientProjectMetaGroup>
                               <ClientProjectMetaLabel>Progress</ClientProjectMetaLabel>
-                              <ProjectStageProgress stage={project.stage} size="sm" />
+                              <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
                             </ClientProjectMetaGroup>
                           </ClientProjectTop>
-                          <ClientProjectStatusRow>
-                            <ClientProjectStatusPill style={{ background: tone.bg, color: tone.fg }}>
-                              {getClientProjectStatusLabel(project.status, project.stage)}
-                            </ClientProjectStatusPill>
-                          </ClientProjectStatusRow>
                         </ClientProjectBody>
                       </ClientProjectCard>
                     );
@@ -1315,8 +1324,23 @@ export function ClientOrganizationDetailScreen({
         <Header>
           <div>
             <Eyebrow>{roleLabel}</Eyebrow>
-            {!homeMode ? <BackLink href="/clients">← Back to clients</BackLink> : null}
-            <Title>{organization.name}</Title>
+            {!homeMode && viewerRole !== "client" ? <BackLink href="/clients">← Back to clients</BackLink> : null}
+            <TitleRow>
+              {user.role === "client" && rawOrganization?.logoUrl ? (
+                <HeaderClientLogo src={rawOrganization.logoUrl} alt={organization.name} />
+              ) : null}
+              <Title>{organization.name}</Title>
+              <HeaderInlinePills>
+                <TypePill $type={organization.type}>
+                  {organization.type === "internal" ? "Internal" : "External"}
+                </TypePill>
+                {getClientOrganizationStatusLabel(organization) ? (
+                  <PendingPill $active={organization.status === "active"}>
+                    {getClientOrganizationStatusLabel(organization)}
+                  </PendingPill>
+                ) : null}
+              </HeaderInlinePills>
+            </TitleRow>
             <Subtitle>
               {homeMode
                 ? "Home for your organization, current projects, and client-facing activity."
@@ -1366,55 +1390,59 @@ export function ClientOrganizationDetailScreen({
           </HeaderActions>
         </Header>
 
-        <HeroCard>
-          <HeroTop>
-            {rawOrganization?.logoUrl ? (
-              <ClientLogo src={rawOrganization.logoUrl} alt={organization.name} />
-            ) : (
-              <ClientMark>{getClientOrganizationMark(organization.name)}</ClientMark>
-            )}
-            <div>
-              <PanelTitle>{organization.name}</PanelTitle>
-              <InlinePills>
-                <TypePill $type={organization.type}>
-                  {organization.type === "internal" ? "Internal" : "External"}
-                </TypePill>
-                {getClientOrganizationStatusLabel(organization) ? (
-                  <PendingPill $active={organization.status === "active"}>
-                    {getClientOrganizationStatusLabel(organization)}
-                  </PendingPill>
-                ) : null}
-              </InlinePills>
-            </div>
-          </HeroTop>
-
-          <StatGrid>
-            <StatCard>
-              <MetaTag>Liaisons</MetaTag>
-              <StatValue>{organization.memberCount}</StatValue>
-            </StatCard>
-            <StatCard>
-              <MetaTag>Projects</MetaTag>
-              <StatValue>{organization.projectCount}</StatValue>
-            </StatCard>
-            <StatCard>
-              <MetaTag>Last Activity</MetaTag>
-              <StatValue>{formatDate(organization.lastActivityDate)}</StatValue>
-            </StatCard>
+        <ClientHomeHero>
+          <ClientHomeStats>
+            <ClientMetricCard>
+              <MetricIcon $tone="neutral">
+                <IconUsersMini />
+              </MetricIcon>
+              <div>
+                <MetricLabel>Liaisons</MetricLabel>
+                <MetricValue>{organization.memberCount}</MetricValue>
+              </div>
+            </ClientMetricCard>
+            <ClientMetricCard>
+              <MetricIcon $tone="success">
+                <IconBriefcase />
+              </MetricIcon>
+              <div>
+                <MetricLabel>Projects</MetricLabel>
+                <MetricValue>{organization.projectCount}</MetricValue>
+              </div>
+            </ClientMetricCard>
+            <ClientMetricCard>
+              <MetricIcon $tone="warning">
+                <IconCalendarMini />
+              </MetricIcon>
+              <div>
+                <MetricLabel>Last Activity</MetricLabel>
+                <MetricValue>{formatDate(organization.lastActivityDate)}</MetricValue>
+              </div>
+            </ClientMetricCard>
             {organization.type === "external" ? (
-              <StatCard>
-                <MetaTag>Contact Number</MetaTag>
-                <StatValue>{rawOrganization?.phone?.trim() || "Not provided"}</StatValue>
-              </StatCard>
+              <ClientMetricCard>
+                <MetricIcon $tone="neutral">
+                  <IconPhoneMini />
+                </MetricIcon>
+                <div>
+                  <MetricLabel>Contact Number</MetricLabel>
+                  <MetricValue>{rawOrganization?.phone?.trim() || "Not provided"}</MetricValue>
+                </div>
+              </ClientMetricCard>
             ) : null}
             {organization.type === "external" ? (
-              <StatCard>
-                <MetaTag>Address</MetaTag>
-                <StatValue>{rawOrganization?.address?.trim() || "Not provided"}</StatValue>
-              </StatCard>
+              <ClientMetricCard>
+                <MetricIcon $tone="neutral">
+                  <IconLocationMini />
+                </MetricIcon>
+                <div>
+                  <MetricLabel>Address</MetricLabel>
+                  <MetricValue>{rawOrganization?.address?.trim() || "Not provided"}</MetricValue>
+                </div>
+              </ClientMetricCard>
             ) : null}
-          </StatGrid>
-        </HeroCard>
+          </ClientHomeStats>
+        </ClientHomeHero>
 
         <Grid>
           <SectionCard>
@@ -1422,15 +1450,63 @@ export function ClientOrganizationDetailScreen({
               <PanelTitle>Liaisons</PanelTitle>
               <SectionActions>
                 {canManage ? <SectionLink href="/clients/liaisons">View all liaisons</SectionLink> : null}
-                
+                {pendingInvitations.length ? (
+                  <SectionToggleButton
+                    type="button"
+                    onClick={() => setShowPendingLiaisonsOnly((current) => !current)}
+                  >
+                    {showPendingLiaisonsOnly ? "Show All" : "Show Pending"}
+                  </SectionToggleButton>
+                ) : null}
               </SectionActions>
             </SectionHeader>
-            {organization.members.length ? (
+            {visibleLiaisonRows.length ? (
               <List>
-                {visibleMembers.map((member) => {
+                {visibleLiaisonRows.map((row) => {
+                  if (row.kind === "pending") {
+                    const invitation = row.invitation;
+
+                    return (
+                      <Row key={invitation.id}>
+                        <RowLead>
+                          <RowIconTile>
+                            <IconSparkMini />
+                          </RowIconTile>
+                          <RowCopy>
+                            <RowTitleLine>
+                              <RowTitle>{invitation.name}</RowTitle>
+                              <MetaPill>Pending</MetaPill>
+                            </RowTitleLine>
+                            <ClientMeta>{invitation.email}</ClientMeta>
+                            <RowMetaPills>
+                              <MetaPill>Sent {formatShortDate(invitation.createdAt)}</MetaPill>
+                            </RowMetaPills>
+                          </RowCopy>
+                        </RowLead>
+                        {canManage ? (
+                          <RowActionButton
+                            type="button"
+                            onClick={() => {
+                              setRevokeTarget({
+                                id: invitation.id,
+                                email: invitation.email,
+                              });
+                              setShowRevokeInviteModal(true);
+                            }}
+                          >
+                            Revoke
+                          </RowActionButton>
+                        ) : null}
+                      </Row>
+                    );
+                  }
+
+                  const member = row.member;
                   const canOpenLiaison =
                     Boolean(member.deletableUserId) && (canManage || member.deletableUserId === user.id);
-                  const liaisonMeta = member.company ? `${member.company}` : "";
+                  const liaisonProfile = userById.get(member.deletableUserId ?? member.id);
+                  const liaisonMeta = [liaisonProfile?.jobTitle, liaisonProfile?.department].filter(Boolean);
+                  const liaisonContact = [member.email, liaisonProfile?.phone].filter(Boolean).join(" · ") || "No contact details";
 
                   if (!canOpenLiaison) {
                     return (
@@ -1438,12 +1514,13 @@ export function ClientOrganizationDetailScreen({
                         <RowLead>
                           <RowGlyph>{member.name.slice(0, 1).toUpperCase()}</RowGlyph>
                           <RowCopy>
-                            <RowTitle>{member.name}</RowTitle>
-                            <ClientMeta>{member.email}</ClientMeta>
-                            <RowMetaPills>
-                              <MetaPill>{member.company || organization.name}</MetaPill>
-                              {liaisonMeta ? <MetaPill>{liaisonMeta}</MetaPill> : null}
-                            </RowMetaPills>
+                            <RowTitleLine>
+                              <RowTitle>{member.name}</RowTitle>
+                              {liaisonMeta.map((item) => (
+                                <MetaPill key={`${member.id}:${item}`}>{item}</MetaPill>
+                              ))}
+                            </RowTitleLine>
+                            <ClientMeta>{liaisonContact}</ClientMeta>
                           </RowCopy>
                         </RowLead>
                       </Row>
@@ -1455,12 +1532,13 @@ export function ClientOrganizationDetailScreen({
                       <RowLead>
                         <RowGlyph>{member.name.slice(0, 1).toUpperCase()}</RowGlyph>
                         <RowCopy>
-                          <RowTitle>{member.name}</RowTitle>
-                            <ClientMeta>{member.email}</ClientMeta>
-                          <RowMetaPills>
-                            <MetaPill>{member.company || organization.name}</MetaPill>
-                            {liaisonMeta ? <MetaPill>{liaisonMeta}</MetaPill> : null}
-                          </RowMetaPills>
+                          <RowTitleLine>
+                            <RowTitle>{member.name}</RowTitle>
+                            {liaisonMeta.map((item) => (
+                              <MetaPill key={`${member.id}:${item}`}>{item}</MetaPill>
+                            ))}
+                          </RowTitleLine>
+                          <ClientMeta>{liaisonContact}</ClientMeta>
                         </RowCopy>
                       </RowLead>
                     </LiaisonRowButton>
@@ -1468,10 +1546,19 @@ export function ClientOrganizationDetailScreen({
                 })}
               </List>
             ) : (
-              <ClientMeta>No liaisons linked to this organization yet.</ClientMeta>
+              <ClientMeta>
+                {showPendingLiaisonsOnly
+                  ? "No pending liaison invites for this organization."
+                  : "No liaisons linked to this organization yet."}
+              </ClientMeta>
             )}
-            {organization.members.length > SECTION_LIST_CAP ? (
-              <SectionCountNote>Showing {SECTION_LIST_CAP} of {organization.members.length} liaisons</SectionCountNote>
+            {(showPendingLiaisonsOnly ? pendingInvitations.length : organization.members.length + pendingInvitations.length) >
+            LIAISON_LIST_CAP ? (
+              <SectionCountNote>
+                Showing {LIAISON_LIST_CAP} of{" "}
+                {showPendingLiaisonsOnly ? pendingInvitations.length : organization.members.length + pendingInvitations.length}{" "}
+                {showPendingLiaisonsOnly ? "pending liaisons" : "liaisons"}
+              </SectionCountNote>
             ) : null}
           </SectionCard>
 
@@ -1480,76 +1567,35 @@ export function ClientOrganizationDetailScreen({
               <PanelTitle>Projects</PanelTitle>
             </SectionHeader>
             {visibleOrganizationProjects.length ? (
-              <List>
-                {visibleOrganizationProjects.map((project) => (
-                  <RowCardLink key={project.id} href={`/projects/${project.id}`}>
-                    <RowLead>
-                      <RowIconTile>
+              <ClientHomeList>
+                {visibleOrganizationProjects.map((project) => {
+                  const tone = getClientProjectTone(project.status, project.stage);
+
+                  return (
+                    <CompactDeliveryCard key={project.id} href={`/projects/${project.id}`}>
+                      <CompactDeliveryIcon>
                         <IconBriefcase />
-                      </RowIconTile>
-                      <RowCopy>
-                        <RowTitle>{project.name}</RowTitle>
-                        <ClientMeta>Due {formatShortDate(project.dueDate)}</ClientMeta>
-                        <RowMetaPills>
-                          <MetaPill>{project.projectCode ?? "Project"}</MetaPill>
-                          <MetaPill>{getClientProjectStatusLabel(project.status)}</MetaPill>
-                        </RowMetaPills>
-                      </RowCopy>
-                    </RowLead>
-                  </RowCardLink>
-                ))}
-              </List>
+                      </CompactDeliveryIcon>
+                      <CompactDeliveryBody>
+                        <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
+                        <CompactDeliveryMeta>Due {formatDate(project.finalDeliverableDate ?? project.dueDate)}</CompactDeliveryMeta>
+                        <CompactDeliveryMeta>{project.projectCode ?? "Project"}</CompactDeliveryMeta>
+                      </CompactDeliveryBody>
+                      <CompactDeliveryStatusPill style={{ background: tone.bg, color: tone.fg }}>
+                        {getClientProjectStatusLabel(project.status, project.stage)}
+                      </CompactDeliveryStatusPill>
+                      <CompactDeliveryArrow>
+                        <IconChevronRight />
+                      </CompactDeliveryArrow>
+                    </CompactDeliveryCard>
+                  );
+                })}
+              </ClientHomeList>
             ) : (
               <ClientMeta>No projects linked to this organization yet.</ClientMeta>
             )}
-            {organizationProjects.length > SECTION_LIST_CAP ? (
-              <SectionCountNote>Showing {SECTION_LIST_CAP} of {organizationProjects.length} projects</SectionCountNote>
-            ) : null}
-          </SectionCard>
-
-          <SectionCard>
-            <SectionHeader>
-              <PanelTitle>Pending Liaison Invites</PanelTitle>
-            </SectionHeader>
-            {visiblePendingInvitations.length ? (
-              <List>
-                {visiblePendingInvitations.map((invitation) => (
-                  <Row key={invitation.id}>
-                    <RowLead>
-                      <RowIconTile>
-                        <IconSparkMini />
-                      </RowIconTile>
-                      <RowCopy>
-                        <RowTitle>{invitation.name}</RowTitle>
-                        <ClientMeta>{invitation.email}</ClientMeta>
-                        <RowMetaPills>
-                          <MetaPill>Pending invite</MetaPill>
-                          <MetaPill>Sent {formatShortDate(invitation.createdAt)}</MetaPill>
-                        </RowMetaPills>
-                      </RowCopy>
-                    </RowLead>
-                    {canManage ? (
-                      <RowActionButton
-                        type="button"
-                        onClick={() => {
-                          setRevokeTarget({
-                            id: invitation.id,
-                            email: invitation.email,
-                          });
-                          setShowRevokeInviteModal(true);
-                        }}
-                      >
-                        Revoke
-                      </RowActionButton>
-                    ) : null}
-                  </Row>
-                ))}
-              </List>
-            ) : (
-              <ClientMeta>No pending liaison invites for this organization.</ClientMeta>
-            )}
-            {pendingInvitations.length > SECTION_LIST_CAP ? (
-              <SectionCountNote>Showing {SECTION_LIST_CAP} of {pendingInvitations.length} pending invites</SectionCountNote>
+            {organizationProjects.length > PROJECT_LIST_CAP ? (
+              <SectionCountNote>Showing {PROJECT_LIST_CAP} of {organizationProjects.length} projects</SectionCountNote>
             ) : null}
           </SectionCard>
 
@@ -1558,35 +1604,40 @@ export function ClientOrganizationDetailScreen({
               <PanelTitle>Pending Items</PanelTitle>
             </SectionHeader>
             {visiblePendingProjects.length ? (
-              <List>
-                {visiblePendingProjects.map((project) => (
-                  <RowCardLink key={project.id} href={`/projects/${project.id}`}>
-                    <RowLead>
-                      <RowIconTile>
+              <ClientHomeList>
+                {visiblePendingProjects.map((project) => {
+                  const tone = getClientProjectTone(project.status);
+
+                  return (
+                    <CompactDeliveryCard key={project.id} href={`/projects/${project.id}`}>
+                      <CompactDeliveryIcon>
                         <IconFolderMini />
-                      </RowIconTile>
-                      <RowCopy>
-                        <RowTitle>{project.name}</RowTitle>
-                        <ClientMeta>Due {formatShortDate(project.dueDate)}</ClientMeta>
-                        <RowMetaPills>
-                          <MetaPill>{getClientProjectStatusLabel(project.status)}</MetaPill>
-                        </RowMetaPills>
-                      </RowCopy>
-                    </RowLead>
-                  </RowCardLink>
-                ))}
-              </List>
+                      </CompactDeliveryIcon>
+                      <CompactDeliveryBody>
+                        <ClientProjectTitle>{project.name}</ClientProjectTitle>
+                        <CompactDeliveryMeta>Due {formatDate(project.dueDate)}</CompactDeliveryMeta>
+                      </CompactDeliveryBody>
+                      <CompactDeliveryStatusPill style={{ background: tone.bg, color: tone.fg }}>
+                        {getClientProjectStatusLabel(project.status)}
+                      </CompactDeliveryStatusPill>
+                      <CompactDeliveryArrow>
+                        <IconChevronRight />
+                      </CompactDeliveryArrow>
+                    </CompactDeliveryCard>
+                  );
+                })}
+              </ClientHomeList>
             ) : (
               <ClientMeta>No pending items for this organization.</ClientMeta>
             )}
-            {organization.pendingProjects.length > SECTION_LIST_CAP ? (
-              <SectionCountNote>Showing {SECTION_LIST_CAP} of {organization.pendingProjects.length} pending items</SectionCountNote>
+            {organization.pendingProjects.length > PENDING_ITEMS_CAP ? (
+              <SectionCountNote>Showing {PENDING_ITEMS_CAP} of {organization.pendingProjects.length} pending items</SectionCountNote>
             ) : null}
           </SectionCard>
 
           <SectionCard>
             <SectionHeader>
-              <PanelTitle>Client Tasks</PanelTitle>
+              <PanelTitle>{viewerRole === "client" ? "Your Tasks" : "Client Tasks"}</PanelTitle>
             </SectionHeader>
             {organization.openTasks.length ? (
               <>
@@ -1693,6 +1744,7 @@ const Header = styled.header`
   gap: 12px;
 
   @media (max-width: 767px) {
+    display: block;
     align-items: center;
     gap: 0;
   }
@@ -1745,6 +1797,35 @@ const Title = styled.h1`
   @media (max-width: 767px) {
     display: none;
   }
+`;
+
+const TitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
+`;
+
+const HeaderInlinePills = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+`;
+
+const HeaderClientLogo = styled.img`
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  flex: 0 0 auto;
 `;
 
 const Subtitle = styled.p`
@@ -1809,21 +1890,6 @@ const ClientLogo = styled.img`
   box-shadow: 0 10px 22px rgba(31, 31, 31, 0.08);
 `;
 
-const HeroCard = styled.section`
-  ${cardSurface}
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 18px;
-  border-radius: 22px;
-`;
-
-const HeroTop = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 14px;
-`;
-
 const ClientMark = styled.div<{ $large?: boolean }>`
   width: ${({ $large }) => ($large ? "72px" : "56px")};
   height: ${({ $large }) => ($large ? "72px" : "56px")};
@@ -1871,52 +1937,26 @@ const TypePill = styled(Pill)<{ $type: "internal" | "external" }>`
   color: ${({ $type }) => ($type === "internal" ? "#4770d8" : "#7f7468")};
 `;
 
-const StatGrid = styled.div`
-  display: none;
-
-  ${desktop} {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-  }
-`;
-
-const StatCard = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.9);
-`;
-
-const MetaTag = styled.span`
-  color: var(--color-text-light);
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-`;
-
-const StatValue = styled.strong`
-  font-size: 0.94rem;
-`;
-
 const ClientHomeHero = styled.section`
   ${cardSurface}
   display: grid;
-  gap: 14px;
-  padding: 15px;
-  border-radius: 20px;
-  background: var(--client-brand-soft-panel, rgba(255, 255, 255, 0.95));
+  gap: 10px;
+  backgroun: none;
+  
+
+  ${desktop} {
+    gap: 14px;
+    padding: 15px;
+    border-radius: 20px;
+    background: var(--client-brand-soft-panel, rgba(255, 255, 255, 0.95));
+  }
 `;
 
 const ClientHomeStats = styled.div`
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-
+  background: none;
   ${desktop} {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0;
@@ -1924,12 +1964,22 @@ const ClientHomeStats = styled.div`
 `;
 
 const ClientMetricCard = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  ${cardSurface}
+  display: grid;
+  gap: 4px;
+  min-height: 74px;
+  padding: 10px 8px 8px;
+  border-radius: 16px;
 
   ${desktop} {
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+    min-height: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
     padding: 0 14px;
     border-left: 1px solid rgba(230, 224, 215, 0.95);
 
@@ -1941,36 +1991,58 @@ const ClientMetricCard = styled.div`
 `;
 
 const MetricIcon = styled.div<{ $tone: "success" | "warning" | "neutral" }>`
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
+  width: 24px;
+  height: 24px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
   background: ${({ $tone }) =>
     $tone === "success" ? "#e5f4e8" : $tone === "warning" ? "#fbefcf" : "#f4f1ed"};
   color: ${({ $tone }) =>
     $tone === "success" ? "#5ca16d" : $tone === "warning" ? "#c58911" : "#7f7468"};
+  justify-self: end;
 
   svg {
-    width: 15px;
-    height: 15px;
+    width: 12px;
+    height: 12px;
+  }
+
+  ${desktop} {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    justify-self: auto;
+
+    svg {
+      width: 15px;
+      height: 15px;
+    }
   }
 `;
 
 const MetricLabel = styled.span`
   display: block;
   color: #5f564b;
-  font-size: 0.74rem;
-  line-height: 1.25;
+  font-size: 0.6rem;
+  line-height: 1.15;
+
+  ${desktop} {
+    font-size: 0.74rem;
+    line-height: 1.25;
+  }
 `;
 
 const MetricValue = styled.strong`
   display: block;
   margin-top: 2px;
   color: #1f1f1f;
-  font-size: 1.08rem;
+  font-size: 1.02rem;
   line-height: 1;
   letter-spacing: -0.04em;
+
+  ${desktop} {
+    font-size: 1.08rem;
+  }
 `;
 
 const Grid = styled.section`
@@ -1987,8 +2059,8 @@ const SectionCard = styled.section`
   ${cardSurface}
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px;
+  gap: 12px;
+  padding: 16px;
   border-radius: 22px;
 `;
 
@@ -2010,13 +2082,13 @@ const SectionActions = styled.div`
 const List = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 `;
 
 const RowLead = styled.div`
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 `;
 
@@ -2024,37 +2096,37 @@ const RowCopy = styled.div`
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 `;
 
 const RowGlyph = styled.div`
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 12px;
   background: linear-gradient(180deg, #eadfce, #cfb89f);
   color: #fff;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 800;
 `;
 
 const RowIconTile = styled.div`
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 12px;
   background: rgba(244, 241, 237, 0.96);
   color: var(--client-brand-primary, #1f4339);
 
   svg {
-    width: 18px;
-    height: 18px;
+    width: 15px;
+    height: 15px;
   }
 `;
 
@@ -2062,18 +2134,26 @@ const Row = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 10px 12px;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.9);
 `;
 
 const RowTitle = styled.strong`
   display: block;
-  margin-bottom: 4px;
-  font-size: 0.9rem;
-  line-height: 1.35;
+  margin-bottom: 2px;
+  font-size: 0.86rem;
+  line-height: 1.25;
+`;
+
+const RowTitleLine = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
 `;
 
 const LiaisonRowButton = styled.button`
@@ -2081,10 +2161,10 @@ const LiaisonRowButton = styled.button`
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 10px 12px;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.9);
   text-align: left;
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
@@ -2104,10 +2184,10 @@ const RowCardLink = styled(Link)`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 10px 12px;
   border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.9);
   color: inherit;
   text-decoration: none;
@@ -2153,25 +2233,25 @@ const RowActions = styled.div`
 const ClientMeta = styled.p`
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.82rem;
-  line-height: 1.4;
+  font-size: 0.78rem;
+  line-height: 1.3;
 `;
 
 const RowMetaPills = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 `;
 
 const MetaPill = styled.span`
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 0 10px;
+  min-height: 22px;
+  padding: 0 9px;
   border-radius: 999px;
   background: rgba(244, 241, 237, 0.96);
   color: #7f7468;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
   white-space: nowrap;
   max-width: 100%;
@@ -2308,7 +2388,7 @@ const PageButton = styled.button<{ $active?: boolean }>`
 
 const ClientHomeGrid = styled.section`
   display: grid;
-  gap: 14px;
+  gap: 12px;
 
   ${desktop} {
     grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
@@ -2320,14 +2400,19 @@ const ClientHomeGrid = styled.section`
 const ClientHomePanel = styled.section`
   ${cardSurface}
   display: grid;
-  gap: 12px;
-  padding: 15px;
+  gap: 10px;
+  padding: 12px;
   border-radius: 20px;
+
+  ${desktop} {
+    gap: 12px;
+    padding: 15px;
+  }
 `;
 
 const ClientHomeList = styled.div`
   display: grid;
-  gap: 8px;
+  gap: 6px;
 `;
 
 const SectionLink = styled(Link)`
@@ -2337,10 +2422,20 @@ const SectionLink = styled(Link)`
   text-decoration: none;
 `;
 
+const SectionToggleButton = styled.button`
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--client-brand-primary, #1f4339);
+  font-size: 0.74rem;
+  font-weight: 700;
+`;
+
 const BrandConfigButton = styled.button`
-  width: 24px;
-  height: 24px;
-  padding: 0;
+  min-height: 32px;
+  padding: 0 12px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.92);
@@ -2348,10 +2443,17 @@ const BrandConfigButton = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+
+  span {
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1;
+  }
 
   svg {
-    width: 13px;
-    height: 13px;
+    width: 14px;
+    height: 14px;
   }
 `;
 
@@ -2427,10 +2529,10 @@ const BrandActionRow = styled.div`
 
 const ClientProjectCard = styled(Link)`
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 10px;
   align-items: flex-start;
-  padding: 12px 0;
+  padding: 10px 0;
   border-top: 1px solid rgba(230, 224, 215, 0.72);
   border-radius: 14px;
   text-decoration: none;
@@ -2454,42 +2556,98 @@ const ClientProjectCard = styled(Link)`
 
   ${desktop} {
     grid-template-columns: 56px minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px 0;
   }
 `;
 
 const ClientProjectGlyph = styled.div`
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border-radius: 12px;
   display: grid;
   place-items: center;
   background: linear-gradient(145deg, #ede5d8, #f8f4ee);
   color: #8c7040;
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 600;
+
+  ${desktop} {
+    width: 42px;
+    height: 42px;
+    font-size: 1.05rem;
+  }
 `;
 
 const ClientProjectBody = styled.div`
   display: grid;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
+
+  ${desktop} {
+    gap: 8px;
+  }
 `;
 
 const ClientProjectTitle = styled.strong`
   color: #1f1f1f;
-  font-size: 0.88rem;
+  font-size: 0.78rem;
   line-height: 1.25;
+  min-width: 0;
+
+  ${desktop} {
+    font-size: 0.88rem;
+    white-space: nowrap;
+  }
+`;
+
+const ClientHomeProjectHeader = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+
+  ${desktop} {
+    display: none;
+  }
+`;
+
+const ClientHomeProjectDue = styled.span`
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.1;
   white-space: nowrap;
+`;
+
+const ClientHomeProjectStage = styled.span`
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+
+  ${desktop} {
+    display: none;
+  }
 `;
 
 const ClientProjectTop = styled.div`
   display: grid;
-  gap: 8px;
+  gap: 4px;
+
+  ${desktop} {
+    gap: 16px;
+  }
+
+  @media (max-width: 767px) {
+    > :first-child,
+    > :nth-child(2) {
+      display: none;
+    }
+  }
 
   ${desktop} {
     grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(92px, auto));
     align-items: start;
-    gap: 16px;
   }
 `;
 
@@ -2705,6 +2863,9 @@ const Overlay = styled.div`
   justify-content: center;
   padding: 16px;
   background: rgba(21, 18, 13, 0.4);
+  @media (max-width: 767px) {
+    align-items: flex-start;
+  }
 `;
 
 const ModalCard = styled.div`
@@ -2712,6 +2873,11 @@ const ModalCard = styled.div`
   width: min(520px, calc(100vw - 32px));
   border-radius: 24px;
   padding: 20px;
+
+  @media (max-width: 767px) {
+    height: 80vh;
+    overflow-y: auto;
+    }
 `;
 
 const ModalHeader = styled.div`
@@ -3098,6 +3264,34 @@ function IconCalendarMini() {
       <path d="M16 2v4" />
       <path d="M8 2v4" />
       <path d="M3 10h18" />
+    </svg>
+  );
+}
+
+function IconPhoneMini() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6.7 4.6h3l1.1 4.2-1.8 1.8a15 15 0 0 0 4.4 4.4l1.8-1.8 4.2 1.1v3a1.8 1.8 0 0 1-2 1.8A16.8 16.8 0 0 1 4.9 6.6a1.8 1.8 0 0 1 1.8-2Z" />
+    </svg>
+  );
+}
+
+function IconLocationMini() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20s-6-4.7-6-10a6 6 0 1 1 12 0c0 5.3-6 10-6 10Z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  );
+}
+
+function IconUsersMini() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 19v-1a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v1" />
+      <circle cx="10" cy="8" r="3" />
+      <path d="M20 19v-1a3 3 0 0 0-2-2.8" />
+      <path d="M15 5.2a3 3 0 0 1 0 5.6" />
     </svg>
   );
 }

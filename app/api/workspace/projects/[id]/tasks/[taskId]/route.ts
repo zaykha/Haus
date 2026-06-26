@@ -62,10 +62,18 @@ async function updateProjectRequestStatusIfAllowed(
     .eq("id", projectId);
 }
 
-async function logProjectActivity(supabase: any, projectId: string, actorId: string, action: string, message: string) {
+async function logProjectActivity(
+  supabase: any,
+  projectId: string,
+  actorId: string,
+  action: string,
+  message: string,
+  taskId?: string | null,
+) {
   const { error } = await supabase.from("project_activity").insert({
     project_id: projectId,
     actor_id: actorId,
+    task_id: taskId ?? null,
     action,
     message,
   });
@@ -216,6 +224,7 @@ export async function PATCH(
         user.id,
         "task_submitted",
         `submitted task "${body.title.trim()}" to client review`,
+        taskId,
       );
     } else if (
       existingTask.manager_review_status !== "revision_requested" &&
@@ -226,6 +235,7 @@ export async function PATCH(
         const { error: feedbackError } = await supabase.from("project_feedback").insert({
           project_id: id,
           author_id: user.id,
+          task_id: taskId,
           body: revisionNote,
           action: "comment",
           rating: null,
@@ -243,6 +253,7 @@ export async function PATCH(
         revisionNote
           ? `requested revision on task "${body.title.trim()}": ${revisionNote}`
           : `requested revision on task "${body.title.trim()}"`,
+        taskId,
       );
     } else if (existingTask.status !== "approved" && nextStatus === "approved") {
       await logProjectActivity(
@@ -251,6 +262,7 @@ export async function PATCH(
         user.id,
         "task_approved",
         `approved task "${body.title.trim()}"`,
+        taskId,
       );
     } else if (existingTask.status !== nextStatus) {
       if (nextStatus === "in_progress" || nextStatus === "done") {
@@ -262,6 +274,7 @@ export async function PATCH(
         user.id,
         "task_status_changed",
         `changed task "${body.title.trim()}" to ${formatTaskStatus(nextStatus)}`,
+        taskId,
       );
     }
 
@@ -333,6 +346,7 @@ export async function PATCH(
       user.id,
       "task_status_changed",
       `changed task "${existingTask.title}" to ${formatTaskStatus(nextStatus)}`,
+      taskId,
     );
   }
 
@@ -348,15 +362,34 @@ export async function DELETE(
     return auth;
   }
 
-  const { taskId } = await params;
+  const { id, taskId } = await params;
   const { supabase, user } = auth;
   if (!canDeleteTask(user.role)) {
     return NextResponse.json({ error: "Only managers can delete tasks" }, { status: 403 });
   }
 
-  const { error } = await supabase.from("tasks").delete().eq("id", taskId);
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const [
+    commentsDeleteResult,
+    feedbackDeleteResult,
+    activityDeleteResult,
+    taskDeleteResult,
+  ] = await Promise.all([
+    supabase.from("project_comments").delete().eq("project_id", id).eq("task_id", taskId),
+    supabase.from("project_feedback").delete().eq("project_id", id).eq("task_id", taskId),
+    supabase.from("project_activity").delete().eq("project_id", id).eq("task_id", taskId),
+    supabase.from("tasks").delete().eq("project_id", id).eq("id", taskId),
+  ]);
+
+  const deleteError =
+    commentsDeleteResult.error ||
+    feedbackDeleteResult.error ||
+    (activityDeleteResult.error && !activityDeleteResult.error.message.includes('relation "project_activity" does not exist')
+      ? activityDeleteResult.error
+      : null) ||
+    taskDeleteResult.error;
+
+  if (deleteError) {
+    return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

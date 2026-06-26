@@ -145,6 +145,7 @@ type ProjectCommentRecord = {
   id: string;
   project_id: string;
   author_id: string;
+  task_id: string | null;
   body: string;
   internal_only: boolean;
   created_at: string;
@@ -154,6 +155,7 @@ type ProjectFeedbackRecord = {
   id: string;
   project_id: string;
   author_id: string;
+  task_id: string | null;
   action: FeedbackAction;
   body: string;
   rating: number | null;
@@ -164,6 +166,7 @@ type ProjectActivityRecord = {
   id: string;
   project_id: string;
   actor_id: string | null;
+  task_id: string | null;
   action: ProjectActivityAction;
   message: string;
   created_at: string;
@@ -288,6 +291,15 @@ function isMissingRelationError(message: string | undefined) {
   return Boolean(message && message.includes('relation "project_activity" does not exist'));
 }
 
+function isMissingTaskIdColumnError(message: string | undefined) {
+  return Boolean(
+    message &&
+      (message.includes("column project_comments.task_id does not exist") ||
+        message.includes("column project_feedback.task_id does not exist") ||
+        message.includes("column project_activity.task_id does not exist")),
+  );
+}
+
 function isMissingDepartmentsTableError(message: string | undefined) {
   return Boolean(message && message.includes('relation "departments" does not exist'));
 }
@@ -404,14 +416,7 @@ export async function GET(request: NextRequest) {
   const invitations = (invitationsResult.data ?? []) as InvitationRecord[];
   const projectIds = projects.map((project) => project.id);
 
-  const [
-    membersResult,
-    tasksResult,
-    filesResult,
-    commentsResult,
-    feedbackResult,
-    activityResult,
-  ] = projectIds.length
+  const [membersResult, tasksResult, filesResult] = projectIds.length
     ? await Promise.all([
         supabase.from("project_members").select("project_id, profile_id, role").in("project_id", projectIds),
         supabase
@@ -426,30 +431,63 @@ export async function GET(request: NextRequest) {
           .select("id, project_id, title, version, file_url, uploaded_by, created_at, visibility, notes")
           .in("project_id", projectIds)
           .order("created_at", { ascending: false }),
-        supabase
-          .from("project_comments")
-          .select("id, project_id, author_id, body, internal_only, created_at")
-          .in("project_id", projectIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("project_feedback")
-          .select("id, project_id, author_id, action, body, rating, created_at")
-          .in("project_id", projectIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("project_activity")
-          .select("id, project_id, actor_id, action, message, created_at")
-          .in("project_id", projectIds)
-          .order("created_at", { ascending: false }),
       ])
     : [
         { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
-        { data: [], error: null },
-        { data: [], error: null },
-        { data: [], error: null },
       ];
+
+  const commentsResult = projectIds.length
+    ? await supabase
+        .from("project_comments")
+        .select("id, project_id, author_id, task_id, body, internal_only, created_at")
+        .in("project_id", projectIds)
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+
+  const fallbackCommentsResult =
+    commentsResult.error && isMissingTaskIdColumnError(commentsResult.error.message) && projectIds.length
+      ? await supabase
+          .from("project_comments")
+          .select("id, project_id, author_id, body, internal_only, created_at")
+          .in("project_id", projectIds)
+          .order("created_at", { ascending: false })
+      : null;
+
+  const feedbackResult = projectIds.length
+    ? await supabase
+        .from("project_feedback")
+        .select("id, project_id, author_id, task_id, action, body, rating, created_at")
+        .in("project_id", projectIds)
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+
+  const fallbackFeedbackResult =
+    feedbackResult.error && isMissingTaskIdColumnError(feedbackResult.error.message) && projectIds.length
+      ? await supabase
+          .from("project_feedback")
+          .select("id, project_id, author_id, action, body, rating, created_at")
+          .in("project_id", projectIds)
+          .order("created_at", { ascending: false })
+      : null;
+
+  const activityResult = projectIds.length
+    ? await supabase
+        .from("project_activity")
+        .select("id, project_id, actor_id, task_id, action, message, created_at")
+        .in("project_id", projectIds)
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+
+  const fallbackActivityResult =
+    activityResult.error && isMissingTaskIdColumnError(activityResult.error.message) && projectIds.length
+      ? await supabase
+          .from("project_activity")
+          .select("id, project_id, actor_id, action, message, created_at")
+          .in("project_id", projectIds)
+          .order("created_at", { ascending: false })
+      : null;
 
   if (membersResult.error) {
     return NextResponse.json({ error: membersResult.error.message }, { status: 500 });
@@ -463,26 +501,51 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: filesResult.error.message }, { status: 500 });
   }
 
-  if (commentsResult.error) {
+  if (commentsResult.error && !fallbackCommentsResult) {
     return NextResponse.json({ error: commentsResult.error.message }, { status: 500 });
   }
 
-  if (feedbackResult.error) {
+  if (fallbackCommentsResult?.error) {
+    return NextResponse.json({ error: fallbackCommentsResult.error.message }, { status: 500 });
+  }
+
+  if (feedbackResult.error && !fallbackFeedbackResult) {
     return NextResponse.json({ error: feedbackResult.error.message }, { status: 500 });
   }
 
-  if (activityResult.error && !isMissingRelationError(activityResult.error.message)) {
+  if (fallbackFeedbackResult?.error) {
+    return NextResponse.json({ error: fallbackFeedbackResult.error.message }, { status: 500 });
+  }
+
+  if (
+    activityResult.error &&
+    !fallbackActivityResult &&
+    !isMissingRelationError(activityResult.error.message)
+  ) {
     return NextResponse.json({ error: activityResult.error.message }, { status: 500 });
+  }
+
+  if (fallbackActivityResult?.error && !isMissingRelationError(fallbackActivityResult.error.message)) {
+    return NextResponse.json({ error: fallbackActivityResult.error.message }, { status: 500 });
   }
 
   const members = (membersResult.data ?? []) as ProjectMemberRecord[];
   const tasks = (tasksResult.data ?? []) as TaskRecord[];
   const files = (filesResult.data ?? []) as ProjectFileRecord[];
-  const comments = (commentsResult.data ?? []) as ProjectCommentRecord[];
-  const feedback = (feedbackResult.data ?? []) as ProjectFeedbackRecord[];
-  const activities = isMissingRelationError(activityResult.error?.message)
+  const comments = (
+    fallbackCommentsResult?.data ??
+    commentsResult.data ??
+    []
+  ) as ProjectCommentRecord[];
+  const feedback = (
+    fallbackFeedbackResult?.data ??
+    feedbackResult.data ??
+    []
+  ) as ProjectFeedbackRecord[];
+  const resolvedActivityError = fallbackActivityResult?.error ?? activityResult.error;
+  const activities = isMissingRelationError(resolvedActivityError?.message)
     ? []
-    : ((activityResult.data ?? []) as ProjectActivityRecord[]);
+    : (((fallbackActivityResult?.data ?? activityResult.data) ?? []) as ProjectActivityRecord[]);
 
   const staffIdsByProject = new Map<string, string[]>();
   const tasksByProject = new Map<string, Project["tasks"]>();
@@ -537,6 +600,7 @@ export async function GET(request: NextRequest) {
     current.push({
       id: comment.id,
       authorId: comment.author_id,
+      taskId: comment.task_id,
       body: comment.body,
       internalOnly: comment.internal_only,
       createdAt: comment.created_at,
@@ -549,6 +613,7 @@ export async function GET(request: NextRequest) {
     current.push({
       id: item.id,
       authorId: item.author_id,
+      taskId: item.task_id,
       action: item.action,
       body: item.body,
       rating: item.rating,
@@ -562,6 +627,7 @@ export async function GET(request: NextRequest) {
     current.push({
       id: item.id,
       actorId: item.actor_id,
+      taskId: item.task_id,
       action: item.action,
       message: item.message,
       createdAt: item.created_at,

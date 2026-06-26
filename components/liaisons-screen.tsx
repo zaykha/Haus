@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ClientTitleLogo } from "@/components/client-title-logo";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { FilterModal } from "@/components/filter-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
@@ -90,6 +91,7 @@ function getOrganizationClusterItems(names: string[]) {
 
 export function LiaisonsScreen() {
   const { ready, state, user, updateClient, deleteClient } = useAppState();
+  const [desktopView, setDesktopView] = useState<"cards" | "table">("table");
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<LiaisonFilter>("all");
@@ -112,10 +114,20 @@ export function LiaisonsScreen() {
   const viewerRole = user?.role ?? "client";
   const roleLabel = formatRole(viewerRole).toUpperCase();
   const canManage = canCreateClient(viewerRole);
-  const clientOrganizationIds = user ? getUserClientOrganizationIds(user) : [];
+  const clientOrganizationIds = useMemo(
+    () => (user ? getUserClientOrganizationIds(user) : []),
+    [user],
+  );
   const canInviteLiaisons = canManage || (viewerRole === "client" && clientOrganizationIds.length > 0);
   const inviteLockedToSingleOrganization = viewerRole === "client" && clientOrganizationIds.length === 1;
   const liaisons = useMemo(() => buildLiaisonRows(state), [state]);
+  const currentClientOrganization = useMemo(
+    () =>
+      viewerRole === "client"
+        ? state.clientOrganizations.find((organization) => clientOrganizationIds.includes(organization.id)) ?? null
+        : null,
+    [clientOrganizationIds, state.clientOrganizations, viewerRole],
+  );
   const selectedLiaison = selectedLiaisonId
     ? liaisons.find((liaison) => liaison.id === selectedLiaisonId) ?? null
     : null;
@@ -465,7 +477,10 @@ export function LiaisonsScreen() {
         <Header>
           <div>
             <Eyebrow>{roleLabel}</Eyebrow>
-            <Title>Liaisons</Title>
+            <TitleRow>
+              {viewerRole === "client" ? <HeaderClientLogo organization={currentClientOrganization} /> : null}
+              <Title>Liaisons</Title>
+            </TitleRow>
             <Subtitle>
               {viewerRole === "client"
                 ? "Browse liaison accounts in your organization and invite additional liaisons."
@@ -570,6 +585,23 @@ export function LiaisonsScreen() {
             </SearchButton>
           </SearchControls>
 
+          <DesktopViewToggleGroup aria-label="Liaison view">
+            <DesktopViewToggleButton
+              type="button"
+              $active={desktopView === "cards"}
+              onClick={() => setDesktopView("cards")}
+            >
+              Cards
+            </DesktopViewToggleButton>
+            <DesktopViewToggleButton
+              type="button"
+              $active={desktopView === "table"}
+              onClick={() => setDesktopView("table")}
+            >
+              Table
+            </DesktopViewToggleButton>
+          </DesktopViewToggleGroup>
+
           <ToolbarActions>
             {canInviteLiaisons ? (
               <PrimaryActionButton
@@ -625,7 +657,7 @@ export function LiaisonsScreen() {
           </StatCard>
         </StatsRow>
 
-        <DesktopPanel>
+        <DesktopPanel $visible={desktopView === "table"}>
           <TableHeader>
             <span>Liaison</span>
             <span>Organization</span>
@@ -766,6 +798,67 @@ export function LiaisonsScreen() {
           </TableFooter>
         </DesktopPanel>
 
+        <DesktopCardList $visible={desktopView === "cards"}>
+          {paginatedLiaisons.length ? (
+            paginatedLiaisons.map((liaison) => (
+              <MobileStaticCard key={liaison.id} type="button" onClick={() => setSelectedLiaisonId(liaison.id)}>
+                <MobileTop>
+                  <ClientMark>{liaison.name.slice(0, 1).toUpperCase()}</ClientMark>
+                  <ClientCopy>
+                    <MobileTitleRow>
+                      <ClientName>{liaison.name}</ClientName>
+                      <ClientMeta>{liaison.phone || liaison.email}</ClientMeta>
+                    </MobileTitleRow>
+                    <MobileOrganizationPills>
+                      {liaison.clientOrganizationNames.length ? (
+                        liaison.clientOrganizationNames.map((organizationName, index) => (
+                          <OrganizationNamePill key={`${liaison.id}:${organizationName}:${index}`}>
+                            {organizationName}
+                          </OrganizationNamePill>
+                        ))
+                      ) : (
+                        <OrganizationNamePill>No organizations</OrganizationNamePill>
+                      )}
+                      {liaison.jobTitle ? <OrganizationNamePill>{liaison.jobTitle}</OrganizationNamePill> : null}
+                    </MobileOrganizationPills>
+                  </ClientCopy>
+                </MobileTop>
+              </MobileStaticCard>
+            ))
+          ) : (
+            <EmptyState>
+              <strong>No liaisons found</strong>
+              <p>Try another search term or adjust the selected filter.</p>
+            </EmptyState>
+          )}
+          {filteredLiaisons.length ? (
+            <DesktopCardFooter>
+              <span>
+                Showing {rangeStart} to {rangeEnd} of {filteredLiaisons.length} liaisons
+              </span>
+              <Pagination>
+                <PageButton
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Last
+                </PageButton>
+                <PageButton $active type="button">
+                  {currentPage}
+                </PageButton>
+                <PageButton
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </PageButton>
+              </Pagination>
+            </DesktopCardFooter>
+          ) : null}
+        </DesktopCardList>
+
         <MobileList>
           {paginatedLiaisons.length ? (
             paginatedLiaisons.map((liaison) => {
@@ -864,6 +957,23 @@ const Title = styled.h1`
   font-size: clamp(1.45rem, 3vw, 2rem);
   line-height: 1;
   letter-spacing: -0.04em;
+`;
+
+const TitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+`;
+
+const HeaderClientLogo = styled(ClientTitleLogo)`
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  flex: 0 0 auto;
 `;
 
 const Subtitle = styled.p`
@@ -1346,15 +1456,62 @@ const StatLabel = styled.span`
   font-weight: 600;
 `;
 
-const DesktopPanel = styled.section`
+const DesktopViewToggleGroup = styled.div`
+  display: none;
+
+  ${desktop} {
+    ${cardSurface}
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px;
+    border-radius: 12px;
+  }
+`;
+
+const DesktopViewToggleButton = styled.button<{ $active?: boolean }>`
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: ${({ $active }) => ($active ? "#1f4339" : "transparent")};
+  color: ${({ $active }) => ($active ? "#fff" : "var(--color-text-muted)")};
+  font-size: 0.78rem;
+  font-weight: 700;
+`;
+
+const DesktopPanel = styled.section<{ $visible: boolean }>`
   ${cardSurface}
   display: none;
   border-radius: 22px;
   overflow: hidden;
 
   ${desktop} {
-    display: block;
+    display: ${({ $visible }) => ($visible ? "block" : "none")};
   }
+`;
+
+const DesktopCardList = styled.div<{ $visible: boolean }>`
+  display: none;
+
+  ${desktop} {
+    display: ${({ $visible }) => ($visible ? "flex" : "none")};
+    flex-direction: column;
+    gap: 12px;
+  }
+`;
+
+const DesktopCardFooter = styled.div`
+  ${cardSurface}
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 20px;
+  color: var(--color-text-muted);
+  font-size: 0.86rem;
 `;
 
 const TableHeader = styled.div`

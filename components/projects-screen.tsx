@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ClientTitleLogo } from "@/components/client-title-logo";
 import { FilterModal } from "@/components/filter-modal";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
@@ -198,6 +199,7 @@ export function ProjectsScreen() {
   );
   const roleLabel = user ? formatRole(user.role).toUpperCase() : "";
   const canToggleDesktopView = user ? user.role === "client" || canManage : false;
+  const isClient = user?.role === "client";
   const currentClientOrganization = useMemo(
     () =>
       user?.role === "client"
@@ -359,7 +361,10 @@ export function ProjectsScreen() {
           <DesktopHeaderTop>
             <DesktopHeaderCopy>
               <Eyebrow>{roleLabel}</Eyebrow>
-              <Title>Select a project</Title>
+              <TitleRow>
+                {isClient ? <HeaderClientLogo organization={currentClientOrganization} /> : null}
+                <Title>Select a project</Title>
+              </TitleRow>
               <Subtitle>
                 Choose a project workspace to manage deliverables, staff, clients, and tasks.
               </Subtitle>
@@ -373,7 +378,10 @@ export function ProjectsScreen() {
         <MobileHeader>
           <MobileHeaderCopy>
             <Eyebrow>{roleLabel}</Eyebrow>
-            <Title>Select a project</Title>
+            <TitleRow>
+              {isClient ? <HeaderClientLogo organization={currentClientOrganization} /> : null}
+              <Title>Select a project</Title>
+            </TitleRow>
           </MobileHeaderCopy>
           <HeaderAvatarLink href="/profile" aria-label="Open profile">
             {user ? <UserAvatar user={user} /> : null}
@@ -526,7 +534,6 @@ export function ProjectsScreen() {
               paginatedProjects.map((project) => {
                 const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
                 const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
-                const contactNumberLabel = project.contactNumber?.trim() || "No contact number";
                 const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
 
                 return (
@@ -544,7 +551,7 @@ export function ProjectsScreen() {
                       <SummaryTitle>{project.name}</SummaryTitle>
                       <SummaryPills>
                         <SummaryPill>{primaryContactLabel}</SummaryPill>
-                        <SummaryPill>{contactNumberLabel}</SummaryPill>
+                        {!isClient ? <SummaryPill>{project.contactNumber?.trim() || "No contact number"}</SummaryPill> : null}
                       </SummaryPills>
                     </ProjectSummary>
 
@@ -603,7 +610,7 @@ export function ProjectsScreen() {
                       <th>Stage</th>
                       <th>Due date</th>
                       <th>Primary contact</th>
-                      <th>Contact number</th>
+                      {!isClient ? <th>Contact number</th> : null}
                       <th>Open tasks</th>
                     </tr>
                   </thead>
@@ -611,7 +618,6 @@ export function ProjectsScreen() {
                     {tableProjects.map((project) => {
                       const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
                       const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
-                      const contactNumberLabel = project.contactNumber?.trim() || "No contact number";
                       const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
 
                       return (
@@ -639,7 +645,7 @@ export function ProjectsScreen() {
                           </td>
                           <td>{formatDueDate(project.dueDate)}</td>
                           <td>{primaryContactLabel}</td>
-                          <td>{contactNumberLabel}</td>
+                          {!isClient ? <td>{project.contactNumber?.trim() || "No contact number"}</td> : null}
                           <td>{user ? getVisibleTasksForUser(user, project).filter((task) => task.status !== "approved").length : 0}</td>
                         </DesktopTableRow>
                       );
@@ -663,6 +669,7 @@ export function ProjectsScreen() {
           {mobileProjects.length ? (
             mobileProjects.map((project) => {
               const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
+              const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
 
               return (
                 <MobileProjectCard key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
@@ -670,22 +677,22 @@ export function ProjectsScreen() {
                   {attentionCount > 0 ? (
                     <ProjectAttentionBadge>{attentionCount > 99 ? "99+" : attentionCount}</ProjectAttentionBadge>
                   ) : null}
-                  <MobileProjectMark>{getProjectMark(project)}</MobileProjectMark>
-                  <MobileCopy>
-                    <MobileTitleRow>
-                      <MobileTitle>{project.name}</MobileTitle>
-                      <MobileStagePill>{formatProjectStage(project.stage)}</MobileStagePill>
-                    </MobileTitleRow>
-                    <MobileInfoRow>
-                      <MobileClientName>{getClientOrganizationName(project, organizationNames, userNames)}</MobileClientName>
-                      <MobileMetaText>Due {formatShortDate(project.dueDate)}</MobileMetaText>
-                    </MobileInfoRow>
-                    <MobilePillRow>
-                      <SummaryPill>{project.contactPerson?.trim() || "No primary contact"}</SummaryPill>
-                      <SummaryPill>{project.contactNumber?.trim() || "No contact number"}</SummaryPill>
-                    </MobilePillRow>
-                    <ProjectStageProgress stage={project.stage} size="sm" />
-                  </MobileCopy>
+                  <MobileProjectCompanyHeader>{clientOrganizationName}</MobileProjectCompanyHeader>
+                  <MobileProjectStageBadge>{formatProjectStage(project.stage)}</MobileProjectStageBadge>
+                  <MobileProjectLead>
+                    <MobileProjectMark>{getProjectMark(project)}</MobileProjectMark>
+                    <MobileCopy>
+                      <MobileTitleRow>
+                        <MobileTitle>{project.name}</MobileTitle>
+                        <MobileMetaText>Due {formatShortDate(project.dueDate)}</MobileMetaText>
+                      </MobileTitleRow>
+                      <MobilePillRow>
+                        <SummaryPill>{project.contactPerson?.trim() || "No primary contact"}</SummaryPill>
+                        {!isClient ? <SummaryPill>{project.contactNumber?.trim() || "No contact number"}</SummaryPill> : null}
+                      </MobilePillRow>
+                      <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
+                    </MobileCopy>
+                  </MobileProjectLead>
                 </MobileProjectCard>
               );
             })
@@ -829,6 +836,23 @@ const MobileHeader = styled.header`
 const MobileHeaderCopy = styled.div`
   flex: 1;
   min-width: 0;
+`;
+
+const TitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+`;
+
+const HeaderClientLogo = styled(ClientTitleLogo)`
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  flex: 0 0 auto;
 `;
 
 const Eyebrow = styled.p`
@@ -1526,10 +1550,8 @@ const MobileProjectCard = styled(Link)<{ $attention?: boolean }>`
   ${cardSurface}
   position: relative;
   display: grid;
-  grid-template-columns: 50px minmax(0, 1fr);
   gap: 10px;
-  align-items: center;
-  padding: 26px 12px 10px;
+  padding: 28px 12px 12px;
   border-radius: 18px;
   text-decoration: none;
   border-color: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)")};
@@ -1537,22 +1559,60 @@ const MobileProjectCard = styled(Link)<{ $attention?: boolean }>`
     $attention ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)" : "var(--shadow-sm)"};
 `;
 
+const MobileProjectCompanyHeader = styled.span`
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 110px;
+  color: grey;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const MobileProjectStageBadge = styled.span`
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.64rem;
+  font-weight: 700;
+  z-index: 1;
+  background: var(--color-info-soft);
+  color: var(--color-info);
+`;
+
+const MobileProjectLead = styled.div`
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 8px;
+`;
+
 const MobileProjectMark = styled.div`
   ${markSurface}
-  width: 50px;
-  height: 50px;
-  border-radius: 14px;
-  font-size: 1rem;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 0.92rem;
 `;
 
 const MobileCopy = styled.div`
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-self: stretch;
-  min-height: 50px;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  flex: 1;
 `;
 
 const MobileTitleRow = styled.div`
@@ -1565,26 +1625,25 @@ const MobileTitleRow = styled.div`
 
 const MobileTitle = styled.strong`
   min-width: 0;
-  font-size: 0.78rem;
-  line-height: 1.2;
-  white-space: nowrap;
+  flex: 1;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 `;
 
 const MobileInfoRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
+  display: none;
 `;
 
 const MobileClientName = styled.span`
   min-width: 0;
+  flex: 1;
   color: var(--color-text-muted);
   font-size: 0.72rem;
-  line-height: 1.2;
+  line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1594,27 +1653,26 @@ const MobilePillRow = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+
+  ${SummaryPill} {
+    min-height: 24px;
+    padding: 0 9px;
+    font-size: 0.68rem;
+    max-width: 100%;
+  }
 `;
 
 const MobileMetaText = styled.span`
   flex: 0 0 auto;
   color: var(--color-text-muted);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 500;
   line-height: 1.2;
+  white-space: nowrap;
 `;
 
 const MobileStagePill = styled.span`
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: var(--color-info-soft);
-  color: var(--color-info);
-  font-size: 0.68rem;
-  font-weight: 700;
-  white-space: nowrap;
+  display: none;
 `;
 
 const LoadMoreSentinel = styled.div`

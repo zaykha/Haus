@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ClientTitleLogo } from "@/components/client-title-logo";
 import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { FilterModal } from "@/components/filter-modal";
@@ -325,7 +326,9 @@ export function TasksScreen() {
           managerReviewStatus: task.managerReviewStatus,
           needsAttention: taskNeedsAttention(user, project, task),
           feedbackEntries: [
-            ...project.feedback.map((item) => ({
+            ...project.feedback
+              .filter((item) => item.taskId === task.id)
+              .map((item) => ({
               id: item.id,
               source:
                 state.users.find((candidate) => candidate.id === item.authorId)?.role === "client"
@@ -341,7 +344,7 @@ export function TasksScreen() {
               rating: item.rating,
             })),
             ...project.comments
-              .filter((comment) => comment.internalOnly)
+              .filter((comment) => comment.internalOnly && comment.taskId === task.id)
               .map((comment) => ({
                 id: comment.id,
                 source: "internal" as const,
@@ -727,7 +730,10 @@ export function TasksScreen() {
         <Header>
           <div>
             <Eyebrow>{roleLabel}</Eyebrow>
-            <Title>Tasks</Title>
+            <TitleRow>
+              {isClient ? <HeaderClientLogo organization={currentClientOrganization} /> : null}
+              <Title>Tasks</Title>
+            </TitleRow>
             <Subtitle>
               {isDesigner
                 ? "See the tasks assigned across the projects you are working on."
@@ -1206,6 +1212,23 @@ const Title = styled.h1`
   font-size: clamp(1.45rem, 3vw, 2rem);
   line-height: 1;
   letter-spacing: -0.04em;
+`;
+
+const TitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+`;
+
+const HeaderClientLogo = styled(ClientTitleLogo)`
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  flex: 0 0 auto;
 `;
 
 const Subtitle = styled.p`

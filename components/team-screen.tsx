@@ -88,6 +88,7 @@ function formatPriority(priority: TaskPriority) {
 
 export function TeamScreen() {
   const { ready, state, user, revokeInvitation, updateTeamMemberRole, deleteTeamMember } = useAppState();
+  const [desktopView, setDesktopView] = useState<"cards" | "table">("table");
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
@@ -716,6 +717,23 @@ export function TeamScreen() {
             </SearchButton>
           </SearchControls>
 
+          <DesktopViewToggleGroup aria-label="Team view">
+            <DesktopViewToggleButton
+              type="button"
+              $active={desktopView === "cards"}
+              onClick={() => setDesktopView("cards")}
+            >
+              Cards
+            </DesktopViewToggleButton>
+            <DesktopViewToggleButton
+              type="button"
+              $active={desktopView === "table"}
+              onClick={() => setDesktopView("table")}
+            >
+              Table
+            </DesktopViewToggleButton>
+          </DesktopViewToggleGroup>
+
           {canManageInvites ? (
             <InviteButton type="button" onClick={() => setShowInviteModal(true)}>
               <IconWrap>
@@ -777,7 +795,7 @@ export function TeamScreen() {
           </StatCard>
         </StatsRow>
 
-        <DesktopTable>
+        <DesktopTable $visible={desktopView === "table"}>
           <TableHeader>
             <HeaderCell $wide>Member</HeaderCell>
             <HeaderCell>Role</HeaderCell>
@@ -842,6 +860,62 @@ export function TeamScreen() {
             </Pagination>
           </TableFooter>
         </DesktopTable>
+
+        <DesktopCardList $visible={desktopView === "cards"}>
+          {paginatedMembers.length ? (
+            paginatedMembers.map((member) => {
+              const roleTone = getRoleTone(member.role);
+              return (
+                <MobileCard key={member.id} onClick={() => setSelectedMember(member)}>
+                  <MobileJoinedMeta>
+                    Joined {member.joinedAt ? formatShortDate(member.joinedAt) : "—"}
+                  </MobileJoinedMeta>
+                  <MobileCardRow>
+                    <Avatar>{member.name.slice(0, 1)}</Avatar>
+                    <MemberCopy>
+                      <MemberName>{member.name}</MemberName>
+                      <MemberEmail>{member.phone?.trim() || member.company || "No contact number"}</MemberEmail>
+                      <Pill style={{ background: roleTone.bg, color: roleTone.fg }}>
+                        {formatRole(member.role)}
+                      </Pill>
+                    </MemberCopy>
+                  </MobileCardRow>
+                </MobileCard>
+              );
+            })
+          ) : (
+            <EmptyState>
+              <strong>No team members found</strong>
+              <p>Try another search term or adjust the selected filters.</p>
+            </EmptyState>
+          )}
+          {filteredMembers.length ? (
+            <DesktopCardFooter>
+              <span>
+                Showing {rangeStart} to {rangeEnd} of {filteredMembers.length} members
+              </span>
+              <Pagination>
+                <PageButton
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Last
+                </PageButton>
+                <PageButton $active type="button">
+                  {currentPage}
+                </PageButton>
+                <PageButton
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </PageButton>
+              </Pagination>
+            </DesktopCardFooter>
+          ) : null}
+        </DesktopCardList>
 
         <MobileList>
           {mobileMembers.length ? (
@@ -1281,7 +1355,31 @@ const FilterPopupTitle = styled.strong`
   color: var(--color-text);
 `;
 
-const DesktopTable = styled.section`
+const DesktopViewToggleGroup = styled.div`
+  display: none;
+
+  ${desktop} {
+    ${cardSurface}
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px;
+    border-radius: 12px;
+  }
+`;
+
+const DesktopViewToggleButton = styled.button<{ $active?: boolean }>`
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: ${({ $active }) => ($active ? "#1f4339" : "transparent")};
+  color: ${({ $active }) => ($active ? "#fff" : "var(--color-text-muted)")};
+  font-size: 0.78rem;
+  font-weight: 700;
+`;
+
+const DesktopTable = styled.section<{ $visible: boolean }>`
   ${cardSurface}
   display: none;
   flex-direction: column;
@@ -1289,7 +1387,17 @@ const DesktopTable = styled.section`
   overflow: hidden;
 
   ${desktop} {
-    display: flex;
+    display: ${({ $visible }) => ($visible ? "flex" : "none")};
+  }
+`;
+
+const DesktopCardList = styled.div<{ $visible: boolean }>`
+  display: none;
+
+  ${desktop} {
+    display: ${({ $visible }) => ($visible ? "flex" : "none")};
+    flex-direction: column;
+    gap: 12px;
   }
 `;
 
@@ -1440,6 +1548,12 @@ const MobileCard = styled.article`
   padding: 16px;
   border-radius: 20px;
   cursor: pointer;
+`;
+
+const DesktopCardFooter = styled(TableFooter)`
+  ${cardSurface}
+  border: 0;
+  border-radius: 20px;
 `;
 
 const MobileCardRow = styled.div`

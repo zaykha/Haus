@@ -83,6 +83,7 @@ export interface Task {
 export interface Comment {
   id: string;
   authorId: string;
+  taskId?: string | null;
   body: string;
   internalOnly: boolean;
   createdAt: string;
@@ -101,6 +102,7 @@ export interface FileVersion {
 export interface Feedback {
   id: string;
   authorId: string;
+  taskId?: string | null;
   action: FeedbackAction;
   body: string;
   rating?: number | null;
@@ -122,6 +124,7 @@ export type ProjectActivityAction =
 export interface ProjectActivity {
   id: string;
   actorId?: string | null;
+  taskId?: string | null;
   action: ProjectActivityAction;
   message: string;
   createdAt: string;

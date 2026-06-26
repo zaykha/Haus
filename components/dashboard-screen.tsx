@@ -110,6 +110,10 @@ function getProjectMark(project: Project) {
   return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
 }
 
+function isOnHoldProject(project: Pick<Project, "status" | "stage">) {
+  return project.status === "On Hold" || project.stage === "On Hold";
+}
+
 function getStatusTone(status: ProjectStatus) {
   switch (status) {
     case "active":
@@ -346,7 +350,11 @@ export function DashboardScreen() {
           (task) => task.status === "done" && task.managerReviewStatus === "internal",
         ).length,
       }))
-      .filter((project) => project.status === "review" || project.status === "revision" || project.status === "active")
+      .filter(
+        (project) =>
+          !isOnHoldProject(project) &&
+          (project.status === "review" || project.status === "revision" || project.status === "active"),
+      )
       .sort((left, right) => {
         const leftStagePriority = getStagePriority(left.status);
         const rightStagePriority = getStagePriority(right.status);
@@ -374,6 +382,10 @@ export function DashboardScreen() {
     (currentPriorityPage - 1) * PRIORITY_PROJECTS_PAGE_SIZE,
     currentPriorityPage * PRIORITY_PROJECTS_PAGE_SIZE,
   );
+  const mobileProjects = (isClient
+    ? projectRows.filter((project) => project.status !== "done" && !isOnHoldProject(project))
+    : priorityProjects
+  ).slice(0, 3);
   const dashboardTasks = openTasks.slice(
     (currentTasksPage - 1) * TASKS_PAGE_SIZE,
     currentTasksPage * TASKS_PAGE_SIZE,
@@ -714,7 +726,7 @@ export function DashboardScreen() {
           </HeaderUser>
         </Header>
 
-        {isDesigner || isClient ? null : (
+        {isDesigner ? null : (
           <StatsGrid>
 
             <StatCardLink href="/projects?quick=active">
@@ -786,13 +798,12 @@ export function DashboardScreen() {
         <MobileDashboardStack>
           <Panel>
             <PanelHeader>
-              <PanelTitle>{isDesigner ? "Projects" : "Priority Projects"}</PanelTitle>
+              <PanelTitle>{isDesigner ? "Projects" : isClient ? "Active Projects" : "Priority Projects"}</PanelTitle>
               <PanelLink href="/projects">View all</PanelLink>
             </PanelHeader>
             <ProjectList>
-              {priorityProjects.slice(0, 3).length ? (
-                priorityProjects.slice(0, 3).map((project) => {
-                  const tone = getStatusTone(project.status);
+              {mobileProjects.length ? (
+                mobileProjects.map((project) => {
                   return (
                     <MobileProjectRow key={project.id} href={`/projects/${project.id}`}>
                       <ProjectMark>{getProjectMark(project)}</ProjectMark>
@@ -802,12 +813,10 @@ export function DashboardScreen() {
                             <ProjectTitle>{project.name}</ProjectTitle>
                             <TaskSub>{project.clientName}</TaskSub>
                           </div>
-                          <StatusPill style={{ background: tone.bg, color: tone.fg }}>
-                            {getProjectStatusLabel(project.status)}
-                          </StatusPill>
+                          <MobileDueText>{formatShortDate(project.dueDate)}</MobileDueText>
                         </MobileProjectHeader>
                         <MobileProjectFooter>
-                          <MobileMetaText>Due {formatShortDate(project.dueDate)}</MobileMetaText>
+                          <MobileMetaText>{formatProjectStage(project.stage)}</MobileMetaText>
                           <ProjectStageProgress stage={project.stage} size="sm" />
                         </MobileProjectFooter>
                       </ProjectBody>
@@ -816,11 +825,19 @@ export function DashboardScreen() {
                 })
               ) : (
                 <EmptyBlock>
-                  <strong>{isDesigner ? "No assigned projects yet" : "No projects awaiting review"}</strong>
+                  <strong>
+                    {isDesigner
+                      ? "No assigned projects yet"
+                      : isClient
+                        ? "No active projects yet"
+                        : "No projects awaiting review"}
+                  </strong>
                   <p>
                     {isDesigner
                       ? "Projects assigned to you will appear here."
-                      : "Projects with tasks submitted for internal review will appear here."}
+                      : isClient
+                        ? "Projects shared with your organization will appear here."
+                        : "Projects with tasks submitted for internal review will appear here."}
                   </p>
                 </EmptyBlock>
               )}
@@ -979,7 +996,13 @@ export function DashboardScreen() {
                   </ActionIcon>
                   <span>Add Task</span>
                 </ActionButton>
-                <ActionLink href="/team">
+                <ActionLink href="/clients">
+                  <ActionIcon>
+                    <IconFolder />
+                  </ActionIcon>
+                  <span>Add Organization</span>
+                </ActionLink>
+                <ActionLink href="/clients/liaisons">
                   <ActionIcon>
                     <IconUsers />
                   </ActionIcon>
@@ -1024,7 +1047,7 @@ export function DashboardScreen() {
                             </MetaGroup>
                             <MetaGroup>
                               <MetaLabel>Progress</MetaLabel>
-                              <ProjectStageProgress stage={project.stage} size="sm" />
+                              <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
                             </MetaGroup>
                           </ProjectTop>
 
@@ -1274,7 +1297,13 @@ export function DashboardScreen() {
                         </ActionIcon>
                         <span>Add Task</span>
                       </ActionButton>
-                      <ActionLink href="/team">
+                      <ActionLink href="/clients">
+                        <ActionIcon>
+                          <IconFolder />
+                        </ActionIcon>
+                        <span>Add Organization</span>
+                      </ActionLink>
+                      <ActionLink href="/clients/liaisons">
                         <ActionIcon>
                           <IconUsers />
                         </ActionIcon>
@@ -1567,8 +1596,8 @@ const HeaderUserName = styled.strong`
 
 const StatsGrid = styled.section`
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 
   ${tabletUp} {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1582,11 +1611,11 @@ const StatsGrid = styled.section`
 
 const StatCard = styled.article`
   ${cardSurface}
-  min-height: 86px;
+  min-height: 74px;
   display: grid;
-  gap: 8px;
-  padding: 12px 10px 10px;
-  border-radius: 18px;
+  gap: 6px;
+  padding: 10px 8px 8px;
+  border-radius: 16px;
 
   ${tabletUp} {
     grid-template-columns: minmax(0, 1fr) 44px;
@@ -1622,8 +1651,8 @@ const StatCardLink = styled(StatCard).attrs({ as: Link })`
 
 const StatCopy = styled.div`
   display: grid;
-  gap: 4px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px;
+  grid-template-columns: 1fr;
   align-items: start;
 
   ${desktop} {
@@ -1634,8 +1663,9 @@ const StatCopy = styled.div`
 const StatLabel = styled.span`
   grid-column: 1 / -1;
   color: var(--color-text);
-  font-size: 0.72rem;
+  font-size: 0.6rem;
   font-weight: 600;
+  line-height: 1.15;
 
   ${desktop} {
     font-size: 0.8rem;
@@ -1657,7 +1687,7 @@ const DesktopLabel = styled.span`
 `;
 
 const StatValue = styled.strong`
-  font-size: 1.3rem;
+  font-size: 1.02rem;
   line-height: 1;
 
   ${desktop} {
@@ -1677,11 +1707,11 @@ const StatNote = styled.span<{ $tone: "positive" | "warning" }>`
 `;
 
 const StatIcon = styled.div<{ $tone: "dark" | "soft-green" | "soft-gold" }>`
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
-  border-radius: 14px;
+  border-radius: 10px;
   background: ${({ $tone }) =>
     $tone === "dark"
       ? "#1f4339"
@@ -1694,8 +1724,8 @@ const StatIcon = styled.div<{ $tone: "dark" | "soft-green" | "soft-gold" }>`
   align-self: start;
 
   svg {
-    width: 15px;
-    height: 15px;
+    width: 12px;
+    height: 12px;
   }
 
   ${tabletUp} {
@@ -1722,7 +1752,7 @@ const StatIcon = styled.div<{ $tone: "dark" | "soft-green" | "soft-gold" }>`
 
 const MobileDashboardStack = styled.section`
   display: grid;
-  gap: 14px;
+  gap: 12px;
 
   ${tablet} {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1773,8 +1803,8 @@ const Panel = styled.section`
   ${cardSurface}
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
   border-radius: 20px;
 
   ${desktop} {
@@ -1807,7 +1837,7 @@ const PanelHeader = styled.div`
 
 const PanelTitle = styled.h2`
   margin: 0;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   line-height: 1.2;
 
   ${desktop} {
@@ -1817,7 +1847,7 @@ const PanelTitle = styled.h2`
 
 const PanelLink = styled(Link)`
   color: var(--color-text-muted);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 600;
 `;
 
@@ -1848,7 +1878,7 @@ const interactiveHoverCss = css`
 
 const ProjectList = styled.div`
   display: grid;
-  gap: 8px;
+  gap: 6px;
 `;
 
 const ProjectRow = styled(Link)`
@@ -1877,11 +1907,11 @@ const ProjectRow = styled(Link)`
 
 const MobileProjectRow = styled(Link)`
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
   text-decoration: none;
-  padding: 12px 0;
+  padding: 10px 0;
   border-top: 1px solid rgba(230, 224, 215, 0.65);
   border-radius: 14px;
 
@@ -1894,14 +1924,14 @@ const MobileProjectRow = styled(Link)`
 `;
 
 const ProjectMark = styled.div`
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border-radius: 12px;
   display: grid;
   place-items: center;
   background: linear-gradient(145deg, #ede5d8, #f8f4ee);
   color: #8c7040;
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 600;
 
   ${desktop} {
@@ -1914,25 +1944,33 @@ const ProjectMark = styled.div`
 
 const ProjectBody = styled.div`
   display: grid;
-  gap: 6px;
+  gap: 4px;
 `;
 
 const MobileProjectHeader = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 `;
 
 const MobileProjectFooter = styled.div`
   display: grid;
-  gap: 8px;
+  gap: 4px;
 `;
 
 const MobileMetaText = styled.span`
   color: var(--color-text-muted);
-  font-size: 0.78rem;
-  font-weight: 500;
+  font-size: 0.7rem;
+  font-weight: 600;
+`;
+
+const MobileDueText = styled.span`
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
 `;
 
 const ProjectTop = styled.div`
@@ -1948,7 +1986,7 @@ const ProjectTop = styled.div`
 
 const ProjectTitle = styled.strong`
   display: block;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   line-height: 1.2;
 
   ${desktop} {

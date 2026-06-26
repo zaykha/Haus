@@ -6,6 +6,7 @@ import styled, { css } from "styled-components";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ProjectForm, ProjectFormValues } from "@/components/project-form";
 import { useAppState } from "@/components/app-state";
+import { ClientTitleLogo } from "@/components/client-title-logo";
 import { parseTabularDocument } from "@/lib/spreadsheet";
 import { canCreateProject, canCreateProjectForOrganization, getUserClientOrganizationIds } from "@/lib/permissions";
 import { formatRole } from "@/lib/display";
@@ -79,6 +80,13 @@ export function ProjectCreateScreen() {
     [allowedClientOrganizationIds, safeUser?.role, state.clientOrganizations],
   );
   const clients = state.users.filter((candidate) => candidate.role === "client");
+  const currentClientOrganization = useMemo(
+    () =>
+      safeUser?.role === "client"
+        ? state.clientOrganizations.find((organization) => allowedClientOrganizationIds.includes(organization.id)) ?? null
+        : null,
+    [allowedClientOrganizationIds, safeUser?.role, state.clientOrganizations],
+  );
   const preselectedClientOrganizationId = searchParams.get("clientOrganizationId") ?? "";
   const resolvedClientOrganizationId = clientOrganizations.some(
     (organization) => organization.id === preselectedClientOrganizationId,
@@ -88,9 +96,13 @@ export function ProjectCreateScreen() {
   const formInitialValues = useMemo<ProjectFormValues>(
     () => ({
       ...initialValues,
+      requestStatus: safeUser?.role === "client" ? "Waiting List" : initialValues.requestStatus,
+      departmentName: safeUser?.role === "client" ? safeUser.department ?? "" : initialValues.departmentName,
+      contactPerson: safeUser?.role === "client" ? safeUser.name : initialValues.contactPerson,
+      contactNumber: safeUser?.role === "client" ? safeUser.phone ?? "" : initialValues.contactNumber,
       clientOrganizationId: resolvedClientOrganizationId,
     }),
-    [resolvedClientOrganizationId],
+    [resolvedClientOrganizationId, safeUser?.department, safeUser?.name, safeUser?.phone, safeUser?.role],
   );
   const canCreateAnyProject = Boolean(
     safeUser &&
@@ -379,7 +391,10 @@ export function ProjectCreateScreen() {
         <Header>
           <HeaderCopy>
             <Eyebrow>{formatRole(safeUser.role).toUpperCase()}</Eyebrow>
-            <Title>Create project</Title>
+            <TitleRow>
+              {safeUser.role === "client" ? <HeaderClientLogo organization={currentClientOrganization} /> : null}
+              <Title>Create project</Title>
+            </TitleRow>
             <Subtitle>
               Create the project workspace first, then link client, company, and team when you are
               ready.
@@ -401,6 +416,8 @@ export function ProjectCreateScreen() {
             departments={departments}
             clientOrganizations={clientOrganizations}
             clients={clients}
+            viewer={safeUser}
+            clientCreateMode={safeUser.role === "client"}
             submitLabel="Create Project"
             onSubmit={handleSubmit}
             onCancel={() => router.push("/projects")}
@@ -540,6 +557,13 @@ const HeaderCopy = styled.div`
   gap: 8px;
 `;
 
+const TitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+`;
+
 const HeaderActions = styled.div`
   display: flex;
   flex-wrap: wrap;
@@ -561,6 +585,16 @@ const Title = styled.h1`
   font-size: clamp(2rem, 4vw, 3rem);
   line-height: 1;
   letter-spacing: -0.04em;
+`;
+
+const HeaderClientLogo = styled(ClientTitleLogo)`
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  flex: 0 0 auto;
 `;
 
 const Subtitle = styled.p`

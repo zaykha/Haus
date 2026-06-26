@@ -559,13 +559,17 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     () => parseReferenceAttachments(project.referenceAttachmentUrl),
     [project.referenceAttachmentUrl],
   );
-  const feedbackRows = [...project.feedback].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  ) as FeedbackRow[];
+  const feedbackRows = useMemo(
+    () =>
+      [...project.feedback]
+        .filter((item) => (selectedDeliverableTaskId ? item.taskId === selectedDeliverableTaskId : true))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) as FeedbackRow[],
+    [project.feedback, selectedDeliverableTaskId],
+  );
   const internalNoteRows = useMemo(
     () =>
       project.comments
-        .filter((comment) => comment.internalOnly)
+        .filter((comment) => comment.internalOnly && (selectedDeliverableTaskId ? comment.taskId === selectedDeliverableTaskId : true))
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .map(
           (comment): InternalNoteRow => ({
@@ -575,7 +579,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
             createdAt: comment.createdAt,
           }),
         ),
-    [project.comments],
+    [project.comments, selectedDeliverableTaskId],
   );
   const versionClientFeedback = useMemo(() => {
     if (!selectedVersion) {
@@ -1003,6 +1007,37 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const activeDesignerTask = activeDesignerTaskId
     ? taskRows.find((task) => task.id === activeDesignerTaskId) ?? null
     : null;
+  const activeDesignerTaskFeedbackEntries = useMemo(
+    () =>
+      activeDesignerTask
+        ? [
+            ...project.feedback
+              .filter((item) => item.taskId === activeDesignerTask.id)
+              .map((item) => ({
+                id: item.id,
+                source:
+                  state.users.find((candidate) => candidate.id === item.authorId)?.role === "client"
+                    ? ("client" as const)
+                    : ("internal" as const),
+                author: state.users.find((candidate) => candidate.id === item.authorId)?.name ?? "Team member",
+                body: item.body,
+                createdAt: item.createdAt,
+                rating: item.rating,
+              })),
+            ...project.comments
+              .filter((comment) => comment.internalOnly && comment.taskId === activeDesignerTask.id)
+              .map((comment) => ({
+                id: comment.id,
+                source: "internal" as const,
+                author: state.users.find((candidate) => candidate.id === comment.authorId)?.name ?? "Team member",
+                body: comment.body,
+                createdAt: comment.createdAt,
+                rating: null,
+              })),
+          ].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        : [],
+    [activeDesignerTask, project.comments, project.feedback, state.users],
+  );
   const editingTaskAssets = editingTask ? parseTaskCompletionAssets(editingTask.completionScreenshotUrl) : [];
 
   if (!ready || !user) {
@@ -1090,10 +1125,10 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 status: activeDesignerTask.status,
                 completionScreenshotUrl: activeDesignerTask.completionScreenshotUrl ?? null,
                 managerReviewStatus: activeDesignerTask.managerReviewStatus,
-                feedbackEntries: versionFeedbackEntries.map((entry) => ({
+                feedbackEntries: activeDesignerTaskFeedbackEntries.map((entry) => ({
                   id: entry.id,
                   source: entry.source,
-                  author: entry.authorName,
+                  author: entry.author,
                   body: entry.body,
                   createdAt: entry.createdAt,
                   rating: entry.rating,

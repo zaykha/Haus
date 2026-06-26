@@ -56,15 +56,20 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const resolvedRequestStatus = body.requestStatus?.trim() || "Waiting List";
+  const resolvedDepartmentName = body.departmentName?.trim() || user.department?.trim() || null;
+  const resolvedContactPerson = body.contactPerson?.trim() || user.name.trim() || null;
+  const resolvedContactNumber = body.contactNumber?.trim() || user.phone?.trim() || null;
+
   const { data, error } = await supabase
     .from("projects")
     .insert({
       name: body.projectRequestName.trim(),
       requested_date: body.requestedDate || null,
-      department_name: body.departmentName?.trim() || null,
+      department_name: resolvedDepartmentName,
       project_request_name: body.projectRequestName.trim(),
-      contact_person: body.contactPerson?.trim() || null,
-      contact_number: body.contactNumber?.trim() || null,
+      contact_person: resolvedContactPerson,
+      contact_number: resolvedContactNumber,
       project_type: body.projectType.trim(),
       priority_level: body.priorityLevel.trim(),
       first_draft_date: body.firstDraftDate,
@@ -77,7 +82,7 @@ export async function POST(request: NextRequest) {
       owner_id: user.id,
       description: body.description?.trim() || "",
       category: body.projectType.trim(),
-      stage: body.requestStatus?.trim() || "Waiting List",
+      stage: resolvedRequestStatus,
       due_date: body.finalDeliverableDate,
     })
     .select("id")

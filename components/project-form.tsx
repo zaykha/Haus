@@ -65,6 +65,8 @@ type ProjectFormProps = {
   departments: Department[];
   clientOrganizations: ClientOrganization[];
   clients: User[];
+  viewer?: Pick<User, "role" | "name" | "phone" | "department"> | null;
+  clientCreateMode?: boolean;
   submitLabel: string;
   onSubmit: (values: ProjectFormValues) => void | Promise<void>;
   onCancel?: () => void;
@@ -177,6 +179,8 @@ export function ProjectForm({
   departments,
   clientOrganizations,
   clients,
+  viewer = null,
+  clientCreateMode = false,
   submitLabel,
   onSubmit,
   onCancel,
@@ -238,6 +242,21 @@ export function ProjectForm({
   const requestedDateValue = values.requestedDate || initialValues.requestedDate || getTodayIsoDate();
   const hasSelectedOrganization = Boolean(values.clientOrganizationId);
   const hasAvailableContacts = availableContacts.length > 0;
+  const selectedContact =
+    availableContacts.find((client) => client.name === values.contactPerson) ??
+    availableContacts.find((client) => client.name === viewer?.name) ??
+    availableContacts[0] ??
+    null;
+  const effectiveRequestStatus = clientCreateMode ? "Waiting List" : values.requestStatus;
+  const effectiveDepartmentName = clientCreateMode
+    ? values.departmentName.trim() || viewer?.department?.trim() || ""
+    : values.departmentName;
+  const effectiveContactPerson = clientCreateMode
+    ? values.contactPerson.trim() || viewer?.name?.trim() || selectedContact?.name || ""
+    : values.contactPerson;
+  const effectiveContactNumber = clientCreateMode
+    ? values.contactNumber.trim() || viewer?.phone?.trim() || selectedContact?.phone?.trim() || ""
+    : values.contactNumber;
 
   useEffect(() => {
     if (!openSelect) {
@@ -290,26 +309,41 @@ export function ProjectForm({
     };
     const nextCustomProjectType = isBuiltInProjectType ? "" : initialValues.projectType;
 
-    setValues((current) =>
-      areProjectFormValuesEqual(current, nextValues) ? current : nextValues,
-    );
-    setCustomProjectType((current) =>
-      current === nextCustomProjectType ? current : nextCustomProjectType,
-    );
-    setOrganizationQuery((current) => {
-      const nextQuery =
-        clientOrganizations.find((organization) => organization.id === inferredClientOrganizationId)?.name ?? "";
-      return current === nextQuery ? current : nextQuery;
-    });
-  }, [clientOrganizations, initialValues]);
+    setValues((current) => (areProjectFormValuesEqual(current, nextValues) ? current : nextValues));
+    setCustomProjectType((current) => (current === nextCustomProjectType ? current : nextCustomProjectType));
+  }, [initialValues]);
+
+  useEffect(() => {
+    if (openSelect === "organization") {
+      return;
+    }
+
+    const nextQuery = selectedOrganization?.name ?? "";
+    if (organizationQuery !== nextQuery) {
+      setOrganizationQuery(nextQuery);
+    }
+  }, [openSelect, organizationQuery, selectedOrganization]);
 
   useEffect(() => {
     onValuesChange?.({
       ...values,
       requestedDate: requestedDateValue,
+      requestStatus: effectiveRequestStatus,
+      departmentName: effectiveDepartmentName,
+      contactPerson: effectiveContactPerson,
+      contactNumber: effectiveContactNumber,
       projectType: values.projectType === "Custom" ? customProjectType.trim() : values.projectType,
     });
-  }, [customProjectType, onValuesChange, requestedDateValue, values]);
+  }, [
+    customProjectType,
+    effectiveContactNumber,
+    effectiveContactPerson,
+    effectiveDepartmentName,
+    effectiveRequestStatus,
+    onValuesChange,
+    requestedDateValue,
+    values,
+  ]);
 
   useEffect(() => {
     if (!values.clientOrganizationId) {
@@ -382,6 +416,10 @@ export function ProjectForm({
       await onSubmit({
         ...values,
         requestedDate: requestedDateValue,
+        requestStatus: effectiveRequestStatus,
+        departmentName: effectiveDepartmentName,
+        contactPerson: effectiveContactPerson,
+        contactNumber: effectiveContactNumber,
         projectType: values.projectType === "Custom" ? customProjectType.trim() : values.projectType,
       });
     } catch (submitError) {
@@ -606,8 +644,12 @@ export function ProjectForm({
 
         <SectionCard>
           <SectionHeader>
-            <SectionTitle>Request Intake</SectionTitle>
-            <SectionDescription>Capture the business request before production work starts.</SectionDescription>
+            <SectionTitle>{clientCreateMode ? "Organization" : "Request Intake"}</SectionTitle>
+            <SectionDescription>
+              {clientCreateMode
+                ? "The request will be linked to your organization automatically."
+                : "Capture the business request before production work starts."}
+            </SectionDescription>
           </SectionHeader>
           <Grid>
             <Field $wide>
@@ -672,171 +714,177 @@ export function ProjectForm({
               </FloatingSelectField>
             </Field>
 
-            <Field>
-              <FloatingSelectField ref={requestStatusFieldRef} $filled $open={openSelect === "requestStatus"}>
-                <SelectTrigger
-                  type="button"
-                  aria-haspopup="listbox"
-                  aria-expanded={openSelect === "requestStatus"}
-                  onClick={() =>
-                    setOpenSelect((current) => (current === "requestStatus" ? null : "requestStatus"))
-                  }
-                >
-                  <SelectValue>{values.requestStatus || "Select status"}</SelectValue>
-                  <SelectChevron $open={openSelect === "requestStatus"}>
-                    <IconChevronDown />
-                  </SelectChevron>
-                </SelectTrigger>
-                <FloatingLabel>Status</FloatingLabel>
-                {openSelect === "requestStatus" ? (
-                  <SelectMenu role="listbox" aria-label="Request status">
-                    {requestStatusOptions.map((option) => (
-                      <SelectOption
-                        key={option}
-                        type="button"
-                        role="option"
-                        aria-selected={values.requestStatus === option}
-                        $active={values.requestStatus === option}
-                        onClick={() => {
-                          setValues((current) => ({ ...current, requestStatus: option }));
-                          setOpenSelect(null);
-                        }}
-                      >
-                        {option}
-                      </SelectOption>
-                    ))}
-                  </SelectMenu>
-                ) : null}
-              </FloatingSelectField>
-            </Field>
+            {clientCreateMode ? null : (
+              <>
+                <Field>
+                  <FloatingSelectField ref={requestStatusFieldRef} $filled $open={openSelect === "requestStatus"}>
+                    <SelectTrigger
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={openSelect === "requestStatus"}
+                      onClick={() =>
+                        setOpenSelect((current) => (current === "requestStatus" ? null : "requestStatus"))
+                      }
+                    >
+                      <SelectValue>{values.requestStatus || "Select status"}</SelectValue>
+                      <SelectChevron $open={openSelect === "requestStatus"}>
+                        <IconChevronDown />
+                      </SelectChevron>
+                    </SelectTrigger>
+                    <FloatingLabel>Status</FloatingLabel>
+                    {openSelect === "requestStatus" ? (
+                      <SelectMenu role="listbox" aria-label="Request status">
+                        {requestStatusOptions.map((option) => (
+                          <SelectOption
+                            key={option}
+                            type="button"
+                            role="option"
+                            aria-selected={values.requestStatus === option}
+                            $active={values.requestStatus === option}
+                            onClick={() => {
+                              setValues((current) => ({ ...current, requestStatus: option }));
+                              setOpenSelect(null);
+                            }}
+                          >
+                            {option}
+                          </SelectOption>
+                        ))}
+                      </SelectMenu>
+                    ) : null}
+                  </FloatingSelectField>
+                </Field>
 
-            <Field>
-              <FloatingSelectField ref={departmentFieldRef} $filled={Boolean(values.departmentName)} $open={openSelect === "department"}>
-                <SelectTrigger
-                  type="button"
-                  aria-haspopup="listbox"
-                  aria-expanded={openSelect === "department"}
-                  onClick={() =>
-                    setOpenSelect((current) => (current === "department" ? null : "department"))
-                  }
-                >
-                  <SelectValue>{values.departmentName || "Select department"}</SelectValue>
-                  <SelectChevron $open={openSelect === "department"}>
-                    <IconChevronDown />
-                  </SelectChevron>
-                </SelectTrigger>
-                <FloatingLabel>Department Name</FloatingLabel>
-                {openSelect === "department" ? (
-                  <SelectMenu role="listbox" aria-label="Department name">
-                    {departments.map((department) => (
-                      <SelectOption
-                        key={department.id}
-                        type="button"
-                        role="option"
-                        aria-selected={values.departmentName === department.name}
-                        $active={values.departmentName === department.name}
-                        onClick={() => {
-                          setValues((current) => ({ ...current, departmentName: department.name }));
-                          setOpenSelect(null);
-                        }}
-                      >
-                        {department.name}
-                      </SelectOption>
-                    ))}
-                  </SelectMenu>
-                ) : null}
-              </FloatingSelectField>
-            </Field>
+                <Field>
+                  <FloatingSelectField ref={departmentFieldRef} $filled={Boolean(values.departmentName)} $open={openSelect === "department"}>
+                    <SelectTrigger
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={openSelect === "department"}
+                      onClick={() =>
+                        setOpenSelect((current) => (current === "department" ? null : "department"))
+                      }
+                    >
+                      <SelectValue>{values.departmentName || "Select department"}</SelectValue>
+                      <SelectChevron $open={openSelect === "department"}>
+                        <IconChevronDown />
+                      </SelectChevron>
+                    </SelectTrigger>
+                    <FloatingLabel>Department Name</FloatingLabel>
+                    {openSelect === "department" ? (
+                      <SelectMenu role="listbox" aria-label="Department name">
+                        {departments.map((department) => (
+                          <SelectOption
+                            key={department.id}
+                            type="button"
+                            role="option"
+                            aria-selected={values.departmentName === department.name}
+                            $active={values.departmentName === department.name}
+                            onClick={() => {
+                              setValues((current) => ({ ...current, departmentName: department.name }));
+                              setOpenSelect(null);
+                            }}
+                          >
+                            {department.name}
+                          </SelectOption>
+                        ))}
+                      </SelectMenu>
+                    ) : null}
+                  </FloatingSelectField>
+                </Field>
+              </>
+            )}
           </Grid>
         </SectionCard>
 
-        <SectionCard>
-          <SectionHeader>
-            <SectionTitle>Contact</SectionTitle>
-            <SectionDescription>
-              {hasSelectedOrganization
-                ? hasAvailableContacts
-                  ? "Choose the liaison for this organization. If none is selected, it can be added later."
-                  : "No liaison person has been added for this organization yet. Skip this for now and add one later."
-                : "Select an organization first. Liaison information can be added after that."}
-            </SectionDescription>
-          </SectionHeader>
-          <Grid>
-            {hasSelectedOrganization && hasAvailableContacts ? (
-              <Field $wide>
-                <FloatingSelectField ref={contactFieldRef} $filled={Boolean(values.contactPerson)} $open={openSelect === "contact"}>
-                  <SelectTrigger
-                    type="button"
-                    aria-haspopup="listbox"
-                    aria-expanded={openSelect === "contact"}
-                    onClick={() => {
-                      setOpenSelect((current) => (current === "contact" ? null : "contact"));
-                    }}
-                  >
-                    <SelectValue>
-                      {values.contactPerson || "No primary contact"}
-                    </SelectValue>
-                    <SelectChevron $open={openSelect === "contact"}>
-                      <IconChevronDown />
-                    </SelectChevron>
-                  </SelectTrigger>
-                  <FloatingLabel>Primary Contact</FloatingLabel>
-                  {openSelect === "contact" ? (
-                    <SelectMenu role="listbox" aria-label="Primary contact">
-                      <SelectOption
-                        type="button"
-                        role="option"
-                        aria-selected={!values.contactPerson}
-                        $active={!values.contactPerson}
-                        onClick={() => {
-                          setValues((current) => ({ ...current, contactPerson: "", contactNumber: "" }));
-                          setOpenSelect(null);
-                        }}
-                      >
-                        No primary contact
-                      </SelectOption>
-                      {availableContacts.map((client) => (
+        {clientCreateMode ? null : (
+          <SectionCard>
+            <SectionHeader>
+              <SectionTitle>Contact</SectionTitle>
+              <SectionDescription>
+                {hasSelectedOrganization
+                  ? hasAvailableContacts
+                    ? "Choose the liaison for this organization. If none is selected, it can be added later."
+                    : "No liaison person has been added for this organization yet. Skip this for now and add one later."
+                  : "Select an organization first. Liaison information can be added after that."}
+              </SectionDescription>
+            </SectionHeader>
+            <Grid>
+              {hasSelectedOrganization && hasAvailableContacts ? (
+                <Field $wide>
+                  <FloatingSelectField ref={contactFieldRef} $filled={Boolean(values.contactPerson)} $open={openSelect === "contact"}>
+                    <SelectTrigger
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={openSelect === "contact"}
+                      onClick={() => {
+                        setOpenSelect((current) => (current === "contact" ? null : "contact"));
+                      }}
+                    >
+                      <SelectValue>
+                        {values.contactPerson || "No primary contact"}
+                      </SelectValue>
+                      <SelectChevron $open={openSelect === "contact"}>
+                        <IconChevronDown />
+                      </SelectChevron>
+                    </SelectTrigger>
+                    <FloatingLabel>Primary Contact</FloatingLabel>
+                    {openSelect === "contact" ? (
+                      <SelectMenu role="listbox" aria-label="Primary contact">
                         <SelectOption
-                          key={client.id}
                           type="button"
                           role="option"
-                          aria-selected={values.contactPerson === client.name}
-                          $active={values.contactPerson === client.name}
+                          aria-selected={!values.contactPerson}
+                          $active={!values.contactPerson}
                           onClick={() => {
-                            setValues((current) => ({
-                              ...current,
-                              contactPerson: client.name,
-                              contactNumber: client.phone ?? current.contactNumber ?? "",
-                            }));
+                            setValues((current) => ({ ...current, contactPerson: "", contactNumber: "" }));
                             setOpenSelect(null);
                           }}
                         >
-                          {client.name}
+                          No primary contact
                         </SelectOption>
-                      ))}
-                    </SelectMenu>
-                  ) : null}
-                </FloatingSelectField>
-              </Field>
-            ) : !hasSelectedOrganization ? (
-              <ContactPlaceholder>Select organization first.</ContactPlaceholder>
-            ) : null}
-            {values.contactPerson ? (
-              <Field $wide>
-                <FloatingField className={values.contactNumber ? "auth-field is-filled" : "auth-field"}>
-                  <TextInput
-                    value={values.contactNumber}
-                    onChange={(event) =>
-                      setValues((current) => ({ ...current, contactNumber: event.target.value }))
-                    }
-                    placeholder=" "
-                  />
-                  <span>Contact Number</span>
-                </FloatingField>
-              </Field>
-            ) : null}
-          </Grid>
-        </SectionCard>
+                        {availableContacts.map((client) => (
+                          <SelectOption
+                            key={client.id}
+                            type="button"
+                            role="option"
+                            aria-selected={values.contactPerson === client.name}
+                            $active={values.contactPerson === client.name}
+                            onClick={() => {
+                              setValues((current) => ({
+                                ...current,
+                                contactPerson: client.name,
+                                contactNumber: client.phone ?? current.contactNumber ?? "",
+                              }));
+                              setOpenSelect(null);
+                            }}
+                          >
+                            {client.name}
+                          </SelectOption>
+                        ))}
+                      </SelectMenu>
+                    ) : null}
+                  </FloatingSelectField>
+                </Field>
+              ) : !hasSelectedOrganization ? (
+                <ContactPlaceholder>Select organization first.</ContactPlaceholder>
+              ) : null}
+              {values.contactPerson ? (
+                <Field $wide>
+                  <FloatingField className={values.contactNumber ? "auth-field is-filled" : "auth-field"}>
+                    <TextInput
+                      value={values.contactNumber}
+                      onChange={(event) =>
+                        setValues((current) => ({ ...current, contactNumber: event.target.value }))
+                      }
+                      placeholder=" "
+                    />
+                    <span>Contact Number</span>
+                  </FloatingField>
+                </Field>
+              ) : null}
+            </Grid>
+          </SectionCard>
+        )}
 
         <SectionCard>
           <SectionHeader>

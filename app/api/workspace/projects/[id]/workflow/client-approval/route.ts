@@ -137,6 +137,21 @@ export async function POST(
     return NextResponse.json({ error: taskUpdateError.message }, { status: 500 });
   }
 
+  if (decision === "request_revision" && revisionComment) {
+    const { error: feedbackError } = await supabase.from("project_feedback").insert({
+      project_id: projectId,
+      author_id: user.id,
+      task_id: taskId,
+      action: "request_revision",
+      body: revisionComment,
+      rating: null,
+    });
+
+    if (feedbackError) {
+      return NextResponse.json({ error: feedbackError.message }, { status: 500 });
+    }
+  }
+
   await updateProjectRequestStatusIfAllowed(
     supabase,
     projectId,
@@ -153,6 +168,7 @@ export async function POST(
   const { error: activityError } = await supabase.from("project_activity").insert({
     project_id: projectId,
     actor_id: user.id,
+    task_id: taskId,
     action,
     message,
   });

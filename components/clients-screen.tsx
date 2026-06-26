@@ -73,6 +73,7 @@ function getClusterItems(labels: string[]) {
 export function ClientsScreen() {
   const router = useRouter();
   const { ready, state, user, createClientOrganization } = useAppState();
+  const [desktopView, setDesktopView] = useState<"cards" | "table">("table");
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ClientFilter>("all");
@@ -509,6 +510,23 @@ export function ClientsScreen() {
             </SearchButton>
           </SearchControls>
 
+          <DesktopViewToggleGroup aria-label="Client view">
+            <DesktopViewToggleButton
+              type="button"
+              $active={desktopView === "cards"}
+              onClick={() => setDesktopView("cards")}
+            >
+              Cards
+            </DesktopViewToggleButton>
+            <DesktopViewToggleButton
+              type="button"
+              $active={desktopView === "table"}
+              onClick={() => setDesktopView("table")}
+            >
+              Table
+            </DesktopViewToggleButton>
+          </DesktopViewToggleGroup>
+
           <ToolbarActions>
             {canManage ? (
               <SecondaryActionLink href="/clients/liaisons">View All Liaisons</SecondaryActionLink>
@@ -575,7 +593,7 @@ export function ClientsScreen() {
           </StatCardLink>
         </StatsRow>
 
-        <DesktopPanel>
+        <DesktopPanel $visible={desktopView === "table"}>
           <TableHeader>
             <span>Organization</span>
             <span>Liaisons</span>
@@ -679,6 +697,66 @@ export function ClientsScreen() {
             </Pagination>
           </TableFooter>
         </DesktopPanel>
+
+        <DesktopCardList $visible={desktopView === "cards"}>
+          {paginatedClients.length ? (
+            paginatedClients.map((client) => (
+              <MobileCard key={client.id} href={`/clients/${client.id}`}>
+                <MobileTop>
+                  <ClientMark>{getClientOrganizationMark(client.name)}</ClientMark>
+                  <ClientCopy>
+                    <ClientName>{client.name}</ClientName>
+                    <MobileSummaryRow>
+                      <TypePill $type={client.type}>
+                        {client.type === "internal" ? "Internal" : "External"}
+                      </TypePill>
+                      <ClientMeta>
+                        {client.memberCount === 0
+                          ? "No liaisons"
+                          : client.memberCount === 1
+                            ? "1 liaison"
+                            : `${client.memberCount} liaisons`}
+                      </ClientMeta>
+                      <ClientMeta>{client.projectCount} projects</ClientMeta>
+                      <PendingPill $active={client.pendingCount > 0}>
+                        {client.pendingCount ? `${client.pendingCount} pending` : "Clear"}
+                      </PendingPill>
+                    </MobileSummaryRow>
+                  </ClientCopy>
+                </MobileTop>
+              </MobileCard>
+            ))
+          ) : (
+            <EmptyState>
+              <strong>No client organizations found</strong>
+              <p>Try another search term or adjust the selected filter.</p>
+            </EmptyState>
+          )}
+          {filteredClients.length ? (
+            <DesktopCardFooter>
+              <span>
+                Showing {rangeStart} to {rangeEnd} of {filteredClients.length} organizations
+              </span>
+              <Pagination>
+                <PageButton
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Last
+                </PageButton>
+                <PageButton $active type="button">{currentPage}</PageButton>
+                <PageButton
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </PageButton>
+              </Pagination>
+            </DesktopCardFooter>
+          ) : null}
+        </DesktopCardList>
 
         <MobileList>
           {mobileClients.length ? (
@@ -1049,15 +1127,62 @@ const DesktopLabel = styled.span`
   }
 `;
 
-const DesktopPanel = styled.section`
+const DesktopViewToggleGroup = styled.div`
+  display: none;
+
+  ${desktop} {
+    ${cardSurface}
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px;
+    border-radius: 12px;
+  }
+`;
+
+const DesktopViewToggleButton = styled.button<{ $active?: boolean }>`
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: ${({ $active }) => ($active ? "#1f4339" : "transparent")};
+  color: ${({ $active }) => ($active ? "#fff" : "var(--color-text-muted)")};
+  font-size: 0.78rem;
+  font-weight: 700;
+`;
+
+const DesktopPanel = styled.section<{ $visible: boolean }>`
   ${cardSurface}
   display: none;
   border-radius: 22px;
   overflow: hidden;
 
   ${desktop} {
-    display: block;
+    display: ${({ $visible }) => ($visible ? "block" : "none")};
   }
+`;
+
+const DesktopCardList = styled.div<{ $visible: boolean }>`
+  display: none;
+
+  ${desktop} {
+    display: ${({ $visible }) => ($visible ? "flex" : "none")};
+    flex-direction: column;
+    gap: 12px;
+  }
+`;
+
+const DesktopCardFooter = styled.div`
+  ${cardSurface}
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 20px;
+  color: var(--color-text-muted);
+  font-size: 0.86rem;
 `;
 
 const TableHeader = styled.div`
