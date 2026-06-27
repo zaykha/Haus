@@ -16,6 +16,7 @@ async function updateProjectRequestStatusIfAllowed(
     .from("projects")
     .select("id, stage")
     .eq("id", projectId)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (projectError || !project) {
@@ -29,7 +30,8 @@ async function updateProjectRequestStatusIfAllowed(
   await supabase
     .from("projects")
     .update({ stage: nextStatus })
-    .eq("id", projectId);
+    .eq("id", projectId)
+    .is("deleted_at", null);
 }
 
 /**
@@ -85,6 +87,7 @@ export async function POST(
     .select("id, project_id, title, status, client_visible, manager_review_status, completion_screenshot_url")
     .eq("id", taskId)
     .eq("project_id", projectId)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (taskError) {
@@ -136,7 +139,8 @@ export async function POST(
         completion_screenshot_url: serializeTaskCompletionState(nextCompletionState),
     })
     .eq("id", taskId)
-    .eq("project_id", projectId);
+    .eq("project_id", projectId)
+    .is("deleted_at", null);
 
   if (taskUpdateError) {
     return NextResponse.json({ error: taskUpdateError.message }, { status: 500 });

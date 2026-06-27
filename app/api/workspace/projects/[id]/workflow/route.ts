@@ -26,6 +26,7 @@ export async function POST(
     .from("projects")
     .select("stage")
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (existingProjectError) {
@@ -35,7 +36,8 @@ export async function POST(
   const { error } = await supabase
     .from("projects")
     .update({ stage: body.stage })
-    .eq("id", id);
+    .eq("id", id)
+    .is("deleted_at", null);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

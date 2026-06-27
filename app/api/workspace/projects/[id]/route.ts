@@ -2,35 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
 import { appConfig } from "@/lib/config";
 import { canDeleteProject, canEditProject } from "@/lib/permissions";
+import { buildSoftDeletePatch, getStoragePathFromPublicUrl, queueStorageCleanup } from "@/lib/soft-delete";
 import { parseTaskCompletionState } from "@/lib/task-completion-assets";
-
-function getStoragePathFromPublicUrl(value: string, bucket: string) {
-  if (!value.startsWith("http://") && !value.startsWith("https://")) {
-    return null;
-  }
-
-  const supabaseUrl = appConfig.supabaseUrl;
-  if (!supabaseUrl) {
-    return null;
-  }
-
-  try {
-    const assetUrl = new URL(value);
-    const projectUrl = new URL(supabaseUrl);
-    if (assetUrl.origin !== projectUrl.origin) {
-      return null;
-    }
-
-    const publicPrefix = `/storage/v1/object/public/${bucket}/`;
-    if (!assetUrl.pathname.startsWith(publicPrefix)) {
-      return null;
-    }
-
-    return decodeURIComponent(assetUrl.pathname.slice(publicPrefix.length));
-  } catch {
-    return null;
-  }
-}
 
 export async function PATCH(
   request: NextRequest,
@@ -73,6 +46,7 @@ export async function PATCH(
       .from("client_organizations")
       .select("id")
       .eq("id", resolvedClientOrganizationId)
+      .is("deleted_at", null)
       .maybeSingle();
     if (!organization) {
       return NextResponse.json({ error: "Project client organization must exist" }, { status: 400 });
@@ -127,9 +101,22 @@ export async function DELETE(
   }
 
   const [projectResult, tasksResult, filesResult] = await Promise.all([
-    supabase.from("projects").select("reference_attachment_url").eq("id", id).maybeSingle(),
-    supabase.from("tasks").select("completion_screenshot_url").eq("project_id", id),
-    supabase.from("project_files").select("file_url").eq("project_id", id),
+    supabase
+      .from("projects")
+      .select("id, reference_attachment_url")
+      .eq("id", id)
+      .is("deleted_at", null)
+      .maybeSingle(),
+    supabase
+      .from("tasks")
+      .select("id, completion_screenshot_url")
+      .eq("project_id", id)
+      .is("deleted_at", null),
+    supabase
+      .from("project_files")
+      .select("id, file_url")
+      .eq("project_id", id)
+      .is("deleted_at", null),
   ]);
 
   if (projectResult.error) {
@@ -142,6 +129,10 @@ export async function DELETE(
 
   if (filesResult.error) {
     return NextResponse.json({ error: filesResult.error.message }, { status: 500 });
+  }
+
+  if (!projectResult.data) {
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
   const deliverablePaths = Array.from(
@@ -171,25 +162,22 @@ export async function DELETE(
     ),
   );
 
-  if (deliverablePaths.length > 0) {
-    const { error: deliverableDeleteError } = await supabase.storage
-      .from(appConfig.taskDeliverablesBucket)
-      .remove(deliverablePaths);
+  const deletePatch = buildSoftDeletePatch(user.id, "project_deleted");
 
-    if (deliverableDeleteError) {
-      return NextResponse.json({ error: deliverableDeleteError.message }, { status: 500 });
-    }
-  }
-
-  if (referencePaths.length > 0) {
-    const { error: referenceDeleteError } = await supabase.storage
-      .from(appConfig.projectReferencesBucket)
-      .remove(referencePaths);
-
-    if (referenceDeleteError) {
-      return NextResponse.json({ error: referenceDeleteError.message }, { status: 500 });
-    }
-  }
+  await queueStorageCleanup(supabase, [
+    ...deliverablePaths.map((filePath) => ({
+      bucketName: appConfig.taskDeliverablesBucket,
+      filePath,
+      entityTable: "projects",
+      entityId: id,
+    })),
+    ...referencePaths.map((filePath) => ({
+      bucketName: appConfig.projectReferencesBucket,
+      filePath,
+      entityTable: "projects",
+      entityId: id,
+    })),
+  ]);
 
   const [
     projectMembersDeleteResult,
@@ -200,13 +188,13 @@ export async function DELETE(
     tasksDeleteResult,
     projectDeleteResult,
   ] = await Promise.all([
-    supabase.from("project_members").delete().eq("project_id", id),
-    supabase.from("project_comments").delete().eq("project_id", id),
-    supabase.from("project_feedback").delete().eq("project_id", id),
-    supabase.from("project_activity").delete().eq("project_id", id),
-    supabase.from("project_files").delete().eq("project_id", id),
-    supabase.from("tasks").delete().eq("project_id", id),
-    supabase.from("projects").delete().eq("id", id),
+    supabase.from("project_members").update(deletePatch).eq("project_id", id).is("deleted_at", null),
+    supabase.from("project_comments").update(deletePatch).eq("project_id", id).is("deleted_at", null),
+    supabase.from("project_feedback").update(deletePatch).eq("project_id", id).is("deleted_at", null),
+    supabase.from("project_activity").update(deletePatch).eq("project_id", id).is("deleted_at", null),
+    supabase.from("project_files").update(deletePatch).eq("project_id", id).is("deleted_at", null),
+    supabase.from("tasks").update(deletePatch).eq("project_id", id).is("deleted_at", null),
+    supabase.from("projects").update(deletePatch).eq("id", id).is("deleted_at", null),
   ]);
 
   const deleteError =

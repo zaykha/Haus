@@ -5,6 +5,7 @@ import {
   canEditClient,
   getUserClientOrganizationIds,
 } from "@/lib/permissions";
+import { buildSoftDeletePatch } from "@/lib/soft-delete";
 
 export async function PATCH(
   request: NextRequest,
@@ -42,6 +43,7 @@ export async function PATCH(
     .from("profiles")
     .select("id, role")
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (profileError) {
@@ -85,7 +87,8 @@ export async function PATCH(
     const { data: organizations, error: organizationsError } = await supabase
       .from("client_organizations")
       .select("id")
-      .in("id", uniqueRequestedOrganizationIds);
+      .in("id", uniqueRequestedOrganizationIds)
+      .is("deleted_at", null);
 
     if (organizationsError) {
       return NextResponse.json({ error: organizationsError.message }, { status: 500 });
@@ -102,7 +105,8 @@ export async function PATCH(
     const { data: memberships, error: membershipsError } = await supabase
       .from("client_organization_liaisons")
       .select("client_organization_id, is_primary")
-      .eq("profile_id", id);
+      .eq("profile_id", id)
+      .is("deleted_at", null);
 
     if (membershipsError) {
       return NextResponse.json({ error: membershipsError.message }, { status: 500 });
@@ -123,6 +127,9 @@ export async function PATCH(
               profile_id: id,
               client_organization_id: body.clientOrganizationId,
               is_primary: true,
+              deleted_at: null,
+              deleted_by: null,
+              delete_reason: null,
             },
             { onConflict: "profile_id,client_organization_id" },
           );
@@ -135,7 +142,8 @@ export async function PATCH(
           .from("client_organization_liaisons")
           .update({ is_primary: false })
           .eq("profile_id", id)
-          .neq("client_organization_id", body.clientOrganizationId);
+          .neq("client_organization_id", body.clientOrganizationId)
+          .is("deleted_at", null);
 
         if (demoteError) {
           return NextResponse.json({ error: demoteError.message }, { status: 500 });
@@ -143,8 +151,9 @@ export async function PATCH(
       } else {
         const { error: deleteMembershipsError } = await supabase
           .from("client_organization_liaisons")
-          .delete()
-          .eq("profile_id", id);
+          .update(buildSoftDeletePatch(user.id, "liaison_memberships_cleared"))
+          .eq("profile_id", id)
+          .is("deleted_at", null);
 
         if (deleteMembershipsError) {
           return NextResponse.json({ error: deleteMembershipsError.message }, { status: 500 });
@@ -161,6 +170,9 @@ export async function PATCH(
             profile_id: id,
             client_organization_id: body.addClientOrganizationId,
             is_primary: shouldPromotePrimary,
+            deleted_at: null,
+            deleted_by: null,
+            delete_reason: null,
           },
           { onConflict: "profile_id,client_organization_id" },
         );
@@ -178,6 +190,9 @@ export async function PATCH(
             profile_id: id,
             client_organization_id: body.primaryClientOrganizationId,
             is_primary: true,
+            deleted_at: null,
+            deleted_by: null,
+            delete_reason: null,
           },
           { onConflict: "profile_id,client_organization_id" },
         );
@@ -190,7 +205,8 @@ export async function PATCH(
         .from("client_organization_liaisons")
         .update({ is_primary: false })
         .eq("profile_id", id)
-        .neq("client_organization_id", body.primaryClientOrganizationId);
+        .neq("client_organization_id", body.primaryClientOrganizationId)
+        .is("deleted_at", null);
 
       if (demoteError) {
         return NextResponse.json({ error: demoteError.message }, { status: 500 });
@@ -204,9 +220,10 @@ export async function PATCH(
 
       const { error: removeMembershipError } = await supabase
         .from("client_organization_liaisons")
-        .delete()
+        .update(buildSoftDeletePatch(user.id, "liaison_membership_removed"))
         .eq("profile_id", id)
-        .eq("client_organization_id", body.removeClientOrganizationId);
+        .eq("client_organization_id", body.removeClientOrganizationId)
+        .is("deleted_at", null);
 
       if (removeMembershipError) {
         return NextResponse.json({ error: removeMembershipError.message }, { status: 500 });
@@ -217,6 +234,7 @@ export async function PATCH(
           .from("client_organization_liaisons")
           .select("client_organization_id")
           .eq("profile_id", id)
+          .is("deleted_at", null)
           .order("created_at", { ascending: true })
           .limit(1);
 
@@ -230,7 +248,8 @@ export async function PATCH(
             .from("client_organization_liaisons")
             .update({ is_primary: true })
             .eq("profile_id", id)
-            .eq("client_organization_id", nextPrimaryOrganizationId);
+            .eq("client_organization_id", nextPrimaryOrganizationId)
+            .is("deleted_at", null);
 
           if (promoteReplacementError) {
             return NextResponse.json({ error: promoteReplacementError.message }, { status: 500 });
@@ -263,6 +282,7 @@ export async function DELETE(
     .from("profiles")
     .select("id, role, email")
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (profileError) {
@@ -273,19 +293,36 @@ export async function DELETE(
     return NextResponse.json({ error: "Client not found" }, { status: 404 });
   }
 
+  const deletePatch = buildSoftDeletePatch(user.id, "liaison_deleted");
+
   const { error: deleteInvitationsError } = await supabase
     .from("invitations")
-    .delete()
+    .update(deletePatch)
     .eq("email", profile.email)
-    .eq("role", "client");
+    .eq("role", "client")
+    .is("deleted_at", null);
 
   if (deleteInvitationsError) {
     return NextResponse.json({ error: deleteInvitationsError.message }, { status: 500 });
   }
 
-  const { error: deleteUserError } = await supabase.auth.admin.deleteUser(id);
-  if (deleteUserError) {
-    return NextResponse.json({ error: deleteUserError.message }, { status: 500 });
+  const { error: deleteMembershipsError } = await supabase
+    .from("client_organization_liaisons")
+    .update(deletePatch)
+    .eq("profile_id", id)
+    .is("deleted_at", null);
+
+  if (deleteMembershipsError) {
+    return NextResponse.json({ error: deleteMembershipsError.message }, { status: 500 });
+  }
+
+  const { error: archiveProfileError } = await supabase
+    .from("profiles")
+    .update(deletePatch)
+    .eq("id", id)
+    .is("deleted_at", null);
+  if (archiveProfileError) {
+    return NextResponse.json({ error: archiveProfileError.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

@@ -19,9 +19,21 @@ import { formatProjectStage, formatRole } from "@/lib/display";
 import { Project, ProjectWorkflowStage } from "@/lib/types";
 
 type StageFilterKey = "all" | ProjectWorkflowStage;
-type SortKey = "due_date" | "name" | "created_at_desc" | "created_at_asc";
+type SortField =
+  | "project"
+  | "organization"
+  | "first_draft_date"
+  | "final_deliverable_date"
+  | "stage"
+  | "project_type"
+  | "priority_level"
+  | "open_tasks"
+  | "requested_date";
+type SortDirection = "asc" | "desc";
+type SortValue = `${SortField}|${SortDirection}`;
 const MOBILE_BATCH_SIZE = 20;
 const TABLE_BATCH_SIZE = 20;
+const DEFAULT_SORT: SortValue = "final_deliverable_date|asc";
 
 const desktopNav = [
   { label: "Home", href: "/dashboard", icon: <IconHome /> },
@@ -64,6 +76,99 @@ function formatShortDate(value: string) {
     month: "short",
     day: "numeric",
   }).format(new Date(value));
+}
+
+function getProjectStageTone(stage: ProjectWorkflowStage) {
+  switch (stage) {
+    case "Complete":
+      return {
+        bg: "rgba(214, 241, 205, 0.98)",
+        fg: "#48773d",
+      };
+    case "Pending Review":
+      return {
+        bg: "rgba(255, 239, 200, 0.98)",
+        fg: "#9a6d0a",
+      };
+    case "On Hold":
+      return {
+        bg: "rgba(255, 228, 198, 0.98)",
+        fg: "#ad5f18",
+      };
+    case "Waiting List":
+      return {
+        bg: "rgba(237, 224, 246, 0.98)",
+        fg: "#76548f",
+      };
+    case "WIP":
+    default:
+      return {
+        bg: "rgba(208, 241, 244, 0.98)",
+        fg: "#1d6f79",
+      };
+  }
+}
+
+function getPriorityTone(priority: string | null | undefined) {
+  const normalized = priority?.trim().toLowerCase();
+
+  switch (normalized) {
+    case "high":
+      return {
+        bg: "rgba(255, 223, 223, 0.98)",
+        fg: "#b33f32",
+      };
+    case "low":
+      return {
+        bg: "rgba(220, 244, 210, 0.98)",
+        fg: "#4f8c3d",
+      };
+    case "medium":
+      return {
+        bg: "rgba(208, 232, 255, 0.98)",
+        fg: "#2c71b8",
+      };
+    default:
+      return {
+        bg: "rgba(244, 241, 237, 0.98)",
+        fg: "#7b6f62",
+      };
+  }
+}
+
+function parseSortValue(sort: SortValue) {
+  const [field, direction] = sort.split("|") as [SortField, SortDirection];
+  return { field, direction };
+}
+
+function buildSortValue(field: SortField, direction: SortDirection): SortValue {
+  return `${field}|${direction}`;
+}
+
+function compareText(left: string, right: string, direction: SortDirection) {
+  const result = left.localeCompare(right, undefined, { sensitivity: "base" });
+  return direction === "asc" ? result : -result;
+}
+
+function compareNullableDate(left: string | null | undefined, right: string | null | undefined, direction: SortDirection) {
+  const leftTime = left ? new Date(left).getTime() : Number.NaN;
+  const rightTime = right ? new Date(right).getTime() : Number.NaN;
+  const leftValid = Number.isFinite(leftTime);
+  const rightValid = Number.isFinite(rightTime);
+
+  if (!leftValid && !rightValid) {
+    return 0;
+  }
+
+  if (!leftValid) {
+    return 1;
+  }
+
+  if (!rightValid) {
+    return -1;
+  }
+
+  return direction === "asc" ? leftTime - rightTime : rightTime - leftTime;
 }
 
 function getClientOrganizationName(
@@ -132,7 +237,7 @@ export function ProjectsScreen() {
   const [stageFilter, setStageFilter] = useState<StageFilterKey>("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [organizationFilter, setOrganizationFilter] = useState("all");
-  const [sort, setSort] = useState<SortKey>("due_date");
+  const [sort, setSort] = useState<SortValue>(DEFAULT_SORT);
   const [showFilters, setShowFilters] = useState(false);
   const [showSort, setShowSort] = useState(false);
   const [desktopView, setDesktopView] = useState<"cards" | "table">("table");
@@ -145,7 +250,7 @@ export function ProjectsScreen() {
     (stageFilter !== "all" ? 1 : 0) +
     (priorityFilter !== "all" ? 1 : 0) +
     (organizationFilter !== "all" ? 1 : 0);
-  const appliedSortCount = sort !== "due_date" ? 1 : 0;
+  const appliedSortCount = sort !== DEFAULT_SORT ? 1 : 0;
   const { activeClientOrganization, activeClientOrganizationId } = useActiveClientOrganization(
     user,
     state.clientOrganizations,
@@ -225,6 +330,7 @@ export function ProjectsScreen() {
   const filteredProjects = useMemo(() => {
     const loweredSearch = search.trim().toLowerCase();
     const now = new Date();
+    const { field: sortField, direction: sortDirection } = parseSortValue(sort);
     const nextProjects = visibleProjects.filter((project) => {
       const matchesStage = stageFilter === "all" ? true : project.stage === stageFilter;
       const matchesPriority =
@@ -253,19 +359,49 @@ export function ProjectsScreen() {
     });
 
     return [...nextProjects].sort((left, right) => {
-      if (sort === "created_at_desc") {
-        return new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime();
+      if (sortField === "project") {
+        return compareText(left.name, right.name, sortDirection);
       }
 
-      if (sort === "created_at_asc") {
-        return new Date(left.createdAt ?? 0).getTime() - new Date(right.createdAt ?? 0).getTime();
+      if (sortField === "organization") {
+        return compareText(
+          getClientOrganizationName(left, organizationNames, userNames),
+          getClientOrganizationName(right, organizationNames, userNames),
+          sortDirection,
+        );
       }
 
-      if (sort === "name") {
-        return left.name.localeCompare(right.name);
+      if (sortField === "first_draft_date") {
+        return compareNullableDate(left.firstDraftDate, right.firstDraftDate, sortDirection);
       }
 
-      return new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime();
+      if (sortField === "final_deliverable_date") {
+        return compareNullableDate(
+          left.finalDeliverableDate ?? left.dueDate,
+          right.finalDeliverableDate ?? right.dueDate,
+          sortDirection,
+        );
+      }
+
+      if (sortField === "requested_date") {
+        return compareNullableDate(left.requestedDate, right.requestedDate, sortDirection);
+      }
+
+      if (sortField === "stage") {
+        return compareText(formatProjectStage(left.stage), formatProjectStage(right.stage), sortDirection);
+      }
+
+      if (sortField === "project_type") {
+        return compareText(left.projectType?.trim() || "", right.projectType?.trim() || "", sortDirection);
+      }
+
+      if (sortField === "priority_level") {
+        return compareText(left.priorityLevel?.trim() || "", right.priorityLevel?.trim() || "", sortDirection);
+      }
+
+      const leftOpenTasks = user ? getVisibleTasksForUser(user, left).filter((task) => task.status !== "approved").length : 0;
+      const rightOpenTasks = user ? getVisibleTasksForUser(user, right).filter((task) => task.status !== "approved").length : 0;
+      return sortDirection === "asc" ? leftOpenTasks - rightOpenTasks : rightOpenTasks - leftOpenTasks;
     });
   }, [
     organizationFilter,
@@ -275,6 +411,7 @@ export function ProjectsScreen() {
     search,
     sort,
     stageFilter,
+    user,
     userNames,
     usersById,
     visibleProjects,
@@ -297,6 +434,23 @@ export function ProjectsScreen() {
     event.preventDefault();
     setSearch(searchDraft);
     setCurrentPage(1);
+  };
+
+  const toggleColumnSort = (field: SortField) => {
+    setSort((current) => {
+      const parsed = parseSortValue(current);
+      if (parsed.field === field) {
+        return buildSortValue(field, parsed.direction === "asc" ? "desc" : "asc");
+      }
+
+      return buildSortValue(field, "asc");
+    });
+    setCurrentPage(1);
+  };
+
+  const getSortDirection = (field: SortField) => {
+    const parsed = parseSortValue(sort);
+    return parsed.field === field ? parsed.direction : null;
   };
 
   useEffect(() => {
@@ -448,20 +602,22 @@ export function ProjectsScreen() {
                 id: "sort",
                 label: "Sort by",
                 options: [
-                  { value: "due_date", label: "Due date" },
-                  { value: "created_at_desc", label: "Newest to Oldest" },
-                  { value: "created_at_asc", label: "Oldest to Newest" },
-                  { value: "name", label: "Name" },
+                  { value: "final_deliverable_date|asc", label: "Final deliverable: earliest first" },
+                  { value: "final_deliverable_date|desc", label: "Final deliverable: latest first" },
+                  { value: "requested_date|asc", label: "Requested date: earliest first" },
+                  { value: "requested_date|desc", label: "Requested date: latest first" },
+                  { value: "project|asc", label: "Project: A to Z" },
+                  { value: "project|desc", label: "Project: Z to A" },
                 ],
               },
             ]}
             values={{ sort }}
             onApply={(nextValues) => {
-              setSort(nextValues.sort as SortKey);
+              setSort(nextValues.sort as SortValue);
               setCurrentPage(1);
             }}
             onReset={() => {
-              setSort("due_date");
+              setSort(DEFAULT_SORT);
               setCurrentPage(1);
             }}
             onClose={() => setShowSort(false)}
@@ -616,13 +772,62 @@ export function ProjectsScreen() {
                 <DesktopTable>
                   <thead>
                     <tr>
-                      <th>Project</th>
-                      <th>Organization</th>
-                      <th>Stage</th>
-                      <th>Due date</th>
+                      <th>
+                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("project")}>
+                          <span>Project</span>
+                          <SortGlyph $direction={getSortDirection("project")}>↕</SortGlyph>
+                        </SortableHeaderButton>
+                      </th>
+                      <th>
+                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("organization")}>
+                          <span>Organization</span>
+                          <SortGlyph $direction={getSortDirection("organization")}>↕</SortGlyph>
+                        </SortableHeaderButton>
+                      </th>
+                      <th>
+                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("first_draft_date")}>
+                          <span>First draft date</span>
+                          <SortGlyph $direction={getSortDirection("first_draft_date")}>↕</SortGlyph>
+                        </SortableHeaderButton>
+                      </th>
+                      <th>
+                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("final_deliverable_date")}>
+                          <span>Final deliverable</span>
+                          <SortGlyph $direction={getSortDirection("final_deliverable_date")}>↕</SortGlyph>
+                        </SortableHeaderButton>
+                      </th>
+                      <th>
+                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("stage")}>
+                          <span>Stage</span>
+                          <SortGlyph $direction={getSortDirection("stage")}>↕</SortGlyph>
+                        </SortableHeaderButton>
+                      </th>
+                      <th>
+                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("project_type")}>
+                          <span>Project type</span>
+                          <SortGlyph $direction={getSortDirection("project_type")}>↕</SortGlyph>
+                        </SortableHeaderButton>
+                      </th>
+                      <th>
+                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("priority_level")}>
+                          <span>Priority level</span>
+                          <SortGlyph $direction={getSortDirection("priority_level")}>↕</SortGlyph>
+                        </SortableHeaderButton>
+                      </th>
                       <th>Primary contact</th>
                       {!isClient ? <th>Contact number</th> : null}
-                      <th>Open tasks</th>
+                      <th>
+                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("open_tasks")}>
+                          <span>Open tasks</span>
+                          <SortGlyph $direction={getSortDirection("open_tasks")}>↕</SortGlyph>
+                        </SortableHeaderButton>
+                      </th>
+                      <th>
+                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("requested_date")}>
+                          <span>Requested date</span>
+                          <SortGlyph $direction={getSortDirection("requested_date")}>↕</SortGlyph>
+                        </SortableHeaderButton>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -633,6 +838,8 @@ export function ProjectsScreen() {
                       const clientOrganization = project.clientOrganizationId
                         ? organizationsById.get(project.clientOrganizationId) ?? null
                         : null;
+                      const stageTone = getProjectStageTone(project.stage as ProjectWorkflowStage);
+                      const priorityTone = getPriorityTone(project.priorityLevel);
 
                       return (
                         <DesktopTableRow
@@ -642,28 +849,35 @@ export function ProjectsScreen() {
                             void router.push(`/projects/${project.id}`);
                           }}
                         >
-                          <td>
+                          <StickyProjectCell $attention={attentionCount > 0}>
                             <TableProjectCell>
                               <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
                               <strong>{project.name}</strong>
                             </TableProjectCell>
-                          </td>
-                          <td>
+                          </StickyProjectCell>
+                          <StickyOrganizationCell $attention={attentionCount > 0}>
                             <TableOrganizationCell>
                               <TableOrganizationLogo organization={clientOrganization} />
                               <TableOrganizationName>{clientOrganizationName}</TableOrganizationName>
                             </TableOrganizationCell>
-                          </td>
+                          </StickyOrganizationCell>
+                          <td>{formatDueDate(project.firstDraftDate ?? "")}</td>
+                          <td>{formatDueDate(project.finalDeliverableDate ?? project.dueDate)}</td>
                           <td>
-                            <TableStageCell>
-                              <span>{formatProjectStage(project.stage)}</span>
-                              <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
-                            </TableStageCell>
+                            <StagePill $bg={stageTone.bg} $fg={stageTone.fg}>
+                              {formatProjectStage(project.stage)}
+                            </StagePill>
                           </td>
-                          <td>{formatDueDate(project.dueDate)}</td>
+                          <td>{project.projectType?.trim() || "Not set"}</td>
+                          <td>
+                            <PriorityPill $bg={priorityTone.bg} $fg={priorityTone.fg}>
+                              {project.priorityLevel?.trim() || "Not set"}
+                            </PriorityPill>
+                          </td>
                           <td>{primaryContactLabel}</td>
                           {!isClient ? <td>{project.contactNumber?.trim() || "No contact number"}</td> : null}
                           <td>{user ? getVisibleTasksForUser(user, project).filter((task) => task.status !== "approved").length : 0}</td>
+                          <td>{formatDueDate(project.requestedDate ?? "")}</td>
                         </DesktopTableRow>
                       );
                     })}
@@ -1207,14 +1421,15 @@ const DesktopTableLoadMoreSentinel = styled.div`
 `;
 
 const DesktopTable = styled.table`
-  width: 100%;
+  width: max-content;
+  min-width: 1480px;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 
   thead th {
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 2;
     padding: 16px 18px;
     border-bottom: 1px solid rgba(230, 224, 215, 0.95);
     background: rgba(255, 255, 255, 0.98);
@@ -1241,6 +1456,39 @@ const DesktopTable = styled.table`
   tbody tr:first-child td {
     border-top: 0;
   }
+
+  thead th:first-child {
+    left: 0;
+    z-index: 4;
+    min-width: 220px;
+  }
+
+  thead th:nth-child(2) {
+    left: 220px;
+    z-index: 4;
+    min-width: 170px;
+  }
+`;
+
+const SortableHeaderButton = styled.button`
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+`;
+
+const SortGlyph = styled.span<{ $direction: SortDirection | null }>`
+  color: ${({ $direction }) => ($direction ? "#2f5d50" : "var(--color-text-light)")};
+  font-size: 0.7rem;
+  line-height: 1;
+  transform: ${({ $direction }) => ($direction === "desc" ? "rotate(180deg)" : "none")};
 `;
 
 const DesktopTableRow = styled.tr<{ $attention?: boolean }>`
@@ -1272,17 +1520,37 @@ const TableProjectCell = styled.div`
   }
 `;
 
-const TableStageCell = styled.div`
-  display: grid;
-  gap: 6px;
-  min-width: 0;
+const StickyProjectCell = styled.td<{ $attention?: boolean }>`
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 220px;
+  background: ${({ $attention }) => ($attention ? "rgba(255, 244, 244, 0.92)" : "rgba(255, 255, 255, 0.98)")};
+`;
 
-  span {
-    font-size: 0.76rem;
-    font-weight: 500;
-    color: var(--color-text);
-    white-space: nowrap;
-  }
+const StickyOrganizationCell = styled.td<{ $attention?: boolean }>`
+  position: sticky;
+  left: 220px;
+  z-index: 1;
+  min-width: 170px;
+  background: ${({ $attention }) => ($attention ? "rgba(255, 244, 244, 0.92)" : "rgba(255, 255, 255, 0.98)")};
+`;
+
+const StagePill = styled.span<{ $bg: string; $fg: string }>`
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: ${({ $bg }) => $bg};
+  color: ${({ $fg }) => $fg};
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+`;
+
+const PriorityPill = styled(StagePill)`
+  font-size: 0.74rem;
 `;
 
 const ProjectRow = styled(Link)<{ $attention?: boolean }>`

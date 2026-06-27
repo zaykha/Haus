@@ -10,6 +10,7 @@ import {
   setCurrentTaskCompletionAssets,
   startNextTaskCompletionVersion,
 } from "@/lib/task-completion-assets";
+import { buildSoftDeletePatch, getStoragePathFromPublicUrl, queueStorageCleanup } from "@/lib/soft-delete";
 import { TaskManagerReviewStatus, TaskPriority, TaskStatus } from "@/lib/types";
 
 const TASK_STATUSES: TaskStatus[] = ["todo", "in_progress", "done", "review", "approved"];
@@ -83,34 +84,6 @@ async function logProjectActivity(
   }
 }
 
-function getDeliverableStoragePath(value: string) {
-  if (!value.startsWith("http://") && !value.startsWith("https://")) {
-    return null;
-  }
-
-  const supabaseUrl = appConfig.supabaseUrl;
-  if (!supabaseUrl) {
-    return null;
-  }
-
-  try {
-    const assetUrl = new URL(value);
-    const projectUrl = new URL(supabaseUrl);
-    if (assetUrl.origin !== projectUrl.origin) {
-      return null;
-    }
-
-    const publicPrefix = `/storage/v1/object/public/${appConfig.taskDeliverablesBucket}/`;
-    if (!assetUrl.pathname.startsWith(publicPrefix)) {
-      return null;
-    }
-
-    return decodeURIComponent(assetUrl.pathname.slice(publicPrefix.length));
-  } catch {
-    return null;
-  }
-}
-
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; taskId: string }> },
@@ -140,6 +113,7 @@ export async function PATCH(
     .select("id, project_id, title, status, assignee_id, completion_screenshot_url, client_visible, manager_review_status")
     .eq("id", taskId)
     .eq("project_id", id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (existingTaskError) {
@@ -170,6 +144,7 @@ export async function PATCH(
       .from("profiles")
       .select("id, role")
       .eq("id", body.assigneeId)
+      .is("deleted_at", null)
       .maybeSingle();
     if (!assignee || assignee.role === "client") {
       return NextResponse.json({ error: "Tasks can only be assigned to internal staff" }, { status: 400 });
@@ -393,36 +368,43 @@ export async function DELETE(
 
   const { data: existingTask, error: existingTaskError } = await supabase
     .from("tasks")
-    .select("completion_screenshot_url")
+    .select("id, completion_screenshot_url")
     .eq("project_id", id)
     .eq("id", taskId)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (existingTaskError) {
     return NextResponse.json({ error: existingTaskError.message }, { status: 500 });
   }
 
-  const completionState = parseTaskCompletionState(existingTask?.completion_screenshot_url ?? null);
+  if (!existingTask) {
+    return NextResponse.json({ error: "Task not found" }, { status: 404 });
+  }
+
+  const completionState = parseTaskCompletionState(existingTask.completion_screenshot_url ?? null);
   const deliverablePaths = Array.from(
     new Set(
       [
         ...completionState.currentAssets,
         ...completionState.history.flatMap((snapshot) => snapshot.assets),
       ]
-        .map(getDeliverableStoragePath)
+        .map((value) => getStoragePathFromPublicUrl(value, appConfig.taskDeliverablesBucket))
         .filter((value): value is string => Boolean(value)),
     ),
   );
 
-  if (deliverablePaths.length > 0) {
-    const { error: storageDeleteError } = await supabase.storage
-      .from(appConfig.taskDeliverablesBucket)
-      .remove(deliverablePaths);
+  await queueStorageCleanup(
+    supabase,
+    deliverablePaths.map((filePath) => ({
+      bucketName: appConfig.taskDeliverablesBucket,
+      filePath,
+      entityTable: "tasks",
+      entityId: taskId,
+    })),
+  );
 
-    if (storageDeleteError) {
-      return NextResponse.json({ error: storageDeleteError.message }, { status: 500 });
-    }
-  }
+  const deletePatch = buildSoftDeletePatch(user.id, "task_deleted");
 
   const [
     commentsDeleteResult,
@@ -430,10 +412,10 @@ export async function DELETE(
     activityDeleteResult,
     taskDeleteResult,
   ] = await Promise.all([
-    supabase.from("project_comments").delete().eq("project_id", id).eq("task_id", taskId),
-    supabase.from("project_feedback").delete().eq("project_id", id).eq("task_id", taskId),
-    supabase.from("project_activity").delete().eq("project_id", id).eq("task_id", taskId),
-    supabase.from("tasks").delete().eq("project_id", id).eq("id", taskId),
+    supabase.from("project_comments").update(deletePatch).eq("project_id", id).eq("task_id", taskId).is("deleted_at", null),
+    supabase.from("project_feedback").update(deletePatch).eq("project_id", id).eq("task_id", taskId).is("deleted_at", null),
+    supabase.from("project_activity").update(deletePatch).eq("project_id", id).eq("task_id", taskId).is("deleted_at", null),
+    supabase.from("tasks").update(deletePatch).eq("project_id", id).eq("id", taskId).is("deleted_at", null),
   ]);
 
   const deleteError =

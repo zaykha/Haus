@@ -341,20 +341,24 @@ export async function GET(request: NextRequest) {
     supabase
       .from("client_organizations")
       .select("id, name, type, status, logo_url, brand_color, phone, address, created_at")
+      .is("deleted_at", null)
       .order("created_at", { ascending: true }),
     supabase
       .from("profiles")
       .select("id, email, name, role, avatar_path, company, phone, job_title, department, created_at")
+      .is("deleted_at", null)
       .order("created_at", { ascending: true }),
     supabase
       .from("projects")
       .select(
         "id, name, project_code, requested_date, department_name, project_request_name, contact_person, contact_number, project_type, priority_level, first_draft_date, final_deliverable_date, project_objective, project_brief, creative_advice, reference_attachment_url, client_organization_id, owner_id, description, category, stage, due_date, created_at",
       )
+      .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     supabase
       .from("client_organization_liaisons")
-      .select("profile_id, client_organization_id, is_primary"),
+      .select("profile_id, client_organization_id, is_primary")
+      .is("deleted_at", null),
   ]);
 
   if (departmentsResult.error && !isMissingDepartmentsTableError(departmentsResult.error.message)) {
@@ -406,6 +410,7 @@ export async function GET(request: NextRequest) {
         .select(
           "id, email, name, role, project_id, client_organization_id, token_hash, status, expires_at, accepted_at, created_by, created_at, updated_at, client_organizations(name)",
         )
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
     : { data: [], error: null };
 
@@ -418,18 +423,20 @@ export async function GET(request: NextRequest) {
 
   const [membersResult, tasksResult, filesResult] = projectIds.length
     ? await Promise.all([
-        supabase.from("project_members").select("project_id, profile_id, role").in("project_id", projectIds),
+        supabase.from("project_members").select("project_id, profile_id, role").in("project_id", projectIds).is("deleted_at", null),
         supabase
           .from("tasks")
           .select(
             "id, project_id, title, assignee_id, status, due_date, priority, completion_screenshot_url, client_visible, manager_review_status, created_at",
           )
           .in("project_id", projectIds)
+          .is("deleted_at", null)
           .order("created_at", { ascending: false }),
         supabase
           .from("project_files")
           .select("id, project_id, title, version, file_url, uploaded_by, created_at, visibility, notes")
           .in("project_id", projectIds)
+          .is("deleted_at", null)
           .order("created_at", { ascending: false }),
       ])
     : [
@@ -443,6 +450,7 @@ export async function GET(request: NextRequest) {
         .from("project_comments")
         .select("id, project_id, author_id, task_id, body, internal_only, created_at")
         .in("project_id", projectIds)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
     : { data: [], error: null };
 
@@ -452,6 +460,7 @@ export async function GET(request: NextRequest) {
           .from("project_comments")
           .select("id, project_id, author_id, body, internal_only, created_at")
           .in("project_id", projectIds)
+          .is("deleted_at", null)
           .order("created_at", { ascending: false })
       : null;
 
@@ -460,6 +469,7 @@ export async function GET(request: NextRequest) {
         .from("project_feedback")
         .select("id, project_id, author_id, task_id, action, body, rating, created_at")
         .in("project_id", projectIds)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
     : { data: [], error: null };
 
@@ -469,6 +479,7 @@ export async function GET(request: NextRequest) {
           .from("project_feedback")
           .select("id, project_id, author_id, action, body, rating, created_at")
           .in("project_id", projectIds)
+          .is("deleted_at", null)
           .order("created_at", { ascending: false })
       : null;
 
@@ -477,6 +488,7 @@ export async function GET(request: NextRequest) {
         .from("project_activity")
         .select("id, project_id, actor_id, task_id, action, message, created_at")
         .in("project_id", projectIds)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
     : { data: [], error: null };
 
@@ -486,6 +498,7 @@ export async function GET(request: NextRequest) {
           .from("project_activity")
           .select("id, project_id, actor_id, action, message, created_at")
           .in("project_id", projectIds)
+          .is("deleted_at", null)
           .order("created_at", { ascending: false })
       : null;
 

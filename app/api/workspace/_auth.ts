@@ -49,6 +49,7 @@ export async function requireWorkspaceUser(request: NextRequest): Promise<
     .from("profiles")
     .select("id, email, name, role, avatar_path, company, phone, job_title, department")
     .eq("id", authData.user.id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (profileError || !profile) {
@@ -61,6 +62,7 @@ export async function requireWorkspaceUser(request: NextRequest): Promise<
           .from("client_organization_liaisons")
           .select("profile_id, client_organization_id, is_primary")
           .eq("profile_id", authData.user.id)
+          .is("deleted_at", null)
       : { data: [], error: null };
 
   if (

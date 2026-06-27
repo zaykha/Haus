@@ -74,9 +74,25 @@ export async function POST(
     .from("profiles")
     .select("id, role")
     .eq("id", body.assigneeId)
+    .is("deleted_at", null)
     .maybeSingle();
   if (!assignee || assignee.role === "client") {
     return NextResponse.json({ error: "Tasks can only be assigned to internal staff" }, { status: 400 });
+  }
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (projectError) {
+    return NextResponse.json({ error: projectError.message }, { status: 500 });
+  }
+
+  if (!project) {
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
   const { data: createdTask, error } = await supabase

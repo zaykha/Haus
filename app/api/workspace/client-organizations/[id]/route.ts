@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
 import { canDeleteClient, canEditClient, getUserClientOrganizationIds } from "@/lib/permissions";
+import { buildSoftDeletePatch } from "@/lib/soft-delete";
 
 export async function PATCH(
   request: NextRequest,
@@ -73,19 +74,28 @@ export async function DELETE(
     return NextResponse.json({ error: "Only managers can delete organizations" }, { status: 403 });
   }
 
-  const { error: projectsError } = await supabase
-    .from("projects")
-    .update({ client_organization_id: null })
-    .eq("client_organization_id", id);
+  const { data: organization, error: organizationError } = await supabase
+    .from("client_organizations")
+    .select("id")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
 
-  if (projectsError) {
-    return NextResponse.json({ error: projectsError.message }, { status: 500 });
+  if (organizationError) {
+    return NextResponse.json({ error: organizationError.message }, { status: 500 });
   }
+
+  if (!organization) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  const deletePatch = buildSoftDeletePatch(user.id, "client_organization_deleted");
 
   const { error: invitesError } = await supabase
     .from("invitations")
-    .delete()
-    .eq("client_organization_id", id);
+    .update(deletePatch)
+    .eq("client_organization_id", id)
+    .is("deleted_at", null);
 
   if (invitesError) {
     return NextResponse.json({ error: invitesError.message }, { status: 500 });
@@ -93,8 +103,9 @@ export async function DELETE(
 
   const { error: membershipsError } = await supabase
     .from("client_organization_liaisons")
-    .delete()
-    .eq("client_organization_id", id);
+    .update(deletePatch)
+    .eq("client_organization_id", id)
+    .is("deleted_at", null);
 
   if (membershipsError && !membershipsError.message.includes('relation "client_organization_liaisons" does not exist')) {
     return NextResponse.json({ error: membershipsError.message }, { status: 500 });
@@ -102,8 +113,9 @@ export async function DELETE(
 
   const { error: deleteError } = await supabase
     .from("client_organizations")
-    .delete()
-    .eq("id", id);
+    .update(deletePatch)
+    .eq("id", id)
+    .is("deleted_at", null);
 
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message }, { status: 500 });

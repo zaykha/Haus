@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import styled from "styled-components";
@@ -117,21 +118,25 @@ export function ProfileScreen() {
         </BackButton>
 
         <ProfileCard>
-          <ProfileHero>
-            <AvatarButton
-              type="button"
-              onClick={() => setShowAvatarModal(true)}
-              aria-label="Change profile avatar"
-            >
-              <UserAvatar user={user} />
-            </AvatarButton>
+          <ProfileCardHeader>
+            <ProfileHero>
+              <AvatarButton
+                type="button"
+                onClick={() => setShowAvatarModal(true)}
+                aria-label="Change profile avatar"
+              >
+                <UserAvatar user={user} />
+              </AvatarButton>
 
-            <ProfileCopy>
-              <Eyebrow>Account</Eyebrow>
-              <ProfileName>{user.name}</ProfileName>
-              <ProfileEmail>{user.email}</ProfileEmail>
-            </ProfileCopy>
-          </ProfileHero>
+              <ProfileCopy>
+                <Eyebrow>Account</Eyebrow>
+                <ProfileName>{user.name}</ProfileName>
+                <ProfileEmail>{user.email}</ProfileEmail>
+              </ProfileCopy>
+            </ProfileHero>
+
+            <SettingsButton href="/settings">Settings</SettingsButton>
+          </ProfileCardHeader>
 
           <InfoGrid>
             {details.map((detail) => (
@@ -224,6 +229,16 @@ const ProfileCard = styled.section`
   }
 `;
 
+const ProfileCardHeader = styled.div`
+  display: grid;
+  gap: 14px;
+
+  @media (min-width: 768px) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: flex-start;
+  }
+`;
+
 const ProfileHero = styled.div`
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr);
@@ -233,6 +248,32 @@ const ProfileHero = styled.div`
   @media (min-width: 768px) {
     grid-template-columns: 88px minmax(0, 1fr);
     gap: 20px;
+  }
+`;
+
+const SettingsButton = styled(Link)`
+  min-height: 42px;
+  width: fit-content;
+  justify-self: start;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #4b443c;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 10px 22px rgba(31, 31, 31, 0.06);
+
+  &:hover {
+    background: #fff7ef;
+  }
+
+  @media (min-width: 768px) {
+    justify-self: end;
   }
 `;
 
