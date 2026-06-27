@@ -10,6 +10,7 @@ import { ClientTitleLogo } from "@/components/client-title-logo";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
+import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { UserAvatar } from "@/components/user-avatar";
 import { getClientBrandStyle, normalizeHexColor } from "@/lib/client-branding";
@@ -287,6 +288,12 @@ export function ClientOrganizationDetailScreen({
   const canInviteOrganizationClients = user
     ? canInviteClientsForOrganization(user, organization?.organizationId ?? null)
     : false;
+  const isWorkspaceHydrating =
+    Boolean(user) &&
+    state.users.length === 0 &&
+    state.clientOrganizations.length === 0 &&
+    state.projects.length === 0 &&
+    state.invitations.length === 0;
 
   useEffect(() => {
     if (homeMode || !canEditOrganization) {
@@ -304,6 +311,10 @@ export function ClientOrganizationDetailScreen({
 
   if (!user) {
     return null;
+  }
+
+  if (isWorkspaceHydrating) {
+    return <ListScreenSkeleton title="Organization" showStats={false} />;
   }
 
   if (!organization) {
