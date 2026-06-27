@@ -2097,8 +2097,8 @@ const ClientHomeHero = styled.section`
   ${cardSurface}
   display: grid;
   gap: 10px;
-  backgroun: none;
-  
+  background: none;
+  border: none;
 
   ${desktop} {
     gap: 14px;
