@@ -576,8 +576,8 @@ const PrimaryButton = styled.button`
   padding: 0 18px;
   border: 0;
   border-radius: 14px;
-  background: #1f4339;
-  color: #fff;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
   font-size: 0.88rem;
   font-weight: 700;
 `;

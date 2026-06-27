@@ -2112,8 +2112,8 @@ const Badge = styled.span`
   height: 20px;
   padding: 0 6px;
   border-radius: 999px;
-  background: #c4a26d;
-  color: #fff;
+  background: var(--client-brand-primary, #c4a26d);
+  color: var(--client-brand-on-primary, #fff);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2127,14 +2127,14 @@ const NewChatButton = styled.button`
   padding: 0 16px;
   border-radius: 999px;
   border: 1px solid rgba(230, 224, 215, 0.96);
-  background: linear-gradient(180deg, #f5ead8, #ead7b5);
-  color: #2a2a2a;
+  background: var(--client-screen-soft-solid, #ead7b5);
+  color: var(--client-brand-primary, #2a2a2a);
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 12px 22px rgba(208, 183, 144, 0.18);
+  box-shadow: 0 12px 22px rgba(94, 76, 55, 0.12);
   transition:
     transform 0.18s ease,
     box-shadow 0.18s ease,
@@ -2147,7 +2147,7 @@ const NewChatButton = styled.button`
 
   &:hover {
     transform: translateY(-1px);
-    box-shadow: 0 16px 26px rgba(208, 183, 144, 0.24);
+    box-shadow: 0 16px 26px rgba(94, 76, 55, 0.16);
   }
 
   ${mobileOnly} {
@@ -2219,8 +2219,8 @@ const ScopeTab = styled.button<{ $active?: boolean }>`
   padding: 0 14px;
   border-radius: 999px;
   border: 0;
-  background: ${({ $active }) => ($active ? "#f1e3cc" : "transparent")};
-  color: ${({ $active }) => ($active ? "#2d261f" : "#6c6356")};
+  background: ${({ $active }) => ($active ? "var(--client-screen-soft-solid, #f1e3cc)" : "transparent")};
+  color: ${({ $active }) => ($active ? "var(--client-brand-primary, #2d261f)" : "#6c6356")};
   font-size: 0.88rem;
   font-weight: ${({ $active }) => ($active ? 800 : 600)};
   cursor: pointer;
@@ -2251,9 +2251,9 @@ const ConversationRow = styled.div<{ $active?: boolean }>`
   padding: 10px 12px;
   border: 1px solid ${({ $active }) => ($active ? "rgba(228, 214, 188, 0.98)" : "rgba(239, 233, 224, 0.96)")};
   border-radius: 20px;
-  background: ${({ $active }) => ($active ? "linear-gradient(180deg, #f8efdf, #f3ead9)" : "rgba(255, 255, 255, 0.92)")};
+  background: ${({ $active }) => ($active ? "var(--client-screen-soft-solid, #f3ead9)" : "rgba(255, 255, 255, 0.92)")};
   box-shadow: ${({ $active }) =>
-    $active ? "0 16px 32px rgba(210, 186, 146, 0.18)" : "0 6px 14px rgba(94, 76, 55, 0.04)"};
+    $active ? "0 16px 32px rgba(94, 76, 55, 0.12)" : "0 6px 14px rgba(94, 76, 55, 0.04)"};
   cursor: pointer;
   transition:
     transform 0.18s ease,
@@ -2263,7 +2263,7 @@ const ConversationRow = styled.div<{ $active?: boolean }>`
 
   &:hover {
     background: ${({ $active }) =>
-      $active ? "linear-gradient(180deg, #f8efdf, #f3ead9)" : "linear-gradient(180deg, #fbf4e8, #f5ebda)"};
+      $active ? "var(--client-screen-soft-solid, #f3ead9)" : "var(--client-screen-soft-solid, #f5ebda)"};
     border-color: rgba(219, 194, 155, 0.96);
     transform: translateY(-1px);
     box-shadow: 0 12px 24px rgba(94, 76, 55, 0.08);
@@ -2346,8 +2346,8 @@ const UnreadPill = styled.span`
   height: 22px;
   padding: 0 7px;
   border-radius: 999px;
-  background: #c3a06b;
-  color: #fff;
+  background: var(--client-brand-primary, #c3a06b);
+  color: var(--client-brand-on-primary, #fff);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2595,8 +2595,8 @@ const MessageActionButton = styled.button`
 
   ${BubbleCol}:hover & {
     border-color: rgba(219, 194, 155, 0.96);
-    background: rgba(243, 231, 210, 0.98);
-    color: #4e4335;
+    background: var(--client-screen-soft-solid, rgba(243, 231, 210, 0.98));
+    color: var(--client-brand-primary, #4e4335);
   }
 
   svg {
@@ -2624,7 +2624,7 @@ const MessageReactionQuickButton = styled.button`
 
   ${BubbleCol}:hover & {
     border-color: rgba(219, 194, 155, 0.96);
-    background: rgba(243, 231, 210, 0.98);
+    background: var(--client-screen-soft-solid, rgba(243, 231, 210, 0.98));
     transform: translateY(-1px);
   }
 `;
@@ -2638,7 +2638,7 @@ const Bubble = styled.div<{ $mine?: boolean }>`
   border-radius: 20px;
   border: 1px solid rgba(230, 224, 215, 0.96);
   background: ${({ $mine }) =>
-    $mine ? "linear-gradient(180deg, #f6eddf, #efe4d2)" : "rgba(255, 255, 255, 0.96)"};
+    $mine ? "var(--client-screen-soft-solid, #efe4d2)" : "rgba(255, 255, 255, 0.96)"};
   box-shadow: 0 10px 22px rgba(94, 76, 55, 0.05);
   transition:
     border-color 0.18s ease,
@@ -2729,11 +2729,11 @@ const MessageSenderName = styled.div<{ $mine?: boolean }>`
   transform: translateY(-50%);
   padding: 0 8px;
   border-radius: 999px;
-  background: ${({ $mine }) => ($mine ? "#e6dcc8" : "#efe5d3")};
+  background: ${({ $mine }) => ($mine ? "var(--client-screen-soft-solid, #e6dcc8)" : "#efe5d3")};
   font-size: 0.78rem;
   line-height: 1.2;
   font-weight: 800;
-  color: ${({ $mine }) => ($mine ? "#5f5443" : "#6f5f4c")};
+  color: ${({ $mine }) => ($mine ? "var(--client-brand-primary, #5f5443)" : "#6f5f4c")};
   z-index: 1;
 
   ${mobileOnly} {
@@ -2796,13 +2796,14 @@ const ReactionButton = styled.button<{ $active?: boolean }>`
   padding: 0 10px;
   border-radius: 999px;
   border: 1px solid rgba(230, 224, 215, 0.96);
-  background: ${({ $active }) => ($active ? "rgba(245, 239, 229, 0.95)" : "rgba(255, 255, 255, 0.94)")};
-  color: var(--color-text);
+  background: ${({ $active }) =>
+    $active ? "var(--client-screen-soft-solid, rgba(245, 239, 229, 0.95))" : "rgba(255, 255, 255, 0.94)"};
+  color: ${({ $active }) => ($active ? "var(--client-brand-primary, var(--color-text))" : "var(--color-text)")};
   font-size: 0.84rem;
   cursor: pointer;
 
   .count {
-    color: #8c8071;
+    color: ${({ $active }) => ($active ? "var(--client-brand-primary, #8c8071)" : "#8c8071")};
     font-size: 0.76rem;
   }
 `;
@@ -2982,10 +2983,10 @@ const ComposerSend = styled.button`
   justify-content: center;
   border-radius: 999px;
   border: 0;
-  background: #7b8c67;
-  color: #fff;
+  background: var(--client-brand-primary, #7b8c67);
+  color: var(--client-brand-on-primary, #fff);
   cursor: pointer;
-  box-shadow: 0 14px 24px rgba(123, 140, 103, 0.26);
+  box-shadow: 0 14px 24px rgba(31, 68, 57, 0.22);
 
   &:disabled {
     opacity: 0.5;
@@ -3009,8 +3010,8 @@ const OrgAvatar = styled.span`
   display: grid;
   place-items: center;
   border-radius: inherit;
-  background: linear-gradient(180deg, #eadfce, #cfb89f);
-  color: #5e4c37;
+  background: var(--client-screen-soft-solid, #cfb89f);
+  color: var(--client-brand-primary, #5e4c37);
   font-weight: 800;
 `;
 

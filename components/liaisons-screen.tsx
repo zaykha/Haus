@@ -1176,8 +1176,8 @@ const PrimaryButton = styled.button`
   padding: 0 16px;
   border: 0;
   border-radius: 10px;
-  background: #1f4339;
-  color: #fff;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
   font-size: 0.9rem;
   font-weight: 700;
 `;
@@ -1303,8 +1303,8 @@ const FilterBadge = styled.span`
 `;
 
 const SearchButton = styled(FilterButton)`
-  background: #1f4339;
-  color: #fff;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
 `;
 
 const ToolbarActions = styled.div`
@@ -1352,8 +1352,8 @@ const PrimaryActionButton = styled.button`
   padding: 0 16px;
   border: 0;
   border-radius: 10px;
-  background: #1f4339;
-  color: #fff;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
   font-size: 0.8rem;
   font-weight: 700;
   text-decoration: none;
@@ -1454,8 +1454,8 @@ const DesktopViewToggleButton = styled.button<{ $active?: boolean }>`
   padding: 0 12px;
   border: 0;
   border-radius: 10px;
-  background: ${({ $active }) => ($active ? "#1f4339" : "transparent")};
-  color: ${({ $active }) => ($active ? "#fff" : "var(--color-text-muted)")};
+  background: ${({ $active }) => ($active ? "var(--client-brand-primary, #1f4339)" : "transparent")};
+  color: ${({ $active }) => ($active ? "var(--client-brand-on-primary, #fff)" : "var(--color-text-muted)")};
   font-size: 0.78rem;
   font-weight: 700;
 `;
@@ -1537,8 +1537,8 @@ const PageButton = styled.button<{ $active?: boolean }>`
   padding: 0 14px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 12px;
-  background: ${({ $active }) => ($active ? "#1f4339" : "#fff")};
-  color: ${({ $active }) => ($active ? "#fff" : "var(--color-text)")};
+  background: ${({ $active }) => ($active ? "var(--client-brand-primary, #1f4339)" : "#fff")};
+  color: ${({ $active }) => ($active ? "var(--client-brand-on-primary, #fff)" : "var(--color-text)")};
   font-size: 0.9rem;
   font-weight: 700;
 `;
