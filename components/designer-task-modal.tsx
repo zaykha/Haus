@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 import { optimizeImageToWebp } from "@/lib/image-upload";
 import {
@@ -86,6 +86,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
   const [linkValue, setLinkValue] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const pendingUploadsRef = useRef<PendingCompletionUpload[]>([]);
   const completionState = useMemo(
     () => parseTaskCompletionState(task?.completionScreenshotUrl ?? null),
     [task?.completionScreenshotUrl],
@@ -132,29 +133,46 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
 
     const numbers = Array.from(internalMap.keys()).sort((a, b) => a - b);
 
-    const options = numbers.map((n) => {
+    const historicalOptions = numbers.map((n) => {
       const entry = internalMap.get(n)!;
       const matchingSubmitted = submittedSnapshots.find((s) => assetsKey(s.assets) === assetsKey(entry.assets));
       const svLabel = matchingSubmitted ? `(SV${matchingSubmitted.number})` : "";
-      const isCurrent = currentInternalNumber === n && completionState.currentVersionKind === "internal";
-      const label = `${entry.label}${svLabel ? ` ${svLabel}` : ""}${isCurrent ? " (Current)" : ""}`;
-      return { id: entry.id, label, assets: entry.assets, isCurrent };
+      const isCurrentSnapshot = currentInternalNumber === n && completionState.currentVersionKind === "internal";
+      const label = `${entry.label}${svLabel ? ` ${svLabel}` : ""}`;
+      return { id: entry.id, label, assets: entry.assets, isCurrent: false, isCurrentSnapshot };
     });
 
+    const currentOption = {
+      id: "current",
+      label: `${getCurrentTaskCompletionLabel(completionState)} (Current)`,
+      assets: currentVersionAssets,
+      isCurrent: true,
+    };
+
     // if locked and there are no options, show the current label
-    if (isLocked && options.length === 0 && currentVersionAssets.length > 0) {
+    if (isLocked && historicalOptions.length === 0 && currentVersionAssets.length > 0) {
       return [
         {
           id: "current",
           label: getCurrentTaskCompletionLabel(completionState),
           assets: currentVersionAssets,
-          isCurrent: false,
+          isCurrent: true,
         },
       ];
     }
 
-    // always show options (current may be included above)
-    return options;
+    if (isLocked) {
+      return historicalOptions.map(({ isCurrentSnapshot, ...option }) =>
+        isCurrentSnapshot ? { ...option, label: `${option.label} (Current)` } : option,
+      );
+    }
+
+    return [
+      currentOption,
+      ...historicalOptions
+        .filter((option) => !option.isCurrentSnapshot)
+        .map(({ isCurrentSnapshot: _isCurrentSnapshot, ...option }) => option),
+    ];
   }, [completionState, currentVersionAssets, isLocked]);
   const allAssets = useMemo(
     () => [
@@ -189,9 +207,14 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
   const displayedAssets = selectedVersion?.isCurrent ? allAssets : (selectedVersion?.assets ?? []);
   const isViewingCurrentVersion = selectedVersion?.isCurrent ?? false;
   const versionFeedbackEntries = task?.feedbackEntries ?? [];
+  const shouldShowSubmitButton =
+    isLocked ||
+    isViewingCurrentVersion ||
+    pendingUploads.length > 0 ||
+    completionLinks.length > 0;
 
   useEffect(() => {
-    if (!task) {
+    if (!open || !task) {
       return;
     }
 
@@ -203,17 +226,31 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
     setCompletionLinks([]);
     setLinkValue("");
     setError("");
-  }, [task]);
+  }, [open, task]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (versionOptions.some((option) => option.id === "current")) {
+      setSelectedVersionId("current");
+    }
+  }, [open, versionOptions]);
+
+  useEffect(() => {
+    pendingUploadsRef.current = pendingUploads;
+  }, [pendingUploads]);
 
   useEffect(() => {
     return () => {
-      pendingUploads.forEach((upload) => {
+      pendingUploadsRef.current.forEach((upload) => {
         if (upload.previewUrl.startsWith("blob:")) {
           URL.revokeObjectURL(upload.previewUrl);
         }
       });
     };
-  }, [pendingUploads]);
+  }, []);
 
   if (!open || !task) {
     return null;
@@ -641,9 +678,11 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
             ) : null}
             {error ? <InlineError>{error}</InlineError> : null}
 
-            <button className="primary-button" type="submit" disabled={isSubmitting}>
-              {isLocked ? "Close" : isSubmitting ? "Updating..." : "Update task"}
-            </button>
+            {shouldShowSubmitButton ? (
+              <button className="primary-button" type="submit" disabled={isSubmitting}>
+                {isLocked ? "Close" : isSubmitting ? "Updating..." : "Update task"}
+              </button>
+            ) : null}
           </InlineForm>
         </ModalCard>
       </ModalBackdrop>
@@ -692,7 +731,7 @@ const ModalCard = styled.section`
   border-radius: 26px;
 
   @media (max-width: 767px) {
-    max-height: 80vh;
+    max-height: 70vh;
   }
 `;
 
@@ -715,7 +754,7 @@ const ModalDescription = styled.p<{ $hideOnMobile?: boolean }>`
   line-height: 1.5;
 
   @media (max-width: 767px) {
-    display: ${({ $hideOnMobile }) => ($hideOnMobile ? "none" : "block")};
+    display: none;
   }
 `;
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
+import { appConfig } from "@/lib/config";
 import { canAssignTask, canDeleteTask, canEditTask } from "@/lib/permissions";
 import {
   parseTaskCompletionAssets,
@@ -9,7 +10,6 @@ import {
   setCurrentTaskCompletionAssets,
   startNextTaskCompletionVersion,
 } from "@/lib/task-completion-assets";
-import { bumpSubmittedVersion } from "@/lib/task-completion-assets";
 import { TaskManagerReviewStatus, TaskPriority, TaskStatus } from "@/lib/types";
 
 const TASK_STATUSES: TaskStatus[] = ["todo", "in_progress", "done", "review", "approved"];
@@ -80,6 +80,34 @@ async function logProjectActivity(
 
   if (error && !error.message.includes('relation "project_activity" does not exist')) {
     throw error;
+  }
+}
+
+function getDeliverableStoragePath(value: string) {
+  if (!value.startsWith("http://") && !value.startsWith("https://")) {
+    return null;
+  }
+
+  const supabaseUrl = appConfig.supabaseUrl;
+  if (!supabaseUrl) {
+    return null;
+  }
+
+  try {
+    const assetUrl = new URL(value);
+    const projectUrl = new URL(supabaseUrl);
+    if (assetUrl.origin !== projectUrl.origin) {
+      return null;
+    }
+
+    const publicPrefix = `/storage/v1/object/public/${appConfig.taskDeliverablesBucket}/`;
+    if (!assetUrl.pathname.startsWith(publicPrefix)) {
+      return null;
+    }
+
+    return decodeURIComponent(assetUrl.pathname.slice(publicPrefix.length));
+  } catch {
+    return null;
   }
 }
 
@@ -170,8 +198,6 @@ export async function PATCH(
         "submitted",
         nextCompletionState.currentAssets,
       );
-      // bump the submitted version counter so future submissions get a new SV number
-      nextCompletionState = bumpSubmittedVersion(nextCompletionState);
     } else if (nextStatus === "done") {
       nextCompletionState = recordTaskCompletionSnapshot(
         nextCompletionState,
@@ -226,10 +252,7 @@ export async function PATCH(
         `submitted task "${body.title.trim()}" to client review`,
         taskId,
       );
-    } else if (
-      existingTask.manager_review_status !== "revision_requested" &&
-      nextReviewStatus === "revision_requested"
-    ) {
+    } else if (nextReviewStatus === "revision_requested") {
       await updateProjectRequestStatusIfAllowed(supabase, id, "WIP");
       if (revisionNote) {
         const { error: feedbackError } = await supabase.from("project_feedback").insert({
@@ -366,6 +389,39 @@ export async function DELETE(
   const { supabase, user } = auth;
   if (!canDeleteTask(user.role)) {
     return NextResponse.json({ error: "Only managers can delete tasks" }, { status: 403 });
+  }
+
+  const { data: existingTask, error: existingTaskError } = await supabase
+    .from("tasks")
+    .select("completion_screenshot_url")
+    .eq("project_id", id)
+    .eq("id", taskId)
+    .maybeSingle();
+
+  if (existingTaskError) {
+    return NextResponse.json({ error: existingTaskError.message }, { status: 500 });
+  }
+
+  const completionState = parseTaskCompletionState(existingTask?.completion_screenshot_url ?? null);
+  const deliverablePaths = Array.from(
+    new Set(
+      [
+        ...completionState.currentAssets,
+        ...completionState.history.flatMap((snapshot) => snapshot.assets),
+      ]
+        .map(getDeliverableStoragePath)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  if (deliverablePaths.length > 0) {
+    const { error: storageDeleteError } = await supabase.storage
+      .from(appConfig.taskDeliverablesBucket)
+      .remove(deliverablePaths);
+
+    if (storageDeleteError) {
+      return NextResponse.json({ error: storageDeleteError.message }, { status: 500 });
+    }
   }
 
   const [

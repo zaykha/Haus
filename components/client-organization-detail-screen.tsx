@@ -589,7 +589,15 @@ export function ClientOrganizationDetailScreen({
                   {featuredProjects.map((project) => {
                     return (
                       <ClientProjectCard key={project.id} href={`/projects/${project.id}`}>
-                        <ClientProjectGlyph>{getClientOrganizationMark(project.projectRequestName || project.name)}</ClientProjectGlyph>
+                        <ClientProjectGlyph
+                          organization={
+                            project.clientOrganizationId
+                              ? state.clientOrganizations.find(
+                                  (clientOrganization) => clientOrganization.id === project.clientOrganizationId,
+                                ) ?? rawOrganization
+                              : rawOrganization
+                          }
+                        />
                         <ClientProjectBody>
                           <ClientHomeProjectHeader>
                             <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
@@ -2709,7 +2717,7 @@ const ClientProjectCard = styled(Link)`
   }
 `;
 
-const ClientProjectGlyph = styled.div`
+const ClientProjectGlyph = styled(ClientTitleLogo)`
   width: 38px;
   height: 38px;
   border-radius: 12px;
@@ -2719,6 +2727,7 @@ const ClientProjectGlyph = styled.div`
   color: #8c7040;
   font-size: 0.95rem;
   font-weight: 600;
+  object-fit: cover;
 
   ${desktop} {
     width: 42px;

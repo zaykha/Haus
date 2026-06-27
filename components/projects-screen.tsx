@@ -94,10 +94,6 @@ function getPrimaryContactLabel(project: Project, usersById: Map<string, { name:
   return `${contact.name} · ${contact.email}`;
 }
 
-function getProjectMark(project: Project) {
-  return project.name.trim().charAt(0).toUpperCase() || "P";
-}
-
 function isSameMonth(value: string, reference: Date) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -171,6 +167,10 @@ export function ProjectsScreen() {
     () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization.name])),
     [state.clientOrganizations],
   );
+  const organizationsById = useMemo(
+    () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization])),
+    [state.clientOrganizations],
+  );
   const userNames = useMemo(
     () => new Map(state.users.map((member) => [member.id, member.name])),
     [state.users],
@@ -214,6 +214,13 @@ export function ProjectsScreen() {
     () => getClientBrandStyle(currentClientOrganization),
     [currentClientOrganization],
   );
+  const isWorkspaceHydrating =
+    ready &&
+    Boolean(user) &&
+    state.users.length === 0 &&
+    state.clientOrganizations.length === 0 &&
+    state.projects.length === 0 &&
+    state.invitations.length === 0;
 
   const filteredProjects = useMemo(() => {
     const loweredSearch = search.trim().toLowerCase();
@@ -349,7 +356,7 @@ export function ProjectsScreen() {
     return () => observer.disconnect();
   }, [desktopView, filteredProjects.length, user]);
 
-  if (!ready) {
+  if (!ready || isWorkspaceHydrating) {
     return <ListScreenSkeleton title="Projects" />;
   }
 
@@ -536,6 +543,9 @@ export function ProjectsScreen() {
                 const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
                 const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
                 const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
+                const clientOrganization = project.clientOrganizationId
+                  ? organizationsById.get(project.clientOrganizationId) ?? null
+                  : null;
 
                 return (
                   <ProjectRow key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
@@ -547,7 +557,7 @@ export function ProjectsScreen() {
                     {attentionCount > 0 ? (
                       <ProjectAttentionBadge>{attentionCount > 99 ? "99+" : attentionCount}</ProjectAttentionBadge>
                     ) : null}
-                    <ProjectMark>{getProjectMark(project)}</ProjectMark> 
+                    <ProjectMark organization={clientOrganization} />
                     <ProjectSummary>
                       <SummaryTitle>{project.name}</SummaryTitle>
                       <SummaryPills>
@@ -620,6 +630,9 @@ export function ProjectsScreen() {
                       const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
                       const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
                       const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
+                      const clientOrganization = project.clientOrganizationId
+                        ? organizationsById.get(project.clientOrganizationId) ?? null
+                        : null;
 
                       return (
                         <DesktopTableRow
@@ -636,7 +649,10 @@ export function ProjectsScreen() {
                             </TableProjectCell>
                           </td>
                           <td>
-                            <OrganizationPill>{clientOrganizationName}</OrganizationPill>
+                            <TableOrganizationCell>
+                              <TableOrganizationLogo organization={clientOrganization} />
+                              <TableOrganizationName>{clientOrganizationName}</TableOrganizationName>
+                            </TableOrganizationCell>
                           </td>
                           <td>
                             <TableStageCell>
@@ -671,6 +687,9 @@ export function ProjectsScreen() {
             mobileProjects.map((project) => {
               const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
               const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
+              const clientOrganization = project.clientOrganizationId
+                ? organizationsById.get(project.clientOrganizationId) ?? null
+                : null;
 
               return (
                 <MobileProjectCard key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
@@ -681,7 +700,7 @@ export function ProjectsScreen() {
                   <MobileProjectCompanyHeader>{clientOrganizationName}</MobileProjectCompanyHeader>
                   <MobileProjectStageBadge>{formatProjectStage(project.stage)}</MobileProjectStageBadge>
                   <MobileProjectLead>
-                    <MobileProjectMark>{getProjectMark(project)}</MobileProjectMark>
+                    <MobileProjectMark organization={clientOrganization} />
                     <MobileCopy>
                       <MobileTitleRow>
                         <MobileTitle>{project.name}</MobileTitle>
@@ -1338,13 +1357,15 @@ const markSurface = css`
   font-weight: 600;
 `;
 
-const ProjectMark = styled.div`
+const ProjectMark = styled(ClientTitleLogo)`
   ${markSurface}
   width: 76px;
   height: 76px;
   flex: 0 0 76px;
   border-radius: 18px;
   font-size: 1.6rem;
+  object-fit: cover;
+  overflow: hidden;
 `;
 
 const ProjectSummary = styled.div`
@@ -1389,6 +1410,32 @@ const OrganizationPill = styled.div`
   font-size: 0.68rem;
   font-weight: 600;
   white-space: nowrap;
+`;
+
+const TableOrganizationCell = styled.div`
+  display: inline-grid;
+  justify-items: start;
+  gap: 6px;
+`;
+
+const TableOrganizationLogo = styled(ClientTitleLogo)`
+  ${markSurface}
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  object-fit: cover;
+  overflow: hidden;
+  font-size: 0.8rem;
+`;
+
+const TableOrganizationName = styled.span`
+  display: block;
+  max-width: 118px;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.25;
+  white-space: normal;
+  word-break: break-word;
 `;
 
 const MetaColumn = styled.div<{ $grow?: boolean; $narrow?: boolean }>`
@@ -1597,12 +1644,14 @@ const MobileProjectLead = styled.div`
   padding-top: 8px;
 `;
 
-const MobileProjectMark = styled.div`
+const MobileProjectMark = styled(ClientTitleLogo)`
   ${markSurface}
   width: 44px;
   height: 44px;
   border-radius: 12px;
   font-size: 0.92rem;
+  object-fit: cover;
+  overflow: hidden;
 `;
 
 const MobileCopy = styled.div`

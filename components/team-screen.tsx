@@ -9,6 +9,7 @@ import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { FilterModal } from "@/components/filter-modal";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
+import { UserAvatar } from "@/components/user-avatar";
 import { canDeleteTeamMember, canInviteUsers, canUpdateTeamRole } from "@/lib/permissions";
 import { Role, TaskPriority, TaskStatus } from "@/lib/types";
 import { formatRole, getTaskStatusLabel } from "@/lib/display";
@@ -34,6 +35,7 @@ type MemberRow = {
   id: string;
   name: string;
   email: string;
+  avatarPath?: string | null;
   phone?: string;
   role: Role;
   company?: string;
@@ -141,6 +143,7 @@ export function TeamScreen() {
           id: `accepted-invite:${invitation.id}`,
           name: invitation.name,
           email: invitation.email,
+          avatarPath: null,
           phone: undefined,
           role: invitation.role,
           company: "Haus",
@@ -433,7 +436,7 @@ export function TeamScreen() {
           <MemberDetailsCard onClick={(event) => event.stopPropagation()}>
             <DialogHeader>
               <MemberHeader>
-                <Avatar>{selectedMember.name.slice(0, 1)}</Avatar>
+                <Avatar user={selectedMember} />
                 <MemberCopy>
                   <MemberName>{selectedMember.name}</MemberName>
                   <MemberEmail>{selectedMember.email}</MemberEmail>
@@ -811,7 +814,7 @@ export function TeamScreen() {
                 return (
                   <TableRow key={member.id} onClick={() => setSelectedMember(member)}>
                     <MemberCell>
-                      <Avatar>{member.name.slice(0, 1)}</Avatar>
+                      <Avatar user={member} />
                       <MemberCopy>
                         <MemberName>{member.name}</MemberName>
                         <MemberEmail>{member.email}</MemberEmail>
@@ -871,7 +874,7 @@ export function TeamScreen() {
                     Joined {member.joinedAt ? formatShortDate(member.joinedAt) : "—"}
                   </MobileJoinedMeta>
                   <MobileCardRow>
-                    <Avatar>{member.name.slice(0, 1)}</Avatar>
+                    <Avatar user={member} />
                     <MemberCopy>
                       <MemberName>{member.name}</MemberName>
                       <MemberEmail>{member.phone?.trim() || member.company || "No contact number"}</MemberEmail>
@@ -927,7 +930,7 @@ export function TeamScreen() {
                     Joined {member.joinedAt ? formatShortDate(member.joinedAt) : "—"}
                   </MobileJoinedMeta>
                   <MobileCardRow>
-                    <Avatar>{member.name.slice(0, 1)}</Avatar>
+                    <Avatar user={member} />
                     <MemberCopy>
                       <MemberName>{member.name}</MemberName>
                       <MemberEmail>{member.phone?.trim() || member.company || "No contact number"}</MemberEmail>
@@ -1562,17 +1565,12 @@ const MobileCardRow = styled.div`
   gap: 12px;
 `;
 
-const Avatar = styled.div`
+const Avatar = styled(UserAvatar)`
   width: 48px;
   height: 48px;
   flex: 0 0 48px;
   border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: #ded6c8;
-  color: #fff;
-  font-size: 0.94rem;
-  font-weight: 700;
+  overflow: hidden;
 `;
 
 const InvitationPanel = styled.section`

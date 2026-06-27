@@ -189,7 +189,7 @@ interface AppStateContextValue {
   addComment: (projectId: string, payload: { body: string; internalOnly: boolean }) => Promise<void>;
   addFeedback: (
     projectId: string,
-    payload: { action: FeedbackAction; body: string; rating?: number | null },
+    payload: { action: FeedbackAction; body: string; rating?: number | null; taskId?: string | null },
   ) => Promise<void>;
   updateTaskStatus: (
     projectId: string,
@@ -1120,6 +1120,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase!.from("project_feedback").insert({
       project_id: projectId,
       author_id: user.id,
+      task_id: payload.taskId ?? null,
       action: payload.action,
       body: payload.body,
       rating: payload.rating ?? null,

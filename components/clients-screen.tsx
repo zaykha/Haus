@@ -124,6 +124,13 @@ export function ClientsScreen() {
     () => (user ? getUserClientOrganizationIds(user) : []),
     [user],
   );
+  const isWorkspaceHydrating =
+    ready &&
+    Boolean(user) &&
+    state.users.length === 0 &&
+    state.clientOrganizations.length === 0 &&
+    state.projects.length === 0 &&
+    state.invitations.length === 0;
   const visibleClients = useMemo(
     () =>
       viewerRole === "client"
@@ -234,7 +241,7 @@ export function ClientsScreen() {
     return () => observer.disconnect();
   }, [filteredClients.length, hasMoreMobileClients]);
 
-  if (!ready) {
+  if (!ready || isWorkspaceHydrating) {
     return <ListScreenSkeleton title="Clients" />;
   }
 

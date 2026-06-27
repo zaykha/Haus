@@ -56,6 +56,7 @@ export async function POST(
     taskId?: string;
     decision?: "approve" | "request_revision";
     revisionComment?: string;
+    rating?: number | null;
   };
 
   if (!body.taskId || !body.decision) {
@@ -65,6 +66,10 @@ export async function POST(
   const taskId = body.taskId;
   const decision = body.decision;
   const revisionComment = body.revisionComment?.trim();
+  const rating =
+    typeof body.rating === "number" && Number.isInteger(body.rating) && body.rating >= 1 && body.rating <= 5
+      ? body.rating
+      : null;
   if (decision !== "approve" && decision !== "request_revision") {
   return NextResponse.json({ error: "Invalid review decision" }, { status: 400 });
   }
@@ -118,7 +123,7 @@ export async function POST(
             "submitted",
             taskCompletionState.currentAssets,
           ),
-          "submitted",
+          "internal",
         )
       : taskCompletionState;
 
@@ -144,7 +149,7 @@ export async function POST(
       task_id: taskId,
       action: "request_revision",
       body: revisionComment,
-      rating: null,
+      rating,
     });
 
     if (feedbackError) {

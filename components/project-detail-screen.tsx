@@ -28,6 +28,7 @@ import {
   isTaskCompletionLink,
   parseTaskCompletionAssets,
   parseTaskCompletionState,
+  sameTaskCompletionAssets,
 } from "@/lib/task-completion-assets";
 import {
   FeedbackAction,
@@ -658,27 +659,83 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           .map((snapshot) => ({
             id: snapshot.id,
             label: snapshot.label,
+            kind: snapshot.kind,
             assets: snapshot.assets,
             createdAt: snapshot.createdAt,
             versionKind: "history" as const,
           }));
         const currentVersionLabel = getCurrentTaskCompletionLabel(completionState);
-        const currentSnapshot = historyOptions.find((option) => option.id === currentVersionLabel) ?? null;
         const currentAssets = parseTaskCompletionAssets(task.completionScreenshotUrl ?? null);
-        const versionOptions = [
+        const versionEntries = [
           ...(currentAssets.length > 0
             ? [
                 {
                   id: "current",
-                  label: `${currentVersionLabel}${currentSnapshot ? " (Current)" : ""}`,
+                  label: currentVersionLabel,
+                  kind: completionState.currentVersionKind,
                   assets: currentAssets,
-                  createdAt: currentSnapshot?.createdAt ?? task.createdAt ?? new Date(0).toISOString(),
+                  createdAt: task.createdAt ?? new Date(0).toISOString(),
                   versionKind: "current" as const,
                 },
               ]
             : []),
-          ...historyOptions.filter((option) => option.id !== currentVersionLabel || currentAssets.length === 0),
+          ...historyOptions,
         ];
+        const versionOptions = versionEntries.reduce<DeliverableVersionOption[]>((accumulator, entry) => {
+          const existingIndex = accumulator.findIndex((option) => sameTaskCompletionAssets(option.assets, entry.assets));
+
+          if (existingIndex === -1) {
+            const labelParts = [entry.label];
+            accumulator.push({
+              id: entry.id,
+              label: `${labelParts.join(" · ")}${entry.versionKind === "current" ? " (Current)" : ""}`,
+              assets: entry.assets,
+              createdAt: entry.createdAt,
+              versionKind: entry.versionKind,
+            });
+            return accumulator;
+          }
+
+          const existing = accumulator[existingIndex];
+          const existingParts = existing.label.replace(" (Current)", "").split(" · ").filter(Boolean);
+          const nextParts = [...existingParts];
+          const preferredPrimaryLabel =
+            entry.kind === "internal"
+              ? entry.label
+              : existingParts.find((part) => part.startsWith("IV")) ?? existingParts[0] ?? entry.label;
+
+          if (!nextParts.includes(entry.label)) {
+            nextParts.push(entry.label);
+          }
+
+          const reorderedParts = [
+            preferredPrimaryLabel,
+            ...nextParts.filter((part) => part !== preferredPrimaryLabel).sort((left, right) => {
+              if (left.startsWith("IV") && right.startsWith("SV")) {
+                return -1;
+              }
+
+              if (left.startsWith("SV") && right.startsWith("IV")) {
+                return 1;
+              }
+
+              return left.localeCompare(right);
+            }),
+          ];
+          const isCurrent = existing.versionKind === "current" || entry.versionKind === "current";
+          const createdAt = existing.createdAt.localeCompare(entry.createdAt) >= 0 ? existing.createdAt : entry.createdAt;
+          const id = existing.versionKind === "current" ? existing.id : entry.versionKind === "current" ? entry.id : existing.id;
+
+          accumulator[existingIndex] = {
+            ...existing,
+            id,
+            label: `${reorderedParts.join(" · ")}${isCurrent ? " (Current)" : ""}`,
+            assets: existing.assets,
+            createdAt,
+            versionKind: isCurrent ? "current" : existing.versionKind,
+          };
+          return accumulator;
+        }, []);
 
         if (versionOptions.length === 0) {
           return null;
@@ -842,6 +899,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           body: JSON.stringify({
             taskId: editingTask.id,
             decision,
+            rating: feedbackRating,
             revisionComment:
               decision === "request_revision" ? trimmedBody : undefined,
           }),
@@ -855,11 +913,14 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           throw new Error(payload?.error ?? "Unable to update task status.");
         }
       }
-      await addFeedback(project.id, {
-        action: feedbackAction,
-        body: trimmedBody,
-        rating: feedbackRating,
-      });
+      if (decision !== "request_revision") {
+        await addFeedback(project.id, {
+          action: feedbackAction,
+          body: trimmedBody,
+          rating: feedbackRating,
+          taskId: editingTask.id,
+        });
+      }
 
       setFeedbackAction("approve");
       setFeedbackBody("");

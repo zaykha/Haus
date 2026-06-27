@@ -214,9 +214,11 @@ export function TasksScreen() {
   const [showSort, setShowSort] = useState(false);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [createTaskError, setCreateTaskError] = useState("");
   const [activeDesignerTaskId, setActiveDesignerTaskId] = useState<string | null>(null);
   const [desktopView, setDesktopView] = useState<"cards" | "table">("table");
-  const [taskSelect, setTaskSelect] = useState<"project" | "assignee" | "status" | null>(null);
+  const [taskSelect, setTaskSelect] = useState<"organization" | "project" | "assignee" | "status" | null>(null);
+  const [newTaskOrganizationId, setNewTaskOrganizationId] = useState("");
   const [newTaskProjectId, setNewTaskProjectId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState("");
@@ -261,9 +263,6 @@ export function TasksScreen() {
     [state.users],
   );
 
-  const selectedProject =
-    availableProjects.find((project) => project.id === newTaskProjectId) ?? availableProjects[0] ?? null;
-
   const userNames = useMemo(
     () => new Map(state.users.map((member) => [member.id, member.name])),
     [state.users],
@@ -276,11 +275,54 @@ export function TasksScreen() {
     () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization.name])),
     [state.clientOrganizations],
   );
+  const availableTaskOrganizations = useMemo(() => {
+    const entries = new Map<string, { id: string; name: string; logoUrl?: string }>();
+
+    state.clientOrganizations.forEach((organization) => {
+      entries.set(organization.id, {
+        id: organization.id,
+        name: organization.name,
+        logoUrl: organization.logoUrl?.trim() || undefined,
+      });
+    });
+
+    if (availableProjects.some((project) => !project.clientOrganizationId)) {
+      entries.set("__unassigned__", {
+        id: "__unassigned__",
+        name: "Unassigned client",
+      });
+    }
+
+    return Array.from(entries.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [availableProjects, state.clientOrganizations]);
+  const filteredTaskProjects = useMemo(
+    () =>
+      availableProjects.filter((project) =>
+        newTaskOrganizationId === "__unassigned__"
+          ? !project.clientOrganizationId
+          : project.clientOrganizationId === newTaskOrganizationId,
+      ),
+    [availableProjects, newTaskOrganizationId],
+  );
+  const selectedProject =
+    filteredTaskProjects.find((project) => project.id === newTaskProjectId) ?? null;
+  const selectedTaskOrganization =
+    availableTaskOrganizations.find((organization) => organization.id === newTaskOrganizationId) ?? null;
+  const hasProjectsForSelectedOrganization =
+    newTaskOrganizationId.length > 0 && filteredTaskProjects.length > 0;
+  const hasAvailableTaskProjects = availableProjects.length > 0;
   const currentClientOrganization = activeClientOrganization;
   const clientBrandStyle = useMemo(
     () => getClientBrandStyle(currentClientOrganization),
     [currentClientOrganization],
   );
+  const isWorkspaceHydrating =
+    ready &&
+    Boolean(user) &&
+    state.users.length === 0 &&
+    state.clientOrganizations.length === 0 &&
+    state.projects.length === 0 &&
+    state.invitations.length === 0;
 
   const roleLabel = user ? formatRole(user.role).toUpperCase() : "";
   const canManage = user ? canCreateTask(user.role) : false;
@@ -470,7 +512,7 @@ export function TasksScreen() {
     return () => observer.disconnect();
   }, [desktopView, filteredTasks.length, hasMoreDesktopTableTasks]);
 
-  if (!ready) {
+  if (!ready || isWorkspaceHydrating) {
     return <ListScreenSkeleton title="Tasks" showStats={false} />;
   }
 
@@ -492,14 +534,15 @@ export function TasksScreen() {
   };
 
   const openCreateTaskModal = () => {
-    const firstProject = availableProjects[0] ?? null;
-    setNewTaskProjectId(firstProject?.id ?? "");
+    setNewTaskOrganizationId("");
+    setNewTaskProjectId("");
     setNewTaskTitle("");
     setNewTaskAssigneeId("");
     setNewTaskStatus("todo");
-    setNewTaskDueDate(firstProject?.dueDate ?? "");
+    setNewTaskDueDate("");
     setNewTaskPriority("medium");
     setTaskSelect(null);
+    setCreateTaskError("");
     setShowCreateTaskModal(true);
   };
 
@@ -510,6 +553,7 @@ export function TasksScreen() {
     }
 
     setIsCreatingTask(true);
+    setCreateTaskError("");
 
     try {
       await createTask(selectedProject.id, {
@@ -520,6 +564,8 @@ export function TasksScreen() {
         priority: newTaskPriority,
       });
       setShowCreateTaskModal(false);
+    } catch (nextError) {
+      setCreateTaskError(nextError instanceof Error ? nextError.message : "Unable to create task.");
     } finally {
       setIsCreatingTask(false);
     }
@@ -576,35 +622,51 @@ export function TasksScreen() {
             <InlineForm onSubmit={handleCreateTask}>
               <TaskModalGrid>
                 <TaskModalField>
-                  <TaskFloatingSelect $filled={Boolean(selectedProject)} $open={taskSelect === "project"}>
+                  <TaskFloatingSelect $filled={Boolean(newTaskOrganizationId)} $open={taskSelect === "organization"}>
                     <TaskSelectTrigger
                       type="button"
                       aria-haspopup="listbox"
-                      aria-expanded={taskSelect === "project"}
-                      onClick={() => setTaskSelect((current) => (current === "project" ? null : "project"))}
+                      aria-expanded={taskSelect === "organization"}
+                      onClick={() => setTaskSelect((current) => (current === "organization" ? null : "organization"))}
                     >
-                      <TaskSelectValue>{selectedProject?.name ?? "Select project"}</TaskSelectValue>
-                      <TaskSelectChevron $open={taskSelect === "project"}>
+                      <TaskSelectValueRow>
+                        {selectedTaskOrganization ? (
+                          <TaskOrganizationLogo
+                            organization={{
+                              name: selectedTaskOrganization.name,
+                              logoUrl: selectedTaskOrganization.logoUrl,
+                            }}
+                          />
+                        ) : null}
+                        <TaskSelectValue>{selectedTaskOrganization?.name ?? "Select organization"}</TaskSelectValue>
+                      </TaskSelectValueRow>
+                      <TaskSelectChevron $open={taskSelect === "organization"}>
                         <IconChevronDown />
                       </TaskSelectChevron>
                     </TaskSelectTrigger>
-                    <TaskFloatingLabel>Project</TaskFloatingLabel>
-                    {taskSelect === "project" ? (
-                      <TaskSelectMenu role="listbox" aria-label="Project">
-                        {availableProjects.map((project) => (
+                    <TaskFloatingLabel>Organization</TaskFloatingLabel>
+                    {taskSelect === "organization" ? (
+                      <TaskSelectMenu role="listbox" aria-label="Organization">
+                        {availableTaskOrganizations.map((organization) => (
                           <TaskSelectOption
-                            key={project.id}
+                            key={organization.id}
                             type="button"
                             role="option"
-                            aria-selected={newTaskProjectId === project.id}
-                            $active={newTaskProjectId === project.id}
+                            aria-selected={newTaskOrganizationId === organization.id}
+                            $active={newTaskOrganizationId === organization.id}
                             onClick={() => {
-                              setNewTaskProjectId(project.id);
-                              setNewTaskDueDate(project.dueDate);
+                              setNewTaskOrganizationId(organization.id);
+                              setNewTaskProjectId("");
+                              setNewTaskAssigneeId("");
+                              setNewTaskTitle("");
+                              setNewTaskDueDate("");
                               setTaskSelect(null);
                             }}
                           >
-                            {project.name}
+                            <TaskOrganizationOptionRow>
+                              <TaskOrganizationLogo organization={{ name: organization.name, logoUrl: organization.logoUrl }} />
+                              <span>{organization.name}</span>
+                            </TaskOrganizationOptionRow>
                           </TaskSelectOption>
                         ))}
                       </TaskSelectMenu>
@@ -612,117 +674,179 @@ export function TasksScreen() {
                   </TaskFloatingSelect>
                 </TaskModalField>
 
-                <TaskModalField $wide>
-                  <TaskFloatingField className={newTaskTitle ? "auth-field is-filled" : "auth-field"}>
-                    <TaskTextInput
-                      value={newTaskTitle}
-                      onChange={(event) => setNewTaskTitle(event.target.value)}
-                      placeholder=" "
-                      required
-                    />
-                    <span>Task title</span>
-                  </TaskFloatingField>
-                </TaskModalField>
+                {newTaskOrganizationId ? (
+                  hasProjectsForSelectedOrganization ? (
+                    <TaskModalField>
+                      <TaskFloatingSelect $filled={Boolean(selectedProject)} $open={taskSelect === "project"}>
+                        <TaskSelectTrigger
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={taskSelect === "project"}
+                          onClick={() => setTaskSelect((current) => (current === "project" ? null : "project"))}
+                        >
+                          <TaskSelectValue>{selectedProject?.name ?? "Select project"}</TaskSelectValue>
+                          <TaskSelectChevron $open={taskSelect === "project"}>
+                            <IconChevronDown />
+                          </TaskSelectChevron>
+                        </TaskSelectTrigger>
+                        <TaskFloatingLabel>Project</TaskFloatingLabel>
+                        {taskSelect === "project" ? (
+                          <TaskSelectMenu role="listbox" aria-label="Project">
+                            {filteredTaskProjects.map((project) => (
+                              <TaskSelectOption
+                                key={project.id}
+                                type="button"
+                                role="option"
+                                aria-selected={newTaskProjectId === project.id}
+                                $active={newTaskProjectId === project.id}
+                                onClick={() => {
+                                  setNewTaskProjectId(project.id);
+                                  setNewTaskDueDate(project.dueDate);
+                                  setTaskSelect(null);
+                                }}
+                              >
+                                {project.name}
+                              </TaskSelectOption>
+                            ))}
+                          </TaskSelectMenu>
+                        ) : null}
+                      </TaskFloatingSelect>
+                    </TaskModalField>
+                  ) : (
+                    <TaskModalField $wide>
+                      <TaskEmptyState>
+                        <strong>No projects in this organization yet</strong>
+                        <p>Create a project first before assigning tasks to this organization.</p>
+                        <TaskEmptyActionRow>
+                          {newTaskOrganizationId !== "__unassigned__" ? (
+                            <TaskCreateProjectLink href={`/projects/new?clientOrganizationId=${newTaskOrganizationId}`}>
+                              Create project
+                            </TaskCreateProjectLink>
+                          ) : null}
+                        </TaskEmptyActionRow>
+                      </TaskEmptyState>
+                    </TaskModalField>
+                  )
+                ) : null}
 
-                <TaskModalField>
-                  <TaskFloatingSelect $filled={Boolean(newTaskAssigneeId)} $open={taskSelect === "assignee"}>
-                    <TaskSelectTrigger
-                      type="button"
-                      aria-haspopup="listbox"
-                      aria-expanded={taskSelect === "assignee"}
-                      onClick={() => setTaskSelect((current) => (current === "assignee" ? null : "assignee"))}
-                    >
-                      <TaskSelectValue>
-                        {availableStaff.find((member) => member.id === newTaskAssigneeId)?.name ?? "Select staff"}
-                      </TaskSelectValue>
-                      <TaskSelectChevron $open={taskSelect === "assignee"}>
-                        <IconChevronDown />
-                      </TaskSelectChevron>
-                    </TaskSelectTrigger>
-                    <TaskFloatingLabel>Assignee</TaskFloatingLabel>
-                    {taskSelect === "assignee" ? (
-                      <TaskSelectMenu role="listbox" aria-label="Assignee">
-                        {availableStaff.map((member) => (
-                          <TaskSelectOption
-                            key={member.id}
-                            type="button"
-                            role="option"
-                            aria-selected={newTaskAssigneeId === member.id}
-                            $active={newTaskAssigneeId === member.id}
-                            onClick={() => {
-                              setNewTaskAssigneeId(member.id);
-                              setTaskSelect(null);
-                            }}
-                          >
-                            {member.name}
-                          </TaskSelectOption>
-                        ))}
-                      </TaskSelectMenu>
-                    ) : null}
-                  </TaskFloatingSelect>
-                </TaskModalField>
+                {selectedProject ? (
+                  <>
+                    <TaskModalField $wide>
+                      <TaskFloatingField className={newTaskTitle ? "auth-field is-filled" : "auth-field"}>
+                        <TaskTextInput
+                          value={newTaskTitle}
+                          onChange={(event) => setNewTaskTitle(event.target.value)}
+                          placeholder=" "
+                          required
+                        />
+                        <span>Task title</span>
+                      </TaskFloatingField>
+                    </TaskModalField>
 
-                <TaskModalField>
-                  <TaskFloatingSelect $filled $open={taskSelect === "status"}>
-                    <TaskSelectTrigger
-                      type="button"
-                      aria-haspopup="listbox"
-                      aria-expanded={taskSelect === "status"}
-                      onClick={() => setTaskSelect((current) => (current === "status" ? null : "status"))}
-                    >
-                      <TaskSelectValue>{getTaskStatusLabel(newTaskStatus)}</TaskSelectValue>
-                      <TaskSelectChevron $open={taskSelect === "status"}>
-                        <IconChevronDown />
-                      </TaskSelectChevron>
-                    </TaskSelectTrigger>
-                    <TaskFloatingLabel>Status</TaskFloatingLabel>
-                    {taskSelect === "status" ? (
-                      <TaskSelectMenu role="listbox" aria-label="Status">
-                        {(["todo", "in_progress", "done"] as TaskStatus[]).map((option) => (
-                          <TaskSelectOption
-                            key={option}
-                            type="button"
-                            role="option"
-                            aria-selected={newTaskStatus === option}
-                            $active={newTaskStatus === option}
-                            onClick={() => {
-                              setNewTaskStatus(option);
-                              setTaskSelect(null);
-                            }}
-                          >
-                            {getTaskStatusLabel(option)}
-                          </TaskSelectOption>
-                        ))}
-                      </TaskSelectMenu>
-                    ) : null}
-                  </TaskFloatingSelect>
-                </TaskModalField>
+                    <TaskModalField>
+                      <TaskFloatingSelect $filled={Boolean(newTaskAssigneeId)} $open={taskSelect === "assignee"}>
+                        <TaskSelectTrigger
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={taskSelect === "assignee"}
+                          onClick={() => setTaskSelect((current) => (current === "assignee" ? null : "assignee"))}
+                        >
+                          <TaskSelectValue>
+                            {availableStaff.find((member) => member.id === newTaskAssigneeId)?.name ?? "Select staff"}
+                          </TaskSelectValue>
+                          <TaskSelectChevron $open={taskSelect === "assignee"}>
+                            <IconChevronDown />
+                          </TaskSelectChevron>
+                        </TaskSelectTrigger>
+                        <TaskFloatingLabel>Assignee</TaskFloatingLabel>
+                        {taskSelect === "assignee" ? (
+                          <TaskSelectMenu role="listbox" aria-label="Assignee">
+                            {availableStaff.map((member) => (
+                              <TaskSelectOption
+                                key={member.id}
+                                type="button"
+                                role="option"
+                                aria-selected={newTaskAssigneeId === member.id}
+                                $active={newTaskAssigneeId === member.id}
+                                onClick={() => {
+                                  setNewTaskAssigneeId(member.id);
+                                  setTaskSelect(null);
+                                }}
+                              >
+                                {member.name}
+                              </TaskSelectOption>
+                            ))}
+                          </TaskSelectMenu>
+                        ) : null}
+                      </TaskFloatingSelect>
+                    </TaskModalField>
 
-                <TaskModalField>
-                  <CustomDatePicker
-                    label="Due date"
-                    value={newTaskDueDate}
-                    onChange={setNewTaskDueDate}
-                  />
-                </TaskModalField>
+                    <TaskModalField>
+                      <TaskFloatingSelect $filled $open={taskSelect === "status"}>
+                        <TaskSelectTrigger
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={taskSelect === "status"}
+                          onClick={() => setTaskSelect((current) => (current === "status" ? null : "status"))}
+                        >
+                          <TaskSelectValue>{getTaskStatusLabel(newTaskStatus)}</TaskSelectValue>
+                          <TaskSelectChevron $open={taskSelect === "status"}>
+                            <IconChevronDown />
+                          </TaskSelectChevron>
+                        </TaskSelectTrigger>
+                        <TaskFloatingLabel>Status</TaskFloatingLabel>
+                        {taskSelect === "status" ? (
+                          <TaskSelectMenu role="listbox" aria-label="Status">
+                            {(["todo", "in_progress", "done"] as TaskStatus[]).map((option) => (
+                              <TaskSelectOption
+                                key={option}
+                                type="button"
+                                role="option"
+                                aria-selected={newTaskStatus === option}
+                                $active={newTaskStatus === option}
+                                onClick={() => {
+                                  setNewTaskStatus(option);
+                                  setTaskSelect(null);
+                                }}
+                              >
+                                {getTaskStatusLabel(option)}
+                              </TaskSelectOption>
+                            ))}
+                          </TaskSelectMenu>
+                        ) : null}
+                      </TaskFloatingSelect>
+                    </TaskModalField>
+
+                    <TaskModalField>
+                      <CustomDatePicker
+                        label="Due date"
+                        value={newTaskDueDate}
+                        onChange={setNewTaskDueDate}
+                      />
+                    </TaskModalField>
+                  </>
+                ) : null}
               </TaskModalGrid>
-              <PriorityField>
-                <MetaLabel>Priority</MetaLabel>
-                <PriorityChips>
-                  {(["high", "medium", "low"] as TaskPriority[]).map((priority) => (
-                    <PriorityChip
-                      key={priority}
-                      type="button"
-                      $tone={priority}
-                      $active={newTaskPriority === priority}
-                      onClick={() => setNewTaskPriority(priority)}
-                    >
-                      {formatLabel(priority)}
-                    </PriorityChip>
-                  ))}
-                </PriorityChips>
-              </PriorityField>
-              <button className="primary-button" type="submit" disabled={isCreatingTask}>
+              {selectedProject ? (
+                <PriorityField>
+                  <MetaLabel>Priority</MetaLabel>
+                  <PriorityChips>
+                    {(["high", "medium", "low"] as TaskPriority[]).map((priority) => (
+                      <PriorityChip
+                        key={priority}
+                        type="button"
+                        $tone={priority}
+                        $active={newTaskPriority === priority}
+                        onClick={() => setNewTaskPriority(priority)}
+                      >
+                        {formatLabel(priority)}
+                      </PriorityChip>
+                    ))}
+                  </PriorityChips>
+                </PriorityField>
+              ) : null}
+              {createTaskError ? <InlineError>{createTaskError}</InlineError> : null}
+              <button className="primary-button" type="submit" disabled={isCreatingTask || !selectedProject}>
                 {isCreatingTask ? "Creating..." : "Add task"}
               </button>
             </InlineForm>
@@ -863,7 +987,7 @@ export function TasksScreen() {
             </SearchButton>
           </SearchControls>
 
-          {canManage ? (
+          {canManage && hasAvailableTaskProjects ? (
             <CreateButton type="button" onClick={openCreateTaskModal}>
               <ActionIcon>
                 <IconPlus />
@@ -2097,11 +2221,15 @@ const ModalBackdrop = styled.div`
   inset: 0;
   z-index: 95;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   padding: 20px;
   background: rgba(28, 29, 28, 0.36);
   backdrop-filter: blur(8px);
+
+  @media (max-width: 767px) {
+    align-items: flex-start;
+  }
 `;
 
 const PopupLoadingOverlay = styled.div`
@@ -2276,6 +2404,28 @@ const TaskSelectValue = styled.span`
   line-height: 1.2;
 `;
 
+const TaskSelectValueRow = styled.span`
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+`;
+
+const TaskOrganizationLogo = styled(ClientTitleLogo)`
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  object-fit: cover;
+  overflow: hidden;
+  flex: 0 0 24px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
+  color: #8c7040;
+  font-size: 0.7rem;
+  font-weight: 700;
+`;
+
 const TaskSelectChevron = styled.span<{ $open?: boolean }>`
   display: inline-flex;
   align-items: center;
@@ -2316,6 +2466,51 @@ const TaskSelectOption = styled.button<{ $active?: boolean }>`
   font-size: 0.94rem;
   font-weight: ${({ $active }) => ($active ? 600 : 500)};
   text-align: left;
+`;
+
+const TaskOrganizationOptionRow = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+`;
+
+const TaskEmptyState = styled.div`
+  ${cardSurface}
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+
+  strong {
+    font-size: 0.92rem;
+  }
+
+  p {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+`;
+
+const TaskEmptyActionRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+`;
+
+const TaskCreateProjectLink = styled(Link)`
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--client-brand-primary, var(--color-primary));
+  color: var(--client-brand-on-primary, #fff);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
 `;
 
 const PriorityField = styled.div`

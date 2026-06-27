@@ -106,12 +106,12 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
 
       const submittedLabels = relatedSubmittedSnapshots.map((snapshot) => snapshot.label);
 
-      const isCurrent = sameTaskCompletionAssets(
+      const isCurrentSnapshot = sameTaskCompletionAssets(
         completionState.currentAssets,
         internalSnapshot.assets,
       );
 
-      const suffixParts = [...submittedLabels, isCurrent ? "Current" : null].filter(Boolean);
+      const suffixParts = [...submittedLabels].filter(Boolean);
 
       return {
         id: internalSnapshot.id,
@@ -120,7 +120,8 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
             ? `${internalSnapshot.label} (${suffixParts.join(", ")})`
             : internalSnapshot.label,
         assets: internalSnapshot.assets,
-        isCurrent,
+        isCurrent: false,
+        isCurrentSnapshot,
         createdAt: internalSnapshot.createdAt,
       };
     });
@@ -128,23 +129,22 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
     const orphanSubmittedOptions = submittedSnapshots
       .filter((submittedSnapshot) => !matchedSubmittedIds.has(submittedSnapshot.id))
       .map((submittedSnapshot) => {
-        const isCurrent = sameTaskCompletionAssets(
+        const isCurrentSnapshot = sameTaskCompletionAssets(
           completionState.currentAssets,
           submittedSnapshot.assets,
         );
 
         return {
           id: submittedSnapshot.id,
-          label: isCurrent
-            ? `${submittedSnapshot.label} (Current)`
-            : submittedSnapshot.label,
+          label: submittedSnapshot.label,
           assets: submittedSnapshot.assets,
-          isCurrent,
+          isCurrent: false,
+          isCurrentSnapshot,
           createdAt: submittedSnapshot.createdAt,
         };
       });
 
-    return [...internalOptions, ...orphanSubmittedOptions].sort((a, b) => {
+    const historicalOptions = [...internalOptions, ...orphanSubmittedOptions].sort((a, b) => {
       const left = new Date(a.createdAt).getTime();
       const right = new Date(b.createdAt).getTime();
 
@@ -154,7 +154,22 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
 
       return left - right;
     });
-  }, [completionState]);    
+
+    const currentOption = {
+      id: "current",
+      label: `${getCurrentTaskCompletionLabel(completionState)} (Current)`,
+      assets: currentVersionAssets,
+      isCurrent: true,
+      createdAt: "",
+    };
+
+    return [
+      currentOption,
+      ...historicalOptions
+        .filter((option) => !option.isCurrentSnapshot)
+        .map(({ isCurrentSnapshot: _isCurrentSnapshot, ...option }) => option),
+    ];
+  }, [completionState, currentVersionAssets]);
   const selectedVersion =
     versionOptions.find((option) => option.id === selectedVersionId) ?? versionOptions[0] ?? null;
 
@@ -166,7 +181,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
 
     const exists = versionOptions.some((o) => o.id === selectedVersionId);
     if (!exists) {
-      setSelectedVersionId(versionOptions[0]?.id ?? "current");
+      setSelectedVersionId("current");
     }
   }, [versionOptions, selectedVersionId]);
   const displayedAssets = useMemo(() => selectedVersion?.assets ?? [], [selectedVersion]);
@@ -183,7 +198,10 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
     [displayedAssets],
   );
   const canManagerReview =
-    task?.status === "done" && task.managerReviewStatus === "internal" && currentVersionAssets.length > 0;
+    task?.status === "done" &&
+    task.managerReviewStatus === "internal" &&
+    currentVersionAssets.length > 0 &&
+    (selectedVersion?.isCurrent ?? false);
   const availableStaff = useMemo(
     () => state.users.filter((candidate) => candidate.role !== "client"),
     [state.users],
@@ -200,6 +218,37 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
     ? availableStaff.find((member) => member.id === task.assigneeId) ?? null
     : null;
   const assigneeDetail = [taskAssignee?.name ?? "Unassigned", taskAssignee?.phone ?? ""].filter(Boolean).join(" · ");
+  const designerTaskFeedbackEntries = useMemo(
+    () =>
+      task && project
+        ? [
+            ...project.feedback
+              .filter((item) => item.taskId === task.id)
+              .map((item) => ({
+                id: item.id,
+                source:
+                  state.users.find((candidate) => candidate.id === item.authorId)?.role === "client"
+                    ? ("client" as const)
+                    : ("internal" as const),
+                author: state.users.find((candidate) => candidate.id === item.authorId)?.name ?? "Team member",
+                body: item.body,
+                createdAt: item.createdAt,
+                rating: item.rating,
+              })),
+            ...project.comments
+              .filter((comment) => comment.internalOnly && comment.taskId === task.id)
+              .map((comment) => ({
+                id: comment.id,
+                source: "internal" as const,
+                author: state.users.find((candidate) => candidate.id === comment.authorId)?.name ?? "Team member",
+                body: comment.body,
+                createdAt: comment.createdAt,
+                rating: null,
+              })),
+          ].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        : [],
+    [project, state.users, task],
+  );
 
   useEffect(() => {
     if (!task || !project) {
@@ -412,6 +461,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
                 status: task.status,
                 completionScreenshotUrl: task.completionScreenshotUrl ?? null,
                 managerReviewStatus: task.managerReviewStatus,
+                feedbackEntries: designerTaskFeedbackEntries,
               }
             : null
         }

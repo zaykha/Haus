@@ -6,6 +6,7 @@ import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ClientOrganizationDetailScreen } from "@/components/client-organization-detail-screen";
+import { ClientTitleLogo } from "@/components/client-title-logo";
 import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DashboardScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
@@ -26,6 +27,14 @@ type EnrichedTask = {
   projectId: string;
   projectName: string;
   dueDate: string;
+  feedbackEntries?: {
+    id: string;
+    source: "internal" | "client";
+    author: string;
+    body: string;
+    createdAt: string;
+    rating?: number | null;
+  }[];
 };
 
 type FeedbackRow = {
@@ -33,6 +42,7 @@ type FeedbackRow = {
   projectId: string;
   projectName: string;
   clientName: string;
+  organization?: { name: string; logoUrl?: string } | null;
   body: string;
   action: FeedbackAction;
   createdAt: string;
@@ -40,6 +50,7 @@ type FeedbackRow = {
 
 type ActivityRow = {
   id: string;
+  actorId?: string | null;
   actor: string;
   detail: string;
   projectName: string;
@@ -108,6 +119,17 @@ function getProjectMark(project: Project) {
   }
 
   return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
+}
+
+function getProjectOrganization(
+  project: Pick<Project, "clientOrganizationId" | "contactPerson">,
+  clientOrganizations: Array<{ id: string; name: string; logoUrl?: string }>,
+) {
+  if (project.clientOrganizationId) {
+    return clientOrganizations.find((organization) => organization.id === project.clientOrganizationId) ?? null;
+  }
+
+  return project.contactPerson ? { name: project.contactPerson, logoUrl: undefined } : null;
 }
 
 function isOnHoldProject(project: Pick<Project, "status" | "stage">) {
@@ -184,6 +206,7 @@ export function DashboardScreen() {
   const [tasksPage, setTasksPage] = useState(1);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [createTaskError, setCreateTaskError] = useState("");
   const [taskSelect, setTaskSelect] = useState<"organization" | "project" | "assignee" | "status" | null>(null);
   const [newTaskOrganizationId, setNewTaskOrganizationId] = useState("");
   const [newTaskProjectId, setNewTaskProjectId] = useState("");
@@ -192,6 +215,8 @@ export function DashboardScreen() {
   const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus>("todo");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
+  const [showRecentFeedbackModal, setShowRecentFeedbackModal] = useState(false);
+  const [showTeamActivityModal, setShowTeamActivityModal] = useState(false);
 
   const safeUser = user;
   const { activeClientOrganizationId } = useActiveClientOrganization(safeUser, state.clientOrganizations);
@@ -231,27 +256,28 @@ export function DashboardScreen() {
   }, [organizationNames, visibleProjects]);
 
   const availableProjects = visibleProjects;
+  const hasAvailableTaskProjects = availableProjects.length > 0;
   const availableStaff = state.users.filter((candidate) => candidate.role !== "client");
   const availableTaskOrganizations = useMemo(() => {
-    const entries = new Map<string, { id: string; name: string }>();
+    const entries = new Map<string, { id: string; name: string; logoUrl?: string }>();
 
-    availableProjects.forEach((project) => {
-      if (project.clientOrganizationId) {
-        entries.set(project.clientOrganizationId, {
-          id: project.clientOrganizationId,
-          name: organizationNames.get(project.clientOrganizationId) ?? project.contactPerson ?? "Unnamed organization",
-        });
-        return;
-      }
+    state.clientOrganizations.forEach((organization) => {
+      entries.set(organization.id, {
+        id: organization.id,
+        name: organization.name,
+        logoUrl: organization.logoUrl?.trim() || undefined,
+      });
+    });
 
+    if (availableProjects.some((project) => !project.clientOrganizationId)) {
       entries.set("__unassigned__", {
         id: "__unassigned__",
         name: "Unassigned client",
       });
-    });
+    }
 
     return Array.from(entries.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [availableProjects, organizationNames]);
+  }, [availableProjects, state.clientOrganizations]);
   const filteredTaskProjects = useMemo(
     () =>
       availableProjects.filter((project) =>
@@ -263,6 +289,10 @@ export function DashboardScreen() {
   );
   const selectedProject =
     filteredTaskProjects.find((project) => project.id === newTaskProjectId) ?? null;
+  const selectedTaskOrganization =
+    availableTaskOrganizations.find((organization) => organization.id === newTaskOrganizationId) ?? null;
+  const hasProjectsForSelectedOrganization =
+    newTaskOrganizationId.length > 0 && filteredTaskProjects.length > 0;
 
   const openTasks = useMemo<EnrichedTask[]>(
     () => {
@@ -281,10 +311,54 @@ export function DashboardScreen() {
             projectId: project.id,
             projectName: project.name,
             dueDate: task.dueDate ?? project.dueDate,
+            feedbackEntries: [
+              ...project.feedback
+                .filter((item) => item.taskId === task.id)
+                .map((item) => ({
+                  id: item.id,
+                  source:
+                    state.users.find((candidate) => candidate.id === item.authorId)?.role === "client"
+                      ? ("client" as const)
+                      : ("internal" as const),
+                  author:
+                    state.users.find((candidate) => candidate.id === item.authorId)?.name ??
+                    (state.users.find((candidate) => candidate.id === item.authorId)?.role === "client"
+                      ? "Client"
+                      : "Team member"),
+                  body: item.body,
+                  createdAt: item.createdAt,
+                  rating: item.rating,
+                })),
+              ...project.comments
+                .filter((comment) => comment.internalOnly && comment.taskId === task.id)
+                .map((comment) => ({
+                  id: comment.id,
+                  source: "internal" as const,
+                  author: userNames.get(comment.authorId) ?? "Team member",
+                  body: comment.body,
+                  createdAt: comment.createdAt,
+                  rating: null,
+                })),
+            ].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
           })),
       );
     },
-    [isDesigner, projectRows, user],
+    [isDesigner, projectRows, state.users, user, userNames],
+  );
+  const designerFeedbackRows = useMemo(
+    () =>
+      openTasks
+        .flatMap((task) =>
+          (task.feedbackEntries ?? []).map((entry) => ({
+            ...entry,
+            taskId: task.id,
+            taskTitle: task.title,
+            projectId: task.projectId,
+            projectName: task.projectName,
+          })),
+        )
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+    [openTasks],
   );
 
 
@@ -297,13 +371,14 @@ export function DashboardScreen() {
             projectId: project.id,
             projectName: project.name,
             clientName: getClientOrganizationName(project, organizationNames),
+            organization: getProjectOrganization(project, state.clientOrganizations),
             body: feedback.body,
             action: feedback.action,
             createdAt: feedback.createdAt,
           })),
         )
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [organizationNames, projectRows],
+    [organizationNames, projectRows, state.clientOrganizations],
   );
 
   const activityRows = useMemo<ActivityRow[]>(
@@ -312,6 +387,7 @@ export function DashboardScreen() {
         .flatMap((project) =>
           project.activities.map((activity) => ({
             id: activity.id,
+            actorId: activity.actorId,
             actor: activity.actorId ? (userNames.get(activity.actorId) ?? "Team member") : "System",
             detail: activity.message,
             projectName: project.name,
@@ -426,6 +502,7 @@ export function DashboardScreen() {
     setNewTaskDueDate("");
     setNewTaskPriority("medium");
     setTaskSelect(null);
+    setCreateTaskError("");
     setShowCreateTaskModal(true);
   };
 
@@ -436,6 +513,7 @@ export function DashboardScreen() {
     }
 
     setIsCreatingTask(true);
+    setCreateTaskError("");
 
     try {
       await createTask(selectedProject.id, {
@@ -446,6 +524,8 @@ export function DashboardScreen() {
         priority: newTaskPriority,
       });
       setShowCreateTaskModal(false);
+    } catch (nextError) {
+      setCreateTaskError(nextError instanceof Error ? nextError.message : "Unable to create task.");
     } finally {
       setIsCreatingTask(false);
     }
@@ -454,7 +534,7 @@ export function DashboardScreen() {
   const clientHomeOrganizationId = safeUser?.role === "client" ? activeClientOrganizationId : null;
 
   if (!ready) {
-    return <DashboardScreenSkeleton />;
+    return <DashboardScreenSkeleton variant={safeUser?.role === "client" ? "client" : "manager"} />;
   }
 
   if (safeUser?.role === "client" && clientHomeOrganizationId) {
@@ -475,6 +555,91 @@ export function DashboardScreen() {
             <p>Creating task...</p>
           </div>
         </div>
+      ) : null}
+
+      {showRecentFeedbackModal ? (
+        <ModalBackdrop onClick={() => setShowRecentFeedbackModal(false)}>
+          <ScrollableModalCard onClick={(event) => event.stopPropagation()}>
+            <ModalHeader>
+              <div>
+                <ModalTitle>Recent Client Feedback</ModalTitle>
+                <ModalDescription>Browse the full list of feedback across visible projects.</ModalDescription>
+              </div>
+              <ModalClose type="button" onClick={() => setShowRecentFeedbackModal(false)} aria-label="Close">
+                <IconClose />
+              </ModalClose>
+            </ModalHeader>
+            <ScrollableModalBody>
+              <FeedbackList>
+                {feedbackRows.length ? (
+                  feedbackRows.map((feedback) => {
+                    const tone = getFeedbackTone(feedback.action);
+                    return (
+                      <FeedbackRowCard key={feedback.id}>
+                        <FeedbackLogo organization={feedback.organization ?? null} />
+                        <FeedbackCopy>
+                          <FeedbackBody>{feedback.body}</FeedbackBody>
+                          <FeedbackProject>{feedback.projectName}</FeedbackProject>
+                        </FeedbackCopy>
+                        <StatusPill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</StatusPill>
+                      </FeedbackRowCard>
+                    );
+                  })
+                ) : (
+                  <EmptyBlock>
+                    <strong>No feedback yet</strong>
+                    <p>Client feedback will appear here once comments start coming in.</p>
+                  </EmptyBlock>
+                )}
+              </FeedbackList>
+            </ScrollableModalBody>
+          </ScrollableModalCard>
+        </ModalBackdrop>
+      ) : null}
+
+      {showTeamActivityModal ? (
+        <ModalBackdrop onClick={() => setShowTeamActivityModal(false)}>
+          <ScrollableModalCard onClick={(event) => event.stopPropagation()}>
+            <ModalHeader>
+              <div>
+                <ModalTitle>Team Activity</ModalTitle>
+                <ModalDescription>Browse the full list of recent team activity.</ModalDescription>
+              </div>
+              <ModalClose type="button" onClick={() => setShowTeamActivityModal(false)} aria-label="Close">
+                <IconClose />
+              </ModalClose>
+            </ModalHeader>
+            <ScrollableModalBody>
+              <ActivityList>
+                {activityRows.length ? (
+                  activityRows.map((item) => (
+                    <ActivityRowCard key={item.id}>
+                      {item.actorId ? (
+                        <ActivityUserAvatar
+                          user={state.users.find((candidate) => candidate.id === item.actorId) ?? { name: item.actor, avatarPath: null }}
+                        />
+                      ) : (
+                        <SystemAvatar>S</SystemAvatar>
+                      )}
+                      <FeedbackCopy>
+                        <FeedbackBody>
+                          {item.actor} {item.detail}
+                        </FeedbackBody>
+                        <FeedbackProject>{item.projectName}</FeedbackProject>
+                      </FeedbackCopy>
+                      <ActivityTime>{timeAgo(item.createdAt)}</ActivityTime>
+                    </ActivityRowCard>
+                  ))
+                ) : (
+                  <EmptyBlock>
+                    <strong>No recent activity</strong>
+                    <p>File uploads, comments, and feedback updates will appear here.</p>
+                  </EmptyBlock>
+                )}
+              </ActivityList>
+            </ScrollableModalBody>
+          </ScrollableModalCard>
+        </ModalBackdrop>
       ) : null}
 
       {showCreateTaskModal && canManage ? (
@@ -502,10 +667,19 @@ export function DashboardScreen() {
                       aria-expanded={taskSelect === "organization"}
                       onClick={() => setTaskSelect((current) => (current === "organization" ? null : "organization"))}
                     >
-                      <TaskSelectValue>
-                        {availableTaskOrganizations.find((organization) => organization.id === newTaskOrganizationId)?.name ??
-                          "Select organization"}
-                      </TaskSelectValue>
+                      <TaskSelectValueRow>
+                        {selectedTaskOrganization ? (
+                          <TaskOrganizationLogo
+                            organization={{
+                              name: selectedTaskOrganization.name,
+                              logoUrl: selectedTaskOrganization.logoUrl,
+                            }}
+                          />
+                        ) : null}
+                        <TaskSelectValue>
+                          {selectedTaskOrganization?.name ?? "Select organization"}
+                        </TaskSelectValue>
+                      </TaskSelectValueRow>
                       <TaskSelectChevron $open={taskSelect === "organization"}>
                         <IconChevronDown />
                       </TaskSelectChevron>
@@ -523,11 +697,16 @@ export function DashboardScreen() {
                             onClick={() => {
                               setNewTaskOrganizationId(organization.id);
                               setNewTaskProjectId("");
+                              setNewTaskAssigneeId("");
+                              setNewTaskTitle("");
                               setNewTaskDueDate("");
                               setTaskSelect(null);
                             }}
                           >
-                            {organization.name}
+                            <TaskOrganizationOptionRow>
+                              <TaskOrganizationLogo organization={{ name: organization.name, logoUrl: organization.logoUrl }} />
+                              <span>{organization.name}</span>
+                            </TaskOrganizationOptionRow>
                           </TaskSelectOption>
                         ))}
                       </TaskSelectMenu>
@@ -536,42 +715,58 @@ export function DashboardScreen() {
                 </TaskModalField>
 
                 {newTaskOrganizationId ? (
-                  <TaskModalField>
-                    <TaskFloatingSelect $filled={Boolean(selectedProject)} $open={taskSelect === "project"}>
-                      <TaskSelectTrigger
-                        type="button"
-                        aria-haspopup="listbox"
-                        aria-expanded={taskSelect === "project"}
-                        onClick={() => setTaskSelect((current) => (current === "project" ? null : "project"))}
-                      >
-                        <TaskSelectValue>{selectedProject?.name ?? "Select project"}</TaskSelectValue>
-                        <TaskSelectChevron $open={taskSelect === "project"}>
-                          <IconChevronDown />
-                        </TaskSelectChevron>
-                      </TaskSelectTrigger>
-                      <TaskFloatingLabel>Project</TaskFloatingLabel>
-                      {taskSelect === "project" ? (
-                        <TaskSelectMenu role="listbox" aria-label="Project">
-                          {filteredTaskProjects.map((project) => (
-                            <TaskSelectOption
-                              key={project.id}
-                              type="button"
-                              role="option"
-                              aria-selected={newTaskProjectId === project.id}
-                              $active={newTaskProjectId === project.id}
-                              onClick={() => {
-                                setNewTaskProjectId(project.id);
-                                setNewTaskDueDate(project.dueDate);
-                                setTaskSelect(null);
-                              }}
-                            >
-                              {project.name}
-                            </TaskSelectOption>
-                          ))}
-                        </TaskSelectMenu>
-                      ) : null}
-                    </TaskFloatingSelect>
-                  </TaskModalField>
+                  hasProjectsForSelectedOrganization ? (
+                    <TaskModalField>
+                      <TaskFloatingSelect $filled={Boolean(selectedProject)} $open={taskSelect === "project"}>
+                        <TaskSelectTrigger
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={taskSelect === "project"}
+                          onClick={() => setTaskSelect((current) => (current === "project" ? null : "project"))}
+                        >
+                          <TaskSelectValue>{selectedProject?.name ?? "Select project"}</TaskSelectValue>
+                          <TaskSelectChevron $open={taskSelect === "project"}>
+                            <IconChevronDown />
+                          </TaskSelectChevron>
+                        </TaskSelectTrigger>
+                        <TaskFloatingLabel>Project</TaskFloatingLabel>
+                        {taskSelect === "project" ? (
+                          <TaskSelectMenu role="listbox" aria-label="Project">
+                            {filteredTaskProjects.map((project) => (
+                              <TaskSelectOption
+                                key={project.id}
+                                type="button"
+                                role="option"
+                                aria-selected={newTaskProjectId === project.id}
+                                $active={newTaskProjectId === project.id}
+                                onClick={() => {
+                                  setNewTaskProjectId(project.id);
+                                  setNewTaskDueDate(project.dueDate);
+                                  setTaskSelect(null);
+                                }}
+                              >
+                                {project.name}
+                              </TaskSelectOption>
+                            ))}
+                          </TaskSelectMenu>
+                        ) : null}
+                      </TaskFloatingSelect>
+                    </TaskModalField>
+                  ) : (
+                    <TaskModalField $wide>
+                      <TaskEmptyState>
+                        <strong>No projects in this organization yet</strong>
+                        <p>Create a project first before assigning tasks to this organization.</p>
+                        <TaskEmptyActionRow>
+                          {newTaskOrganizationId !== "__unassigned__" ? (
+                            <TaskCreateProjectLink href={`/projects/new?clientOrganizationId=${newTaskOrganizationId}`}>
+                              Create project
+                            </TaskCreateProjectLink>
+                          ) : null}
+                        </TaskEmptyActionRow>
+                      </TaskEmptyState>
+                    </TaskModalField>
+                  )
                 ) : null}
 
                 {selectedProject ? (
@@ -690,6 +885,7 @@ export function DashboardScreen() {
                   </PriorityChips>
                 </PriorityField>
               ) : null}
+              {createTaskError ? <InlineError>{createTaskError}</InlineError> : null}
               <button className="primary-button" type="submit" disabled={isCreatingTask || !selectedProject}>
                 {isCreatingTask ? "Creating..." : "Add task"}
               </button>
@@ -806,7 +1002,7 @@ export function DashboardScreen() {
                 mobileProjects.map((project) => {
                   return (
                     <MobileProjectRow key={project.id} href={`/projects/${project.id}`}>
-                      <ProjectMark>{getProjectMark(project)}</ProjectMark>
+                      <ProjectMark organization={getProjectOrganization(project, state.clientOrganizations)} />
                       <ProjectBody>
                         <MobileProjectHeader>
                           <div>
@@ -877,11 +1073,48 @@ export function DashboardScreen() {
             </TaskList>
           </Panel>
 
+          {isDesigner ? (
+            <Panel>
+              <PanelHeader>
+                <PanelTitle>Feedback</PanelTitle>
+                <PanelLink href="/tasks">View all</PanelLink>
+              </PanelHeader>
+              <FeedbackList>
+                {designerFeedbackRows.length ? (
+                  designerFeedbackRows.slice(0, 3).map((feedback) => (
+                    <FeedbackRowCard key={feedback.id}>
+                      <FeedbackAvatar>{feedback.author.slice(0, 2).toUpperCase()}</FeedbackAvatar>
+                      <FeedbackCopy>
+                        <FeedbackBody>{feedback.body}</FeedbackBody>
+                        <FeedbackProject>{feedback.taskTitle} · {feedback.projectName}</FeedbackProject>
+                      </FeedbackCopy>
+                      <StatusPill
+                        style={{
+                          background: feedback.source === "client" ? "var(--color-warning-soft)" : "var(--color-info-soft)",
+                          color: feedback.source === "client" ? "var(--color-warning)" : "var(--color-info)",
+                        }}
+                      >
+                        {feedback.source === "client" ? "Client" : "Internal"}
+                      </StatusPill>
+                    </FeedbackRowCard>
+                  ))
+                ) : (
+                  <EmptyBlock>
+                    <strong>No feedback yet</strong>
+                    <p>Manager and client feedback on your tasks will appear here.</p>
+                  </EmptyBlock>
+                )}
+              </FeedbackList>
+            </Panel>
+          ) : null}
+
           {!isDesigner ? (
             <Panel>
               <PanelHeader>
                 <PanelTitle>Recent Feedback</PanelTitle>
-                <PanelLink href="/projects">View all</PanelLink>
+                <PanelActionButton type="button" onClick={() => setShowRecentFeedbackModal(true)}>
+                  View all
+                </PanelActionButton>
               </PanelHeader>
               <FeedbackList>
                 {recentFeedback.length ? (
@@ -889,7 +1122,7 @@ export function DashboardScreen() {
                     const tone = getFeedbackTone(feedback.action);
                     return (
                       <FeedbackRowCard key={feedback.id}>
-                        <FeedbackAvatar>{feedback.clientName.slice(0, 2).toUpperCase()}</FeedbackAvatar>
+                        <FeedbackLogo organization={feedback.organization ?? null} />
                         <FeedbackCopy>
                           <FeedbackBody>{feedback.body}</FeedbackBody>
                           <FeedbackProject>{feedback.projectName}</FeedbackProject>
@@ -951,13 +1184,21 @@ export function DashboardScreen() {
             <Panel>
               <PanelHeader>
                 <PanelTitle>Team Activity</PanelTitle>
-                <PanelLink href="/team">View all</PanelLink>
+                <PanelActionButton type="button" onClick={() => setShowTeamActivityModal(true)}>
+                  View all
+                </PanelActionButton>
               </PanelHeader>
               <ActivityList>
                 {recentActivity.length ? (
                   recentActivity.slice(0, 3).map((item) => (
                     <ActivityRowCard key={item.id}>
-                      <FeedbackAvatar>{item.actor.slice(0, 1).toUpperCase()}</FeedbackAvatar>
+                      {item.actorId ? (
+                        <ActivityUserAvatar
+                          user={state.users.find((candidate) => candidate.id === item.actorId) ?? { name: item.actor, avatarPath: null }}
+                        />
+                      ) : (
+                        <SystemAvatar>S</SystemAvatar>
+                      )}
                       <FeedbackCopy>
                         <FeedbackBody>
                           {item.actor} {item.detail}
@@ -990,12 +1231,14 @@ export function DashboardScreen() {
                   </ActionIcon>
                   <span>Create Project</span>
                 </ActionLink>
-                <ActionButton type="button" onClick={openCreateTaskModal}>
-                  <ActionIcon>
-                    <IconCheckCircle />
-                  </ActionIcon>
-                  <span>Add Task</span>
-                </ActionButton>
+                {hasAvailableTaskProjects ? (
+                  <ActionButton type="button" onClick={openCreateTaskModal}>
+                    <ActionIcon>
+                      <IconCheckCircle />
+                    </ActionIcon>
+                    <span>Add Task</span>
+                  </ActionButton>
+                ) : null}
                 <ActionLink href="/clients">
                   <ActionIcon>
                     <IconFolder />
@@ -1033,7 +1276,7 @@ export function DashboardScreen() {
                     const tone = getStatusTone(project.status);
                     return (
                       <ProjectRow key={project.id} href={`/projects/${project.id}`}>
-                        <ProjectMark>{getProjectMark(project)}</ProjectMark>
+                        <ProjectMark organization={getProjectOrganization(project, state.clientOrganizations)} />
                         <ProjectBody>
                           <ProjectTop>
                             <ProjectTitle>{project.name}</ProjectTitle>
@@ -1150,6 +1393,41 @@ export function DashboardScreen() {
                 </PanelPagination>
               ) : null}
             </Panel>
+
+            {isDesigner ? (
+              <Panel>
+                <PanelHeader>
+                  <PanelTitle>Feedback</PanelTitle>
+                  <PanelLink href="/tasks">View all</PanelLink>
+                </PanelHeader>
+                <FeedbackList>
+                  {designerFeedbackRows.length ? (
+                    designerFeedbackRows.slice(0, 3).map((feedback) => (
+                      <FeedbackRowCard key={feedback.id}>
+                        <FeedbackAvatar>{feedback.author.slice(0, 2).toUpperCase()}</FeedbackAvatar>
+                        <FeedbackCopy>
+                          <FeedbackBody>{feedback.body}</FeedbackBody>
+                          <FeedbackProject>{feedback.taskTitle} · {feedback.projectName}</FeedbackProject>
+                        </FeedbackCopy>
+                        <StatusPill
+                          style={{
+                            background: feedback.source === "client" ? "var(--color-warning-soft)" : "var(--color-info-soft)",
+                            color: feedback.source === "client" ? "var(--color-warning)" : "var(--color-info)",
+                          }}
+                        >
+                          {feedback.source === "client" ? "Client" : "Internal"}
+                        </StatusPill>
+                      </FeedbackRowCard>
+                    ))
+                  ) : (
+                    <EmptyBlock>
+                      <strong>No feedback yet</strong>
+                      <p>Manager and client feedback on your tasks will appear here.</p>
+                    </EmptyBlock>
+                  )}
+                </FeedbackList>
+              </Panel>
+            ) : null}
           </TopGrid>
 
           {isDesigner || isClient ? null : (
@@ -1225,7 +1503,9 @@ export function DashboardScreen() {
                 <DesktopOnlyPanel>
                   <PanelHeader>
                     <PanelTitle>Recent Client Feedback</PanelTitle>
-                    <PanelLink href="/projects">View all</PanelLink>
+                    <PanelActionButton type="button" onClick={() => setShowRecentFeedbackModal(true)}>
+                      View all
+                    </PanelActionButton>
                   </PanelHeader>
                   <FeedbackList>
                     {recentFeedback.length ? (
@@ -1233,7 +1513,7 @@ export function DashboardScreen() {
                         const tone = getFeedbackTone(feedback.action);
                         return (
                           <FeedbackRowCard key={feedback.id}>
-                            <FeedbackAvatar>{feedback.clientName.slice(0, 2).toUpperCase()}</FeedbackAvatar>
+                            <FeedbackLogo organization={feedback.organization ?? null} />
                             <FeedbackCopy>
                               <FeedbackBody>{feedback.body}</FeedbackBody>
                               <FeedbackProject>{feedback.projectName}</FeedbackProject>
@@ -1254,13 +1534,21 @@ export function DashboardScreen() {
                 <Panel>
                   <PanelHeader>
                     <PanelTitle>Team Activity</PanelTitle>
-                    <PanelLink href="/team">View all</PanelLink>
+                    <PanelActionButton type="button" onClick={() => setShowTeamActivityModal(true)}>
+                      View all
+                    </PanelActionButton>
                   </PanelHeader>
                   <ActivityList>
                     {recentActivity.length ? (
                       recentActivity.map((item) => (
                         <ActivityRowCard key={item.id}>
-                          <FeedbackAvatar>{item.actor.slice(0, 1).toUpperCase()}</FeedbackAvatar>
+                          {item.actorId ? (
+                            <ActivityUserAvatar
+                              user={state.users.find((candidate) => candidate.id === item.actorId) ?? { name: item.actor, avatarPath: null }}
+                            />
+                          ) : (
+                            <SystemAvatar>S</SystemAvatar>
+                          )}
                           <FeedbackCopy>
                             <FeedbackBody>
                               {item.actor} {item.detail}
@@ -1291,12 +1579,14 @@ export function DashboardScreen() {
                         </ActionIcon>
                         <span>Create Project</span>
                       </ActionLink>
-                      <ActionButton as="button" type="button" onClick={openCreateTaskModal}>
-                        <ActionIcon>
-                          <IconCheckCircle />
-                        </ActionIcon>
-                        <span>Add Task</span>
-                      </ActionButton>
+                      {hasAvailableTaskProjects ? (
+                        <ActionButton as="button" type="button" onClick={openCreateTaskModal}>
+                          <ActionIcon>
+                            <IconCheckCircle />
+                          </ActionIcon>
+                          <span>Add Task</span>
+                        </ActionButton>
+                      ) : null}
                       <ActionLink href="/clients">
                         <ActionIcon>
                           <IconFolder />
@@ -1923,7 +2213,7 @@ const MobileProjectRow = styled(Link)`
   }
 `;
 
-const ProjectMark = styled.div`
+const ProjectMark = styled(ClientTitleLogo)`
   width: 38px;
   height: 38px;
   border-radius: 12px;
@@ -1933,6 +2223,7 @@ const ProjectMark = styled.div`
   color: #8c7040;
   font-size: 0.95rem;
   font-weight: 600;
+  object-fit: cover;
 
   ${desktop} {
     width: 48px;
@@ -2200,6 +2491,20 @@ const FeedbackAvatar = styled.div`
   font-weight: 700;
 `;
 
+const FeedbackLogo = styled(ClientTitleLogo)`
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  object-fit: cover;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: #f5efe5;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+`;
+
 const FeedbackCopy = styled.div`
   display: grid;
   gap: 2px;
@@ -2235,6 +2540,26 @@ const ActivityTime = styled.span`
   color: var(--color-text-muted);
   font-size: 0.72rem;
   font-weight: 600;
+`;
+
+const ActivityUserAvatar = styled(UserAvatar)`
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex: 0 0 34px;
+`;
+
+const SystemAvatar = styled.div`
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #f5efe5;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
 `;
 
 const ActionList = styled.div`
@@ -2333,6 +2658,11 @@ const ModalCard = styled.section`
   border-radius: 26px;
 `;
 
+const ScrollableModalCard = styled(ModalCard)`
+  width: min(100%, 720px);
+  max-height: 80vh;
+`;
+
 const ModalHeader = styled.div`
   display: flex;
   align-items: flex-start;
@@ -2356,6 +2686,12 @@ const ModalDescription = styled.p`
   }
 `;
 
+const ScrollableModalBody = styled.div`
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+`;
+
 const ModalClose = styled.button`
   width: 40px;
   height: 40px;
@@ -2373,6 +2709,16 @@ const ModalClose = styled.button`
     height: 18px;
     stroke: currentColor;
   }
+`;
+
+const PanelActionButton = styled.button`
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
 `;
 
 const InlineForm = styled.form`
@@ -2487,6 +2833,28 @@ const TaskSelectValue = styled.span`
   line-height: 1.2;
 `;
 
+const TaskSelectValueRow = styled.span`
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+`;
+
+const TaskOrganizationLogo = styled(ClientTitleLogo)`
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  object-fit: cover;
+  overflow: hidden;
+  flex: 0 0 24px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
+  color: #8c7040;
+  font-size: 0.7rem;
+  font-weight: 700;
+`;
+
 const TaskSelectChevron = styled.span<{ $open?: boolean }>`
   display: inline-flex;
   align-items: center;
@@ -2529,6 +2897,51 @@ const TaskSelectOption = styled.button<{ $active?: boolean }>`
   text-align: left;
 `;
 
+const TaskOrganizationOptionRow = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+`;
+
+const TaskEmptyState = styled.div`
+  ${cardSurface}
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+
+  strong {
+    font-size: 0.92rem;
+  }
+
+  p {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+`;
+
+const TaskEmptyActionRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+`;
+
+const TaskCreateProjectLink = styled(Link)`
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--client-brand-primary, var(--color-primary));
+  color: var(--client-brand-on-primary, #fff);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+`;
+
 const PriorityField = styled.div`
   display: flex;
   flex-direction: column;
@@ -2548,6 +2961,12 @@ const PriorityChips = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+`;
+
+const InlineError = styled.p`
+  margin: 0;
+  color: #c45649;
+  font-size: 0.9rem;
 `;
 
 const PriorityChip = styled.button<{ $active?: boolean; $tone: TaskPriority }>`

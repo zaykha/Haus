@@ -64,23 +64,6 @@ function getOrganizationStatusLabel(
   return "Active";
 }
 
-function getClusterMark(label: string) {
-  const words = label
-    .split(/[\s&()/-]+/)
-    .map((word) => word.trim())
-    .filter(Boolean);
-
-  if (words.length === 0) {
-    return "?";
-  }
-
-  if (words.length === 1) {
-    return words[0].slice(0, 1).toUpperCase();
-  }
-
-  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
-}
-
 function getOrganizationClusterItems(names: string[]) {
   const visibleNames = names.slice(0, 4);
   const overflowCount = Math.max(0, names.length - visibleNames.length);
@@ -125,6 +108,10 @@ export function LiaisonsScreen() {
   const canInviteLiaisons = canManage || (viewerRole === "client" && clientOrganizationIds.length > 0);
   const inviteLockedToSingleOrganization = viewerRole === "client" && clientOrganizationIds.length === 1;
   const liaisons = useMemo(() => buildLiaisonRows(state), [state]);
+  const organizationsById = useMemo(
+    () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization])),
+    [state.clientOrganizations],
+  );
   const currentClientOrganization = activeClientOrganization;
   const selectedLiaison = selectedLiaisonId
     ? liaisons.find((liaison) => liaison.id === selectedLiaisonId) ?? null
@@ -669,14 +656,14 @@ export function LiaisonsScreen() {
                   liaison.hasActiveOrganizations,
                   liaison.hasInactiveOrganizations,
                 );
-                const organizationCluster = getOrganizationClusterItems(liaison.clientOrganizationNames);
+                const organizationCluster = getOrganizationClusterItems(liaison.clientOrganizationIds);
                 const liaisonMeta = [liaison.jobTitle, liaison.department].filter(Boolean).join(" · ");
 
                 if (liaison.isUnassigned) {
                   return (
                     <DesktopStaticRow key={liaison.id} type="button" onClick={() => setSelectedLiaisonId(liaison.id)}>
                       <ClientCell>
-                        <ClientMark>{liaison.name.slice(0, 1).toUpperCase()}</ClientMark>
+                        <LiaisonAvatar user={{ name: liaison.name, avatarPath: liaison.avatarPath ?? null }} />
                         <ClientCopy>
                           <ClientName>{liaison.name}</ClientName>
                           <ClientMeta>{liaison.email}</ClientMeta>
@@ -703,7 +690,7 @@ export function LiaisonsScreen() {
                 return (
                   <DesktopStaticRow key={liaison.id} type="button" onClick={() => setSelectedLiaisonId(liaison.id)}>
                     <ClientCell>
-                      <ClientMark>{liaison.name.slice(0, 1).toUpperCase()}</ClientMark>
+                      <LiaisonAvatar user={{ name: liaison.name, avatarPath: liaison.avatarPath ?? null }} />
                       <ClientCopy>
                         <ClientName>{liaison.name}</ClientName>
                         <ClientMeta>{liaison.email}</ClientMeta>
@@ -714,23 +701,20 @@ export function LiaisonsScreen() {
                       <ClientCopy>
                         {organizationCluster.visibleNames.length ? (
                           <OrganizationCluster aria-label={`${liaison.clientOrganizationIds.length} organizations`}>
-                            {organizationCluster.visibleNames.map((organizationName, index) => (
+                            {organizationCluster.visibleNames.map((organizationId, index) => (
                               <OrganizationBubble
-                                key={`${liaison.id}:${organizationName}:${index}`}
+                                key={`${liaison.id}:${organizationId}:${index}`}
                                 $index={index}
-                                title={organizationName}
-                              >
-                                {getClusterMark(organizationName)}
-                              </OrganizationBubble>
+                                organization={organizationsById.get(organizationId) ?? null}
+                              />
                             ))}
                             {organizationCluster.overflowCount > 0 ? (
-                              <OrganizationBubble
+                              <OrganizationOverflowBubble
                                 $index={organizationCluster.visibleNames.length}
-                                $tone="accent"
                                 title={`${organizationCluster.overflowCount} more organizations`}
                               >
                                 +{organizationCluster.overflowCount}
-                              </OrganizationBubble>
+                              </OrganizationOverflowBubble>
                             ) : null}
                           </OrganizationCluster>
                         ) : null}
@@ -799,7 +783,7 @@ export function LiaisonsScreen() {
             paginatedLiaisons.map((liaison) => (
               <MobileStaticCard key={liaison.id} type="button" onClick={() => setSelectedLiaisonId(liaison.id)}>
                 <MobileTop>
-                  <ClientMark>{liaison.name.slice(0, 1).toUpperCase()}</ClientMark>
+                  <LiaisonAvatar user={{ name: liaison.name, avatarPath: liaison.avatarPath ?? null }} />
                   <ClientCopy>
                     <MobileTitleRow>
                       <ClientName>{liaison.name}</ClientName>
@@ -861,7 +845,7 @@ export function LiaisonsScreen() {
               return (
                 <MobileStaticCard key={liaison.id} type="button" onClick={() => setSelectedLiaisonId(liaison.id)}>
                   <MobileTop>
-                    <ClientMark>{liaison.name.slice(0, 1).toUpperCase()}</ClientMark>
+                    <LiaisonAvatar user={{ name: liaison.name, avatarPath: liaison.avatarPath ?? null }} />
                     <ClientCopy>
                       <MobileTitleRow>
                         <ClientName>{liaison.name}</ClientName>
@@ -1584,23 +1568,17 @@ const ClientCell = styled.div`
   gap: 12px;
 `;
 
-const ClientMark = styled.div`
+const LiaisonAvatar = styled(UserAvatar)`
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
-  color: #8c7040;
-  font-size: 0.9rem;
-  font-weight: 700;
   flex: 0 0 40px;
+  overflow: hidden;
 
   ${desktop} {
     width: 48px;
     height: 48px;
     border-radius: 12px;
-    font-size: 1rem;
     flex-basis: 48px;
   }
 `;
@@ -1702,14 +1680,12 @@ const PendingPill = styled(Pill)<{ $active?: boolean }>`
   color: ${({ $active }) => ($active ? "#5ca16d" : "#e06457")};
 `;
 
-const OrganizationBubble = styled.span<{ $index: number; $tone?: "default" | "accent" }>`
+const OrganizationBubble = styled(ClientTitleLogo)<{ $index: number; $tone?: "default" | "accent" }>`
   position: relative;
   z-index: ${({ $index }) => 10 - $index};
   width: 24px;
   height: 24px;
   margin-left: ${({ $index }) => ($index === 0 ? "0" : "-6px")};
-  display: inline-grid;
-  place-items: center;
   border: 1.5px solid rgba(255, 255, 255, 0.96);
   border-radius: 999px;
   background: ${({ $tone }) =>
@@ -1719,6 +1695,8 @@ const OrganizationBubble = styled.span<{ $index: number; $tone?: "default" | "ac
   color: ${({ $tone }) => ($tone === "accent" ? "#fff" : "#8c7040")};
   font-size: 0.64rem;
   font-weight: 700;
+  object-fit: cover;
+  overflow: hidden;
   box-shadow: 0 6px 14px rgba(104, 84, 54, 0.12);
   transition: transform 140ms ease, box-shadow 140ms ease, z-index 140ms ease;
 
@@ -1733,6 +1711,30 @@ const OrganizationBubble = styled.span<{ $index: number; $tone?: "default" | "ac
     z-index: 30;
     transform: translateY(-7px);
     box-shadow: 0 12px 22px rgba(104, 84, 54, 0.2);
+  }
+`;
+
+const OrganizationOverflowBubble = styled.span<{ $index: number }>`
+  position: relative;
+  z-index: ${({ $index }) => 10 - $index};
+  width: 24px;
+  height: 24px;
+  margin-left: ${({ $index }) => ($index === 0 ? "0" : "-6px")};
+  display: inline-grid;
+  place-items: center;
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  border-radius: 999px;
+  background: #1f4339;
+  color: #fff;
+  font-size: 0.64rem;
+  font-weight: 700;
+  box-shadow: 0 6px 14px rgba(104, 84, 54, 0.12);
+
+  ${desktop} {
+    width: 30px;
+    height: 30px;
+    margin-left: ${({ $index }) => ($index === 0 ? "0" : "-8px")};
+    font-size: 0.72rem;
   }
 `;
 

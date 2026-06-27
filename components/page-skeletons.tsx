@@ -4,7 +4,98 @@ import styled, { css, keyframes } from "styled-components";
 
 const desktop = "@media (min-width: 768px)";
 
-export function DashboardScreenSkeleton() {
+export function DashboardScreenSkeleton({
+  variant = "generic",
+}: {
+  variant?: "manager" | "client" | "generic";
+}) {
+  if (variant === "client") {
+    return (
+      <Shell>
+        <Content>
+          <HeaderBlock>
+            <HeaderBrandRow>
+              <LogoBlock />
+              <HeaderCopy>
+                <Line $w="220px" $h="30px" />
+                <PillRow>
+                  <PillStub />
+                  <PillStub />
+                </PillRow>
+              </HeaderCopy>
+            </HeaderBrandRow>
+            <Line $w="280px" $h="14px" />
+          </HeaderBlock>
+
+          <MobileStatsRail>
+            {Array.from({ length: 4 }, (_, index) => (
+              <CompactStatCard key={index}>
+                <Line $w="44px" $h="18px" />
+                <Line $w="72px" $h="10px" />
+              </CompactStatCard>
+            ))}
+          </MobileStatsRail>
+
+          <StatsGrid>
+            {Array.from({ length: 4 }, (_, index) => (
+              <StatCard key={index}>
+                <AvatarBlock />
+                <StatCopy>
+                  <Line $w="64px" $h="24px" />
+                  <Line $w="96px" $h="12px" />
+                </StatCopy>
+              </StatCard>
+            ))}
+          </StatsGrid>
+
+          <PanelGrid>
+            <PanelCard>
+              <PanelHeader>
+                <Line $w="128px" $h="18px" />
+                <Line $w="54px" $h="12px" />
+              </PanelHeader>
+              <Stack>
+                {Array.from({ length: 3 }, (_, rowIndex) => (
+                  <ProjectRowCard key={rowIndex}>
+                    <LogoBlock $small />
+                    <ListCopy>
+                      <Line $w="48%" $h="16px" />
+                      <Line $w="34%" $h="12px" />
+                      <PillRow>
+                        <PillStub />
+                        <PillStub />
+                      </PillRow>
+                    </ListCopy>
+                  </ProjectRowCard>
+                ))}
+              </Stack>
+            </PanelCard>
+
+            {Array.from({ length: 3 }, (_, index) => (
+              <PanelCard key={index}>
+                <PanelHeader>
+                  <Line $w={index === 0 ? "148px" : "116px"} $h="18px" />
+                  <Line $w="54px" $h="12px" />
+                </PanelHeader>
+                <Stack>
+                  {Array.from({ length: 3 }, (_, rowIndex) => (
+                    <RowCard key={rowIndex}>
+                      <AvatarBlock />
+                      <Stack>
+                        <Line $w="62%" $h="14px" />
+                        <Line $w="42%" $h="12px" />
+                      </Stack>
+                    </RowCard>
+                  ))}
+                </Stack>
+              </PanelCard>
+            ))}
+          </PanelGrid>
+        </Content>
+      </Shell>
+    );
+  }
+
   return (
     <Shell>
       <Content>
@@ -13,6 +104,15 @@ export function DashboardScreenSkeleton() {
           <Line $w="180px" $h="30px" />
           <Line $w="280px" $h="14px" />
         </HeaderBlock>
+
+        <MobileStatsRail>
+          {Array.from({ length: 4 }, (_, index) => (
+            <CompactStatCard key={index}>
+              <Line $w="44px" $h="18px" />
+              <Line $w="72px" $h="10px" />
+            </CompactStatCard>
+          ))}
+        </MobileStatsRail>
 
         <StatsGrid>
           {Array.from({ length: 4 }, (_, index) => (
@@ -27,7 +127,7 @@ export function DashboardScreenSkeleton() {
         </StatsGrid>
 
         <PanelGrid>
-          {Array.from({ length: 4 }, (_, index) => (
+          {Array.from({ length: variant === "manager" ? 4 : 3 }, (_, index) => (
             <PanelCard key={index}>
               <PanelHeader>
                 <Line $w="140px" $h="18px" />
@@ -162,6 +262,18 @@ const HeaderBlock = styled.div`
   gap: 8px;
 `;
 
+const HeaderBrandRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 14px;
+`;
+
+const HeaderCopy = styled.div`
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+`;
+
 const Toolbar = styled.div`
   display: grid;
   grid-template-columns: minmax(0, 1fr) 92px 92px;
@@ -200,9 +312,30 @@ const StatCard = styled.div`
   border-radius: 18px;
 `;
 
+const CompactStatCard = styled(StatCard)`
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 128px;
+  padding: 14px;
+`;
+
 const StatCopy = styled.div`
   display: grid;
   gap: 6px;
+`;
+
+const MobileStatsRail = styled.div`
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(128px, 1fr);
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+
+  ${desktop} {
+    display: none;
+  }
 `;
 
 const PanelGrid = styled.div`
@@ -243,6 +376,10 @@ const RowCard = styled.div`
   border-radius: 16px;
 `;
 
+const ProjectRowCard = styled(RowCard)`
+  align-items: flex-start;
+`;
+
 const ListCard = styled.div`
   ${cardSurface}
   display: flex;
@@ -278,6 +415,13 @@ const AvatarBlock = styled.div`
   height: 42px;
   flex: 0 0 42px;
   border-radius: 12px;
+`;
+
+const LogoBlock = styled(AvatarBlock)<{ $small?: boolean }>`
+  width: ${({ $small }) => ($small ? "46px" : "54px")};
+  height: ${({ $small }) => ($small ? "46px" : "54px")};
+  flex: 0 0 ${({ $small }) => ($small ? "46px" : "54px")};
+  border-radius: ${({ $small }) => ($small ? "14px" : "16px")};
 `;
 
 const Line = styled.div<{ $w: string; $h: string }>`
