@@ -845,17 +845,18 @@ export function ProjectsScreen() {
                         <DesktopTableRow
                           key={project.id}
                           $attention={attentionCount > 0}
+                          $clientBranded={isClient}
                           onClick={() => {
                             void router.push(`/projects/${project.id}`);
                           }}
                         >
-                          <StickyProjectCell $attention={attentionCount > 0}>
+                          <StickyProjectCell $attention={attentionCount > 0} $clientBranded={isClient}>
                             <TableProjectCell>
                               <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
                               <strong>{project.name}</strong>
                             </TableProjectCell>
                           </StickyProjectCell>
-                          <StickyOrganizationCell $attention={attentionCount > 0}>
+                          <StickyOrganizationCell $attention={attentionCount > 0} $clientBranded={isClient}>
                             <TableOrganizationCell>
                               <TableOrganizationLogo organization={clientOrganization} />
                               <TableOrganizationName>{clientOrganizationName}</TableOrganizationName>
@@ -989,7 +990,7 @@ const PageShell = styled.main`
   display: block;
   min-height: 100vh;
   padding: 18px 16px 24px;
-  background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
+  background: var(--client-screen-soft, rgba(255, 255, 255, 0.58));
 
   ${tablet} {
     padding: 22px 28px calc(env(safe-area-inset-bottom) + 24px);
@@ -999,7 +1000,7 @@ const PageShell = styled.main`
     display: flex;
     align-items: flex-start;
     padding: 8px;
-    background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
+    background: var(--client-screen-soft, rgba(255, 255, 255, 0.58));
   }
 `;
 
@@ -1015,7 +1016,7 @@ const Content = styled.section`
     border-radius: 0 26px 26px 0;
     background:
       radial-gradient(circle at top center, rgba(255, 255, 255, 0.68), transparent 18%),
-      var(--client-brand-soft-panel, linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84)));
+      var(--client-screen-soft-panel, linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84)));
   }
 `;
 
@@ -1491,7 +1492,7 @@ const SortGlyph = styled.span<{ $direction: SortDirection | null }>`
   transform: ${({ $direction }) => ($direction === "desc" ? "rotate(180deg)" : "none")};
 `;
 
-const DesktopTableRow = styled.tr<{ $attention?: boolean }>`
+const DesktopTableRow = styled.tr<{ $attention?: boolean; $clientBranded?: boolean }>`
   background: ${({ $attention }) => ($attention ? "rgba(255, 244, 244, 0.92)" : "transparent")};
   cursor: pointer;
   transition:
@@ -1500,7 +1501,12 @@ const DesktopTableRow = styled.tr<{ $attention?: boolean }>`
     box-shadow 0.18s ease;
 
   &:hover {
-    background: ${({ $attention }) => ($attention ? "rgba(255, 232, 232, 0.98)" : "rgba(252, 241, 226, 0.98)")};
+    background: ${({ $attention, $clientBranded }) =>
+      $attention
+        ? "rgba(255, 232, 232, 0.98)"
+        : $clientBranded
+          ? "var(--client-screen-soft-flat, rgba(245, 247, 244, 0.98))"
+          : "rgba(252, 241, 226, 0.98)"};
     box-shadow: inset 0 0 0 1px rgba(220, 208, 194, 0.75);
   }
 `;
@@ -1520,20 +1526,38 @@ const TableProjectCell = styled.div`
   }
 `;
 
-const StickyProjectCell = styled.td<{ $attention?: boolean }>`
+const StickyProjectCell = styled.td<{ $attention?: boolean; $clientBranded?: boolean }>`
   position: sticky;
   left: 0;
   z-index: 1;
   min-width: 220px;
-  background: ${({ $attention }) => ($attention ? "rgba(255, 244, 244, 0.92)" : "rgba(255, 255, 255, 0.98)")};
+  background: ${({ $attention }) => ($attention ? "#fff4f4" : "#ffffff")};
+
+  ${DesktopTableRow}:hover & {
+    background: ${({ $attention, $clientBranded }) =>
+      $attention
+        ? "#ffe8e8"
+        : $clientBranded
+          ? "var(--client-screen-soft-solid, #f3f7f4)"
+          : "#fcf1e2"};
+  }
 `;
 
-const StickyOrganizationCell = styled.td<{ $attention?: boolean }>`
+const StickyOrganizationCell = styled.td<{ $attention?: boolean; $clientBranded?: boolean }>`
   position: sticky;
   left: 220px;
   z-index: 1;
   min-width: 170px;
-  background: ${({ $attention }) => ($attention ? "rgba(255, 244, 244, 0.92)" : "rgba(255, 255, 255, 0.98)")};
+  background: ${({ $attention }) => ($attention ? "#fff4f4" : "#ffffff")};
+
+  ${DesktopTableRow}:hover & {
+    background: ${({ $attention, $clientBranded }) =>
+      $attention
+        ? "#ffe8e8"
+        : $clientBranded
+          ? "var(--client-screen-soft-solid, #f3f7f4)"
+          : "#fcf1e2"};
+  }
 `;
 
 const StagePill = styled.span<{ $bg: string; $fg: string }>`

@@ -97,7 +97,7 @@ const Sidebar = styled.aside`
     overflow-y: auto;
     border-right: 1px solid rgba(230, 224, 215, 0.95);
     border-radius: 26px 0 0 26px;
-    background: var(--client-brand-soft-panel, rgba(255, 255, 255, 0.62));
+    background: #f7f3ec;
   }
 `;
 
@@ -124,7 +124,7 @@ const sidebarItemCss = css<{ $active?: boolean }>`
   border: 0;
   border-radius: 10px;
   color: ${({ $active }) => ($active ? "var(--color-text)" : "var(--color-text-muted)")};
-  background: ${({ $active }) => ($active ? "var(--client-brand-soft-strong, #f5efe5)" : "transparent")};
+  background: ${({ $active }) => ($active ? "var(--client-screen-soft-solid, #efe7da)" : "transparent")};
   box-shadow: ${({ $active }) =>
     $active ? "inset 0 0 0 1px rgba(230, 224, 215, 0.9)" : "none"};
   text-align: left;
@@ -139,7 +139,7 @@ const sidebarItemCss = css<{ $active?: boolean }>`
   &:hover {
     color: var(--color-text);
     background: ${({ $active }) =>
-      $active ? "var(--client-brand-soft-strong, #f5efe5)" : "var(--client-brand-soft, rgba(245, 239, 229, 0.78))"};
+      $active ? "var(--client-screen-soft-solid, #efe7da)" : "var(--client-screen-soft-solid, #f3ece0)"};
     box-shadow: ${({ $active }) =>
       $active
         ? "inset 0 0 0 1px rgba(230, 224, 215, 0.9)"

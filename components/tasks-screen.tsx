@@ -1202,7 +1202,7 @@ const Shell = styled.main`
     display: flex;
     align-items: flex-start;
     padding: 8px;
-    background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
+    background: var(--client-screen-soft, rgba(255, 255, 255, 0.58));
   }
 `;
 
@@ -1314,7 +1314,7 @@ const Content = styled.section`
       radial-gradient(circle at top center, rgba(255, 255, 255, 0.76), transparent 18%),
       linear-gradient(
         180deg,
-        var(--client-brand-soft-panel, rgba(252, 249, 244, 0.92)),
+        var(--client-screen-soft-panel, rgba(252, 249, 244, 0.92)),
         rgba(247, 243, 237, 0.84)
       );
   }

@@ -1815,7 +1815,7 @@ const Shell = styled.main`
     display: flex;
     align-items: stretch;
     padding: 8px;
-    background: var(--client-brand-soft, rgba(255, 255, 255, 0.58));
+    background: var(--client-screen-soft, rgba(255, 255, 255, 0.58));
   }
 `;
 
@@ -1831,7 +1831,7 @@ const Content = styled.section`
     border-radius: 0 26px 26px 0;
     background:
       radial-gradient(circle at top center, rgba(255, 255, 255, 0.68), transparent 18%),
-      var(--client-brand-soft-panel, linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84)));
+      var(--client-screen-soft-panel, linear-gradient(180deg, rgba(252, 249, 244, 0.92), rgba(247, 243, 237, 0.84)));
   }
 `;
 
@@ -2104,7 +2104,7 @@ const ClientHomeHero = styled.section`
     gap: 14px;
     padding: 15px;
     border-radius: 20px;
-    background: var(--client-brand-soft-panel, rgba(255, 255, 255, 0.95));
+    background: var(--client-screen-soft-panel, rgba(255, 255, 255, 0.95));
   }
 `;
 
@@ -2623,7 +2623,7 @@ const BrandSection = styled.div`
   gap: 12px;
   padding: 14px;
   border-radius: 18px;
-  background: var(--client-brand-soft-panel, rgba(255, 255, 255, 0.95));
+  background: var(--client-screen-soft-panel, rgba(255, 255, 255, 0.95));
 `;
 
 const BrandSectionHeader = styled.div`

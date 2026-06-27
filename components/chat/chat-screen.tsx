@@ -1968,7 +1968,7 @@ const PageShell = styled.main`
   overflow: hidden;
   background:
     radial-gradient(circle at top center, rgba(255, 255, 255, 0.72), transparent 24%),
-    var(--client-brand-soft, linear-gradient(180deg, #f8f3eb 0%, #f6f0e6 100%));
+    var(--client-screen-soft, linear-gradient(180deg, #f8f3eb 0%, #f6f0e6 100%));
 
   ${desktop} {
     display: flex;
@@ -1991,7 +1991,7 @@ const Content = styled.section`
     height: calc(100vh - 16px);
     padding: 22px;
     border-radius: 0 30px 30px 0;
-    background: var(--client-brand-soft-panel, rgba(255, 255, 255, 0.36));
+    background: var(--client-screen-soft-panel, rgba(255, 255, 255, 0.36));
   }
 `;
 

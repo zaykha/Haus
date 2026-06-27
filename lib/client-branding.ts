@@ -35,6 +35,12 @@ export function getClientBrandStyle(
   const softStrongMid = hexToRgba(primary, 0.22);
   const softPanelStart = hexToRgba(primary, 0.2);
   const softPanelMid = hexToRgba(primary, 0.08);
+  const screenSoftStart = hexToRgba(primary, 0.08);
+  const screenSoftMid = hexToRgba(primary, 0.025);
+  const screenSoftPanelStart = hexToRgba(primary, 0.055);
+  const screenSoftPanelMid = hexToRgba(primary, 0.015);
+  const screenSoftFlat = hexToRgba(primary, 0.07);
+  const screenSoftSolid = mixHexWithWhite(primary, 0.86);
   const textOnPrimary = getTextContrast(primary);
 
   return {
@@ -42,6 +48,10 @@ export function getClientBrandStyle(
     "--client-brand-soft": `linear-gradient(135deg, ${softStart} 0%, ${softMid} 42%, #FFFFFF 100%)`,
     "--client-brand-soft-strong": `linear-gradient(135deg, ${softStrongStart} 0%, ${softStrongMid} 46%, #FFFFFF 100%)`,
     "--client-brand-soft-panel": `linear-gradient(145deg, ${softPanelStart} 0%, ${softPanelMid} 56%, #FFFFFF 100%)`,
+    "--client-screen-soft": `linear-gradient(135deg, ${screenSoftStart} 0%, ${screenSoftMid} 42%, #FFFFFF 100%)`,
+    "--client-screen-soft-panel": `linear-gradient(145deg, ${screenSoftPanelStart} 0%, ${screenSoftPanelMid} 56%, #FFFFFF 100%)`,
+    "--client-screen-soft-flat": screenSoftFlat,
+    "--client-screen-soft-solid": screenSoftSolid,
     "--client-brand-on-primary": textOnPrimary,
   } as CSSProperties;
 }
