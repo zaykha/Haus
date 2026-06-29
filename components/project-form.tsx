@@ -73,6 +73,9 @@ type ProjectFormProps = {
   hideActions?: boolean;
   onValuesChange?: (values: ProjectFormValues) => void;
   embedded?: boolean;
+  autoCreateTask?: boolean;
+  onAutoCreateTaskChange?: (value: boolean) => void;
+  showAutoCreateTaskToggle?: boolean;
 };
 
 function getProjectInitial(name: string) {
@@ -174,6 +177,28 @@ function areProjectFormValuesEqual(left: ProjectFormValues, right: ProjectFormVa
   );
 }
 
+function formatProjectFormError(error: unknown) {
+  const message = error instanceof Error ? error.message : "Unable to save project.";
+
+  if (message.includes('violates check constraint "project_activity_action_check"')) {
+    return "Project activity logging is not configured yet. Please try again after the activity constraint is updated.";
+  }
+
+  if (message.includes("Project client organization must exist")) {
+    return "Please select a valid client organization.";
+  }
+
+  if (message.includes("You can only create projects for your own organization")) {
+    return "You can only create projects for the currently selected organization.";
+  }
+
+  if (message.includes("Missing required project fields")) {
+    return "Please complete all required project fields before submitting.";
+  }
+
+  return message;
+}
+
 export function ProjectForm({
   initialValues,
   departments,
@@ -187,6 +212,9 @@ export function ProjectForm({
   hideActions = false,
   onValuesChange,
   embedded = false,
+  autoCreateTask = true,
+  onAutoCreateTaskChange,
+  showAutoCreateTaskToggle = false,
 }: ProjectFormProps) {
   const organizationFieldRef = useRef<HTMLDivElement | null>(null);
   const requestStatusFieldRef = useRef<HTMLDivElement | null>(null);
@@ -423,7 +451,7 @@ export function ProjectForm({
         projectType: values.projectType === "Custom" ? customProjectType.trim() : values.projectType,
       });
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Unable to save project.");
+      setError(formatProjectFormError(submitError));
     } finally {
       setSubmitting(false);
     }
@@ -1028,6 +1056,32 @@ export function ProjectForm({
           ) : null}
         </SectionCard>
 
+        {showAutoCreateTaskToggle ? (
+          <SectionCard>
+            <SectionHeader>
+              <SectionTitle>Task Setup</SectionTitle>
+              <SectionDescription>
+                Automatically add an open task for all designers when this project is created.
+              </SectionDescription>
+            </SectionHeader>
+            <ToggleCardButton
+              type="button"
+              onClick={() => onAutoCreateTaskChange?.(!autoCreateTask)}
+              aria-pressed={autoCreateTask}
+            >
+              <ToggleCopy>
+                <strong>Auto create task</strong>
+                <span>
+                  The task will use the project name with a task suffix and remain open for all designers until a manager assigns it.
+                </span>
+              </ToggleCopy>
+              <ToggleTrack $active={autoCreateTask}>
+                <ToggleThumb $active={autoCreateTask} />
+              </ToggleTrack>
+            </ToggleCardButton>
+          </SectionCard>
+        ) : null}
+
         {hideActions ? null : (
           <Actions>
             {onCancel ? (
@@ -1332,6 +1386,60 @@ const SectionDescription = styled.p`
   color: var(--color-text-muted);
   font-size: 0.8rem;
   line-height: 1.45;
+`;
+
+const ToggleCardButton = styled.button`
+  ${controlCss}
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 64px;
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+`;
+
+const ToggleCopy = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+
+  strong {
+    color: #2e2a27;
+    font-size: 0.92rem;
+    line-height: 1.2;
+  }
+
+  span {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+`;
+
+const ToggleTrack = styled.span<{ $active: boolean }>`
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  position: relative;
+  background: ${({ $active }) => ($active ? "#1f4339" : "rgba(223, 214, 201, 0.95)")};
+  transition: background 0.18s ease;
+`;
+
+const ToggleThumb = styled.span<{ $active: boolean }>`
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(49, 35, 18, 0.16);
+  transform: translateX(${({ $active }) => ($active ? "18px" : "0")});
+  transition: transform 0.18s ease;
 `;
 
 const Field = styled.label<{ $wide?: boolean }>`

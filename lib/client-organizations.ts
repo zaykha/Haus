@@ -200,7 +200,7 @@ export function buildClientOrganizationRows(state: DemoState): ClientOrganizatio
             priority: task.priority,
             projectId: project.id,
             projectName: project.name,
-            assigneeName: staffById.get(task.assigneeId) ?? "Unassigned",
+            assigneeName: task.assigneeId ? staffById.get(task.assigneeId) ?? "Unassigned" : "Open for all",
           })),
       )
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());

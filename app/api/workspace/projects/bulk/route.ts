@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
 import { canCreateProject } from "@/lib/permissions";
+import {
+  buildNextProjectCode,
+  resolveOrganizationProjectPrefix,
+} from "@/lib/project-code";
 
 type BulkProjectRow = {
   projectId: string;
@@ -83,39 +87,6 @@ function getTodayIsoDate() {
   return `${year}-${month}-${day}`;
 }
 
-function buildOrganizationPrefixSeed(name: string) {
-  const alphanumeric = name.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return (alphanumeric.slice(0, 3) || "ORG").padEnd(3, "X");
-}
-
-function buildUniqueOrganizationPrefix(name: string, usedPrefixes: Set<string>) {
-  const seed = buildOrganizationPrefixSeed(name);
-  if (!usedPrefixes.has(seed)) {
-    usedPrefixes.add(seed);
-    return seed;
-  }
-
-  for (let index = 2; index < 1000; index += 1) {
-    const suffix = String(index);
-    const candidate = `${seed.slice(0, Math.max(1, 3 - suffix.length))}${suffix}`;
-    if (!usedPrefixes.has(candidate)) {
-      usedPrefixes.add(candidate);
-      return candidate;
-    }
-  }
-
-  const fallback = `${seed}${Date.now().toString().slice(-3)}`;
-  usedPrefixes.add(fallback);
-  return fallback;
-}
-
-function buildNextProjectCode(prefix: string, sequenceByPrefix: Map<string, number>) {
-  const normalizedPrefix = prefix.trim().toUpperCase() || "ORG";
-  const nextSequence = (sequenceByPrefix.get(normalizedPrefix) ?? 0) + 1;
-  sequenceByPrefix.set(normalizedPrefix, nextSequence);
-  return `${normalizedPrefix}${String(nextSequence).padStart(3, "0")}`;
-}
-
 export async function POST(request: NextRequest) {
   const auth = await requireWorkspaceUser(request);
   if (auth instanceof Response) {
@@ -145,21 +116,23 @@ export async function POST(request: NextRequest) {
   if (organizationNameSet.size) {
     const { data: organizations, error } = await supabase
       .from("client_organizations")
-      .select("id, name, project_prefix");
+      .select("id, name, type, project_prefix");
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     for (const organization of organizations ?? []) {
-      const normalizedPrefix =
-        String(organization.project_prefix ?? "").trim().toUpperCase() ||
-        buildOrganizationPrefixSeed(String(organization.name));
+      const normalizedPrefix = resolveOrganizationProjectPrefix({
+        name: String(organization.name),
+        type: String(organization.type ?? ""),
+        existingPrefix: String(organization.project_prefix ?? ""),
+        usedPrefixes,
+      });
       organizationLookup.set(String(organization.name).trim().toLowerCase(), {
         id: String(organization.id),
         prefix: normalizedPrefix,
       });
-      usedPrefixes.add(normalizedPrefix);
     }
   }
 
@@ -172,27 +145,34 @@ export async function POST(request: NextRequest) {
       name,
       type: "external" as const,
       status: "active" as const,
-      project_prefix: buildUniqueOrganizationPrefix(name, usedPrefixes),
+      project_prefix: resolveOrganizationProjectPrefix({
+        name,
+        type: "external",
+        existingPrefix: "",
+        usedPrefixes,
+      }),
     }));
 
     const { data: insertedOrganizations, error } = await supabase
       .from("client_organizations")
       .insert(organizationsToInsert)
-      .select("id, name, project_prefix");
+      .select("id, name, type, project_prefix");
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     for (const organization of insertedOrganizations ?? []) {
-      const normalizedPrefix =
-        String(organization.project_prefix ?? "").trim().toUpperCase() ||
-        buildOrganizationPrefixSeed(String(organization.name));
+      const normalizedPrefix = resolveOrganizationProjectPrefix({
+        name: String(organization.name),
+        type: String(organization.type ?? ""),
+        existingPrefix: String(organization.project_prefix ?? ""),
+        usedPrefixes,
+      });
       organizationLookup.set(String(organization.name).trim().toLowerCase(), {
         id: String(organization.id),
         prefix: normalizedPrefix,
       });
-      usedPrefixes.add(normalizedPrefix);
     }
   }
 

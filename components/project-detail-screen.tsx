@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styled, { css } from "styled-components";
@@ -11,6 +11,7 @@ import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { ProjectForm, ProjectFormValues } from "@/components/project-form";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { getClientBrandStyle } from "@/lib/client-branding";
 import {
   canCreateTask,
@@ -43,7 +44,7 @@ import {
   formatProjectStage,
   getTaskStatusLabel,
 } from "@/lib/display";
-import { taskNeedsAttention } from "@/lib/task-attention";
+import { projectHasUnacknowledgedClientRequest, taskNeedsAttention } from "@/lib/task-attention";
 
 const desktop = "@media (min-width: 1100px)";
 
@@ -95,7 +96,7 @@ type DeliverableVersionOption = {
 type DeliverableTaskOption = {
   taskId: string;
   taskTitle: string;
-  assigneeId: string;
+  assigneeId: string | null;
   versionOptions: DeliverableVersionOption[];
   latestActivityAt: string;
 };
@@ -301,7 +302,9 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     deleteTask,
     addComment,
     addFeedback,
+    acknowledgeProjectAttention,
   } = useAppState();
+  const { scopedHref } = useActiveClientOrganization(user, state.clientOrganizations);
   const [showEditPanel, setShowEditPanel] = useState(false);
   const [showCreateTaskPanel, setShowCreateTaskPanel] = useState(false);
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
@@ -337,6 +340,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   });
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState("");
+  const [newTaskOpenForAll, setNewTaskOpenForAll] = useState(true);
   const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus>("todo");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
@@ -344,6 +348,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [activeDesignerTaskId, setActiveDesignerTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState("");
   const [editingTaskAssigneeId, setEditingTaskAssigneeId] = useState("");
+  const [editingTaskOpenForAll, setEditingTaskOpenForAll] = useState(false);
   const [editingTaskStatus, setEditingTaskStatus] = useState<TaskStatus>("todo");
   const [editingTaskDueDate, setEditingTaskDueDate] = useState("");
   const [editingTaskPriority, setEditingTaskPriority] = useState<TaskPriority>("medium");
@@ -365,6 +370,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [selectedDeliverableTaskId, setSelectedDeliverableTaskId] = useState<string | null>(null);
   const [selectedDeliverableVersionId, setSelectedDeliverableVersionId] = useState<string | null>(null);
   const [selectedDeliverableAssetIndex, setSelectedDeliverableAssetIndex] = useState(0);
+  const acknowledgedProjectAttentionRef = useRef<string | null>(null);
 
   const projectRecord = useMemo(
     () => state.projects.find((candidate) => candidate.id === projectId) ?? null,
@@ -416,11 +422,35 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const canRemoveProject = user ? canDeleteProject(user.role) : false;
   const canManageTasks = user ? canCreateTask(user.role) : false;
   const canLeaveClientFeedback = user?.role === "client";
+  const hasUnacknowledgedClientRequest = useMemo(
+    () =>
+      Boolean(
+        user &&
+          projectRecord &&
+          projectHasUnacknowledgedClientRequest(user, state.users, projectRecord),
+      ),
+    [projectRecord, state.users, user],
+  );
   const projectStatusTone = getProjectStatusTone(project.stage);
   const visibleFiles =
     user?.role === "client"
       ? project.files.filter((file) => file.visibility === "client")
       : project.files;
+
+  useEffect(() => {
+    if (!hasUnacknowledgedClientRequest || !projectRecord) {
+      return;
+    }
+
+    if (acknowledgedProjectAttentionRef.current === projectRecord.id) {
+      return;
+    }
+
+    acknowledgedProjectAttentionRef.current = projectRecord.id;
+    void acknowledgeProjectAttention(projectRecord.id).catch(() => {
+      acknowledgedProjectAttentionRef.current = null;
+    });
+  }, [acknowledgeProjectAttention, hasUnacknowledgedClientRequest, projectRecord]);
 
   useEffect(() => {
     setNewTaskDueDate(project.dueDate);
@@ -523,6 +553,9 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     });
 
     project.tasks.forEach((task) => {
+      if (!task.assigneeId) {
+        return;
+      }
       const member = state.users.find((candidate) => candidate.id === task.assigneeId);
       if (member) {
         unique.set(member.id, member);
@@ -816,7 +849,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
   const handleProjectDelete = async () => {
     await deleteProject(project.id);
-    router.push("/projects");
+    router.push(scopedHref("/projects"));
   };
 
   const handleFeedbackSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -948,13 +981,14 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
     try {
       await createTask(project.id, {
         title: newTaskTitle,
-        assigneeId: newTaskAssigneeId,
+        assigneeId: newTaskOpenForAll ? null : newTaskAssigneeId,
         status: newTaskStatus,
         dueDate: newTaskDueDate,
         priority: newTaskPriority,
       });
       setNewTaskTitle("");
       setNewTaskAssigneeId("");
+      setNewTaskOpenForAll(true);
       setNewTaskStatus("todo");
       setNewTaskDueDate(project.dueDate);
       setNewTaskPriority("medium");
@@ -972,7 +1006,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
     setEditingTaskId(task.id);
     setEditingTaskTitle(task.title);
-    setEditingTaskAssigneeId(task.assigneeId);
+    setEditingTaskAssigneeId(task.assigneeId ?? "");
+    setEditingTaskOpenForAll(!task.assigneeId);
     setEditingTaskStatus(task.status);
     setEditingTaskDueDate(task.dueDate ?? project.dueDate);
     setEditingTaskPriority(task.priority ?? derivePriority(task.dueDate ?? project.dueDate, task.status));
@@ -990,7 +1025,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   };
 
   const openManagerTaskDetail = (taskId: string) => {
-    router.push(`/projects/${project.id}/tasks/${taskId}`);
+      router.push(scopedHref(`/projects/${project.id}/tasks/${taskId}`));
   };
 
   const handleTaskUpdate = async (event: FormEvent<HTMLFormElement>) => {
@@ -1039,7 +1074,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
       await updateTask(project.id, editingTaskId, {
         title: editingTaskTitle,
-        assigneeId: editingTaskAssigneeId,
+        assigneeId: editingTaskOpenForAll ? null : editingTaskAssigneeId,
         status: nextStatus,
         dueDate: editingTaskDueDate,
         priority: editingTaskPriority,
@@ -1116,7 +1151,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
       <main className="page-stack">
         <section className="panel">
           <p>Project not found or not accessible from this role.</p>
-          <Link href="/projects">Return to projects</Link>
+          <Link href={scopedHref("/projects")}>Return to projects</Link>
         </section>
       </main>
     );
@@ -1662,45 +1697,67 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   </TaskFloatingField>
                 </TaskModalField>
 
-                <TaskModalField>
-                  <TaskFloatingSelect $filled={Boolean(newTaskAssigneeId)} $open={createTaskSelect === "assignee"}>
-                    <TaskSelectTrigger
-                      type="button"
-                      aria-haspopup="listbox"
-                      aria-expanded={createTaskSelect === "assignee"}
-                      onClick={() =>
-                        setCreateTaskSelect((current) => (current === "assignee" ? null : "assignee"))
-                      }
-                    >
-                      <TaskSelectValue>
-                        {availableStaff.find((member) => member.id === newTaskAssigneeId)?.name ?? "Select staff"}
-                      </TaskSelectValue>
-                      <TaskSelectChevron $open={createTaskSelect === "assignee"}>
-                        <IconChevronDown />
-                      </TaskSelectChevron>
-                    </TaskSelectTrigger>
-                    <TaskFloatingLabel>Assignee</TaskFloatingLabel>
-                    {createTaskSelect === "assignee" ? (
-                      <TaskSelectMenu role="listbox" aria-label="Assignee">
-                        {availableStaff.map((member) => (
-                          <TaskSelectOption
-                            key={member.id}
-                            type="button"
-                            role="option"
-                            aria-selected={newTaskAssigneeId === member.id}
-                            $active={newTaskAssigneeId === member.id}
-                            onClick={() => {
-                              setNewTaskAssigneeId(member.id);
-                              setCreateTaskSelect(null);
-                            }}
-                          >
-                            {member.name}
-                          </TaskSelectOption>
-                        ))}
-                      </TaskSelectMenu>
-                    ) : null}
-                  </TaskFloatingSelect>
+                <TaskModalField $wide>
+                  <TaskToggleButton
+                    type="button"
+                    aria-pressed={newTaskOpenForAll}
+                    onClick={() => {
+                      setNewTaskOpenForAll((current) => !current);
+                      setNewTaskAssigneeId("");
+                      setCreateTaskSelect((current) => (current === "assignee" ? null : current));
+                    }}
+                  >
+                    <TaskToggleCopy>
+                      <strong>Open for all</strong>
+                      <span>All designers can see this task until a manager assigns it.</span>
+                    </TaskToggleCopy>
+                    <TaskToggleTrack $active={newTaskOpenForAll}>
+                      <TaskToggleThumb $active={newTaskOpenForAll} />
+                    </TaskToggleTrack>
+                  </TaskToggleButton>
                 </TaskModalField>
+
+                {newTaskOpenForAll ? null : (
+                  <TaskModalField>
+                    <TaskFloatingSelect $filled={Boolean(newTaskAssigneeId)} $open={createTaskSelect === "assignee"}>
+                      <TaskSelectTrigger
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={createTaskSelect === "assignee"}
+                        onClick={() =>
+                          setCreateTaskSelect((current) => (current === "assignee" ? null : "assignee"))
+                        }
+                      >
+                        <TaskSelectValue>
+                          {availableStaff.find((member) => member.id === newTaskAssigneeId)?.name ?? "Select staff"}
+                        </TaskSelectValue>
+                        <TaskSelectChevron $open={createTaskSelect === "assignee"}>
+                          <IconChevronDown />
+                        </TaskSelectChevron>
+                      </TaskSelectTrigger>
+                      <TaskFloatingLabel>Assignee</TaskFloatingLabel>
+                      {createTaskSelect === "assignee" ? (
+                        <TaskSelectMenu role="listbox" aria-label="Assignee">
+                          {availableStaff.map((member) => (
+                            <TaskSelectOption
+                              key={member.id}
+                              type="button"
+                              role="option"
+                              aria-selected={newTaskAssigneeId === member.id}
+                              $active={newTaskAssigneeId === member.id}
+                              onClick={() => {
+                                setNewTaskAssigneeId(member.id);
+                                setCreateTaskSelect(null);
+                              }}
+                            >
+                              {member.name}
+                            </TaskSelectOption>
+                          ))}
+                        </TaskSelectMenu>
+                      ) : null}
+                    </TaskFloatingSelect>
+                  </TaskModalField>
+                )}
 
                 <TaskModalField>
                   <TaskFloatingSelect $filled $open={createTaskSelect === "status"}>
@@ -1764,7 +1821,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   ))}
                 </PriorityChips>
               </PriorityField>
-              <button className="primary-button" type="submit">
+              <button className="primary-button" type="submit" disabled={!newTaskOpenForAll && !newTaskAssigneeId}>
                 Add task
               </button>
             </InlineForm>
@@ -1911,43 +1968,65 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   </TaskFloatingField>
                 </TaskModalField>
 
-                <TaskModalField>
-                  <TaskFloatingSelect $filled={Boolean(editingTaskAssigneeId)} $open={editTaskSelect === "assignee"}>
-                    <TaskSelectTrigger
-                      type="button"
-                      aria-haspopup="listbox"
-                      aria-expanded={editTaskSelect === "assignee"}
-                      onClick={() => setEditTaskSelect((current) => (current === "assignee" ? null : "assignee"))}
-                    >
-                      <TaskSelectValue>
-                        {availableStaff.find((member) => member.id === editingTaskAssigneeId)?.name ?? "Select staff"}
-                      </TaskSelectValue>
-                      <TaskSelectChevron $open={editTaskSelect === "assignee"}>
-                        <IconChevronDown />
-                      </TaskSelectChevron>
-                    </TaskSelectTrigger>
-                    <TaskFloatingLabel>Assignee</TaskFloatingLabel>
-                    {editTaskSelect === "assignee" ? (
-                      <TaskSelectMenu role="listbox" aria-label="Assignee">
-                        {availableStaff.map((member) => (
-                          <TaskSelectOption
-                            key={member.id}
-                            type="button"
-                            role="option"
-                            aria-selected={editingTaskAssigneeId === member.id}
-                            $active={editingTaskAssigneeId === member.id}
-                            onClick={() => {
-                              setEditingTaskAssigneeId(member.id);
-                              setEditTaskSelect(null);
-                            }}
-                          >
-                            {member.name}
-                          </TaskSelectOption>
-                        ))}
-                      </TaskSelectMenu>
-                    ) : null}
-                  </TaskFloatingSelect>
+                <TaskModalField $wide>
+                  <TaskToggleButton
+                    type="button"
+                    aria-pressed={editingTaskOpenForAll}
+                    onClick={() => {
+                      setEditingTaskOpenForAll((current) => !current);
+                      setEditingTaskAssigneeId("");
+                      setEditTaskSelect((current) => (current === "assignee" ? null : current));
+                    }}
+                  >
+                    <TaskToggleCopy>
+                      <strong>Open for all</strong>
+                      <span>Keep this task visible to all designers until it is assigned.</span>
+                    </TaskToggleCopy>
+                    <TaskToggleTrack $active={editingTaskOpenForAll}>
+                      <TaskToggleThumb $active={editingTaskOpenForAll} />
+                    </TaskToggleTrack>
+                  </TaskToggleButton>
                 </TaskModalField>
+
+                {editingTaskOpenForAll ? null : (
+                  <TaskModalField>
+                    <TaskFloatingSelect $filled={Boolean(editingTaskAssigneeId)} $open={editTaskSelect === "assignee"}>
+                      <TaskSelectTrigger
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={editTaskSelect === "assignee"}
+                        onClick={() => setEditTaskSelect((current) => (current === "assignee" ? null : "assignee"))}
+                      >
+                        <TaskSelectValue>
+                          {availableStaff.find((member) => member.id === editingTaskAssigneeId)?.name ?? "Select staff"}
+                        </TaskSelectValue>
+                        <TaskSelectChevron $open={editTaskSelect === "assignee"}>
+                          <IconChevronDown />
+                        </TaskSelectChevron>
+                      </TaskSelectTrigger>
+                      <TaskFloatingLabel>Assignee</TaskFloatingLabel>
+                      {editTaskSelect === "assignee" ? (
+                        <TaskSelectMenu role="listbox" aria-label="Assignee">
+                          {availableStaff.map((member) => (
+                            <TaskSelectOption
+                              key={member.id}
+                              type="button"
+                              role="option"
+                              aria-selected={editingTaskAssigneeId === member.id}
+                              $active={editingTaskAssigneeId === member.id}
+                              onClick={() => {
+                                setEditingTaskAssigneeId(member.id);
+                                setEditTaskSelect(null);
+                              }}
+                            >
+                              {member.name}
+                            </TaskSelectOption>
+                          ))}
+                        </TaskSelectMenu>
+                      ) : null}
+                    </TaskFloatingSelect>
+                  </TaskModalField>
+                )}
 
                 <TaskModalField>
                   <TaskFloatingSelect $filled $open={editTaskSelect === "status"}>
@@ -2088,7 +2167,10 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                 <button
                   className="primary-button"
                   type="submit"
-                  disabled={editingTaskReviewAction === "submit" && editingTask?.status === "review"}
+                  disabled={
+                    (editingTaskReviewAction === "submit" && editingTask?.status === "review") ||
+                    (!editingTaskOpenForAll && !editingTaskAssigneeId)
+                  }
                 >
                   {editingTask?.completionScreenshotUrl
                     ? editingTaskReviewAction === "revise"
@@ -2291,7 +2373,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           <ContentInner>
       <TopBar>
         <MobileNavRow>
-          <BackIconButton as={Link} href="/projects" aria-label="Back to projects">
+          <BackIconButton as={Link} href={scopedHref("/projects")} aria-label="Back to projects">
             <IconChevronLeft />
           </BackIconButton>
           <MobileTitle>{projectDisplayName}</MobileTitle>
@@ -2300,7 +2382,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
         <DesktopHeaderRow>
           <Breadcrumbs>
-            <Link href="/projects">Projects</Link>
+            <Link href={scopedHref("/projects")}>Projects</Link>
             <span>/</span>
             <strong>{projectDisplayName}</strong>
           </Breadcrumbs>
@@ -2657,7 +2739,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   const priorityTone = getPriorityTone(task.priority);
                   const isDone = task.status === "done";
                   const canManageThisTask = canEditTask(user.role);
-                  const canOpenDesignerTask = user.role === "designer" && task.assignee?.id === user.id;
+                  const canOpenDesignerTask =
+                    user.role === "designer" && (task.assignee?.id === user.id || task.assigneeId === null);
                   const needsAttention = taskNeedsAttention(user, project, task);
 
                   return (
@@ -2684,7 +2767,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                         <TaskTitleCell>{task.title}</TaskTitleCell>
                         <AssigneeCell>
                           <AvatarCircle>{getUserInitial(task.assignee?.name ?? "U")}</AvatarCircle>
-                          <span>{task.assignee?.name ?? "Unassigned"}</span>
+                          <span>{task.assignee?.name ?? (task.assigneeId === null ? "Open for all" : "Unassigned")}</span>
                         </AssigneeCell>
                         <PillCell>
                           <Badge style={{ background: statusTone.bg, color: statusTone.fg }}>
@@ -2717,7 +2800,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   const statusTone = getTaskStatusTone(task.derivedStatus);
                   const priorityTone = getPriorityTone(task.priority);
                   const canManageThisTask = canEditTask(user.role);
-                  const canOpenDesignerTask = user.role === "designer" && task.assignee?.id === user.id;
+                  const canOpenDesignerTask =
+                    user.role === "designer" && (task.assignee?.id === user.id || task.assigneeId === null);
                   const isDone = task.status === "done";
                   const needsAttention = taskNeedsAttention(user, project, task);
 
@@ -2747,7 +2831,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                           <MobileTaskTitle>{task.title}</MobileTaskTitle>
                           <TaskMetaLine>
                             <AvatarCircle>{getUserInitial(task.assignee?.name ?? "U")}</AvatarCircle>
-                            <span>{task.assignee?.name ?? "Unassigned"}</span>
+                            <span>{task.assignee?.name ?? (task.assigneeId === null ? "Open for all" : "Unassigned")}</span>
                           </TaskMetaLine>
                           <TaskMetaLine>
                             <InlineIcon>
@@ -4445,6 +4529,60 @@ const TaskReviewActionButton = styled.button<{ $active?: boolean }>`
   color: ${({ $active }) => ($active ? "var(--client-brand-on-primary, #fff)" : "var(--client-brand-primary, #214f39)")};
   font-size: 0.84rem;
   font-weight: 700;
+`;
+
+const TaskToggleButton = styled.button`
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  text-align: left;
+  cursor: pointer;
+`;
+
+const TaskToggleCopy = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  strong {
+    color: #2e2a27;
+    font-size: 0.92rem;
+  }
+
+  span {
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+`;
+
+const TaskToggleTrack = styled.span<{ $active: boolean }>`
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  position: relative;
+  flex: 0 0 auto;
+  background: ${({ $active }) => ($active ? "#214f39" : "rgba(223, 214, 201, 0.95)")};
+`;
+
+const TaskToggleThumb = styled.span<{ $active: boolean }>`
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(49, 35, 18, 0.16);
+  transform: translateX(${({ $active }) => ($active ? "18px" : "0")});
+  transition: transform 0.18s ease;
 `;
 
 const TaskInlineError = styled.p`

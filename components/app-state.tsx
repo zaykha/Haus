@@ -71,6 +71,7 @@ interface AppStateContextValue {
     description: string;
     referenceAttachmentUrl: string;
     clientOrganizationId: string;
+    autoCreateTask?: boolean;
   }) => Promise<Project>;
   bulkCreateProjects: (rows: Array<{
     projectId: string;
@@ -154,11 +155,12 @@ interface AppStateContextValue {
     projectId: string,
     stage: ProjectStage,
   ) => Promise<void>;
+  acknowledgeProjectAttention: (projectId: string) => Promise<void>;
   createTask: (
     projectId: string,
     task: {
       title: string;
-      assigneeId: string;
+      assigneeId?: string | null;
       status?: TaskStatus;
       dueDate: string;
       priority: TaskPriority;
@@ -171,7 +173,7 @@ interface AppStateContextValue {
     taskId: string,
     task: {
       title: string;
-      assigneeId: string;
+      assigneeId?: string | null;
       status: TaskStatus;
       dueDate: string;
       priority: TaskPriority;
@@ -314,7 +316,11 @@ function getWorkspaceSupabase(): SupabaseClient {
 
   return supabase as unknown as SupabaseClient;
 }
-function ensureInternalAssignee(users: User[], assigneeId: string) {
+function ensureInternalAssignee(users: User[], assigneeId?: string | null) {
+  if (!assigneeId) {
+    return true;
+  }
+
   return users.some((candidate) => candidate.id === assigneeId && candidate.role !== "client");
 }
 
@@ -981,6 +987,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await refreshWorkspace(user);
   };
 
+  const acknowledgeProjectAttention: AppStateContextValue["acknowledgeProjectAttention"] = async (
+    projectId,
+  ) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    if (appMode !== "supabase") {
+      return;
+    }
+
+    await apiRequest<{ ok: true }>(`/api/workspace/projects/${projectId}/attention`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  };
+
   const createTask: AppStateContextValue["createTask"] = async (projectId, task) => {
     if (!user) {
       throw new Error("Unauthorized");
@@ -1365,6 +1388,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         deleteTeamMember,
         deleteProject,
         updateProjectWorkflow,
+        acknowledgeProjectAttention,
         createTask,
         updateTask,
         deleteTask,

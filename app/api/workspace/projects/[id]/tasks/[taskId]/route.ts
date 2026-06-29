@@ -98,7 +98,7 @@ export async function PATCH(
 
   const body = (await request.json()) as {
     title?: string;
-    assigneeId?: string;
+    assigneeId?: string | null;
     status?: string;
     dueDate?: string;
     priority?: string;
@@ -125,13 +125,14 @@ export async function PATCH(
   }
 
   const canManageTask = canEditTask(user.role) && canAssignTask(user.role);
-  const canUpdateOwnTask = user.role === "designer" && existingTask.assignee_id === user.id;
+  const canUpdateOwnTask =
+    user.role === "designer" && (existingTask.assignee_id === user.id || existingTask.assignee_id === null);
 
   if (!canManageTask && !canUpdateOwnTask) {
     return NextResponse.json({ error: "You do not have permission to update this task" }, { status: 403 });
   }
 
-  if (canManageTask && body.title && body.assigneeId && body.status && body.dueDate && body.priority) {
+  if (canManageTask && body.title && body.status && body.dueDate && body.priority) {
     if (
       !TASK_STATUSES.includes(body.status as TaskStatus) ||
       !TASK_PRIORITIES.includes(body.priority as TaskPriority) ||
@@ -140,14 +141,18 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid task values" }, { status: 400 });
     }
 
-    const { data: assignee } = await supabase
-      .from("profiles")
-      .select("id, role")
-      .eq("id", body.assigneeId)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (!assignee || assignee.role === "client") {
-      return NextResponse.json({ error: "Tasks can only be assigned to internal staff" }, { status: 400 });
+    const normalizedAssigneeId = body.assigneeId?.trim() || null;
+
+    if (normalizedAssigneeId) {
+      const { data: assignee } = await supabase
+        .from("profiles")
+        .select("id, role")
+        .eq("id", normalizedAssigneeId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (!assignee || assignee.role === "client") {
+        return NextResponse.json({ error: "Tasks can only be assigned to internal staff" }, { status: 400 });
+      }
     }
 
     let nextCompletionState = parseTaskCompletionState(existingTask.completion_screenshot_url);
@@ -185,7 +190,7 @@ export async function PATCH(
       .from("tasks")
       .update({
         title: body.title.trim(),
-        assignee_id: body.assigneeId,
+        assignee_id: normalizedAssigneeId,
         status: body.status,
         due_date: body.dueDate,
         priority: body.priority,

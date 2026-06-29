@@ -58,7 +58,7 @@ export async function POST(
 
   const body = (await request.json()) as {
     title?: string;
-    assigneeId?: string;
+    assigneeId?: string | null;
     status?: string;
     dueDate?: string;
     priority?: string;
@@ -66,18 +66,22 @@ export async function POST(
     managerReviewStatus?: TaskManagerReviewStatus;
   };
 
-  if (!body.title?.trim() || !body.assigneeId || !body.dueDate || !body.priority) {
+  if (!body.title?.trim() || !body.dueDate || !body.priority) {
     return NextResponse.json({ error: "Missing required task fields" }, { status: 400 });
   }
 
-  const { data: assignee } = await supabase
-    .from("profiles")
-    .select("id, role")
-    .eq("id", body.assigneeId)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (!assignee || assignee.role === "client") {
-    return NextResponse.json({ error: "Tasks can only be assigned to internal staff" }, { status: 400 });
+  const normalizedAssigneeId = body.assigneeId?.trim() || null;
+
+  if (normalizedAssigneeId) {
+    const { data: assignee } = await supabase
+      .from("profiles")
+      .select("id, role")
+      .eq("id", normalizedAssigneeId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (!assignee || assignee.role === "client") {
+      return NextResponse.json({ error: "Tasks can only be assigned to internal staff" }, { status: 400 });
+    }
   }
 
   const { data: project, error: projectError } = await supabase
@@ -100,7 +104,7 @@ export async function POST(
     .insert({
     project_id: id,
     title: body.title.trim(),
-    assignee_id: body.assigneeId,
+    assignee_id: normalizedAssigneeId,
     status: body.status ?? "todo",
     due_date: body.dueDate,
     priority: body.priority,

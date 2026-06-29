@@ -8,7 +8,7 @@ import { useAppState } from "@/components/app-state";
 import { useChatUnreadTotal } from "@/components/chat/use-chat-unread-total";
 import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { AppNavLabel, getPrimaryNavItems } from "@/lib/navigation";
-import { getAttentionTaskCount } from "@/lib/task-attention";
+import { getAttentionTaskCount, getProjectAttentionCount } from "@/lib/task-attention";
 import { User } from "@/lib/types";
 
 const tablet = "@media (min-width: 768px) and (max-width: 1099px)";
@@ -29,8 +29,10 @@ export function AppSidebar({
   const taskBadgeCount = useMemo(() => {
     return getAttentionTaskCount(user, state.projects);
   }, [state.projects, user]);
+  const projectBadgeCount = useMemo(() => {
+    return getProjectAttentionCount(user, state.users, state.projects);
+  }, [state.projects, state.users, user]);
   const chatBadgeCount = useChatUnreadTotal(user);
-  const badgeLabel: SidebarLabel = user.role === "client" ? "Projects" : "Tasks";
   const navItems: Array<{
     label: SidebarLabel;
     href: string;
@@ -65,7 +67,10 @@ export function AppSidebar({
               <SidebarIcon>{item.icon}</SidebarIcon>
               <SidebarLabelRow>
                 <span>{item.label}</span>
-                {item.label === badgeLabel && taskBadgeCount > 0 ? (
+                {item.label === "Projects" && projectBadgeCount > 0 ? (
+                  <TaskBadge>{projectBadgeCount > 99 ? "99+" : projectBadgeCount}</TaskBadge>
+                ) : null}
+                {item.label === "Tasks" && user.role !== "client" && taskBadgeCount > 0 ? (
                   <TaskBadge>{taskBadgeCount > 99 ? "99+" : taskBadgeCount}</TaskBadge>
                 ) : null}
                 {item.label === "Chat" && chatBadgeCount > 0 ? (

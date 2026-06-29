@@ -70,7 +70,7 @@ export interface User {
 export interface Task {
   id: string;
   title: string;
-  assigneeId: string;
+  assigneeId: string | null;
   status: TaskStatus;
   dueDate: string;
   createdAt?: string;
@@ -110,6 +110,8 @@ export interface Feedback {
 }
 
 export type ProjectActivityAction =
+  | "project_created"
+  | "project_attention_acknowledged"
   | "workflow_updated"
   | "task_created"
   | "task_status_changed"

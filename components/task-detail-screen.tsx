@@ -9,6 +9,7 @@ import { CustomDatePicker } from "@/components/custom-date-picker";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { useAppState } from "@/components/app-state";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { formatLabel, getTaskStatusLabel } from "@/lib/display";
 import { canDeleteTask, canEditTask, canViewProject } from "@/lib/permissions";
 
@@ -35,6 +36,7 @@ type TaskDetailScreenProps = {
 export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   const router = useRouter();
   const { state, user, updateTask, updateTaskStatus, deleteTask } = useAppState();
+  const { scopedHref } = useActiveClientOrganization(user, state.clientOrganizations);
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -217,7 +219,9 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   const taskAssignee = task?.assigneeId
     ? availableStaff.find((member) => member.id === task.assigneeId) ?? null
     : null;
-  const assigneeDetail = [taskAssignee?.name ?? "Unassigned", taskAssignee?.phone ?? ""].filter(Boolean).join(" · ");
+  const assigneeDetail = [taskAssignee?.name ?? (task?.assigneeId === null ? "Open for all" : "Unassigned"), taskAssignee?.phone ?? ""]
+    .filter(Boolean)
+    .join(" · ");
   const designerTaskFeedbackEntries = useMemo(
     () =>
       task && project
@@ -256,7 +260,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
     }
 
     setTitle(task.title);
-    setAssigneeId(task.assigneeId);
+    setAssigneeId(task.assigneeId ?? "");
     setStatus(task.status);
     setDueDate(task.dueDate ?? project.dueDate);
     setPriority(task.priority ?? "medium");
@@ -367,7 +371,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
       });
       setShowReviseModal(false);
       setRevisionComment("");
-      router.push(`/projects/${project.id}`);
+      router.push(scopedHref(`/projects/${project.id}`));
       return;
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to update task.");
@@ -439,7 +443,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
             await deleteTask(project.id, task.id);
             setShowDeleteConfirm(false);
             setIsEditing(false);
-            router.push(`/projects/${project.id}`);
+            router.push(scopedHref(`/projects/${project.id}`));
           } catch (nextError) {
             setError(nextError instanceof Error ? nextError.message : "Unable to delete task.");
           } finally {
@@ -518,7 +522,9 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
       <Content>
         <Header>
           <div>
-            <BackLink href={`/projects/${project.id}`}>Projects / {project.projectRequestName || project.name}</BackLink>
+            <BackLink href={scopedHref(`/projects/${project.id}`)}>
+              Projects / {project.projectRequestName || project.name}
+            </BackLink>
             <Title>{task.title}</Title>
             <Subtitle>Review task details and update assignment, status, priority, or due date.</Subtitle>
           </div>

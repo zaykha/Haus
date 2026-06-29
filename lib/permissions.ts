@@ -107,7 +107,10 @@ export function canViewProject(user: User, project: Project) {
   }
 
   if (user.role === "designer") {
-    return project.staffIds.includes(user.id) || project.tasks.some((task) => task.assigneeId === user.id);
+    return (
+      project.staffIds.includes(user.id) ||
+      project.tasks.some((task) => task.assigneeId === user.id || task.assigneeId === null)
+    );
   }
 
   return (
@@ -125,7 +128,7 @@ export function getVisibleTasksForUser(user: User, project: Project) {
   }
 
   if (user.role === "designer") {
-    return project.tasks.filter((task) => task.assigneeId === user.id);
+    return project.tasks.filter((task) => task.assigneeId === user.id || task.assigneeId === null);
   }
 
   return project.tasks.filter((task) => task.clientVisible || task.status === "approved");
@@ -143,7 +146,7 @@ export function canUpdateTaskStatus(user: User, project: Project, task: Task) {
   return (
     user.role === "designer" &&
     canViewProject(user, project) &&
-    task.assigneeId === user.id &&
+    (task.assigneeId === user.id || task.assigneeId === null) &&
     (task.status === "todo" || task.status === "in_progress")
   );
 }

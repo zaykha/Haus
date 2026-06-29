@@ -12,6 +12,7 @@ import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { UserAvatar } from "@/components/user-avatar";
 import { getClientBrandStyle, normalizeHexColor } from "@/lib/client-branding";
 import {
@@ -140,6 +141,22 @@ function getTaskTone(status: string) {
   }
 }
 
+function getProjectPriorityRank(status: string, stage?: string | null) {
+  if (status === "review" || stage === "Pending Review") {
+    return 0;
+  }
+
+  if (status === "revision") {
+    return 1;
+  }
+
+  if (status === "active" || stage === "WIP" || stage === "Waiting List") {
+    return 2;
+  }
+
+  return 3;
+}
+
 type ClientOrganizationDetailScreenProps = {
   organizationId: string;
   homeMode?: boolean;
@@ -153,6 +170,7 @@ export function ClientOrganizationDetailScreen({
   const searchParams = useSearchParams();
   const { state, user, deleteClient, deleteClientOrganization, revokeInvitation, updateClientOrganization, updateClient } =
     useAppState();
+  const { scopedHref } = useActiveClientOrganization(user, state.clientOrganizations);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [selectedTasksPage, setSelectedTasksPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
@@ -395,7 +413,12 @@ export function ClientOrganizationDetailScreen({
       })),
     )
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const activeProjects = organizationProjects.filter((project) => !isCompletedProject(project.status, project.stage));
+  const activeProjects = organizationProjects.filter(
+    (project) =>
+      !isCompletedProject(project.status, project.stage) &&
+      project.status !== "On Hold" &&
+      project.stage !== "On Hold",
+  );
   const projectsInReview = organizationProjects.filter((project) => isPendingReviewProject(project.status, project.stage));
   const completedProjects = organizationProjects.filter((project) => isCompletedProject(project.status, project.stage));
   const visibleOrganizationProjects = organizationProjects.slice(0, PROJECT_LIST_CAP);
@@ -414,30 +437,25 @@ export function ClientOrganizationDetailScreen({
       return (left.projectRequestName || left.name).localeCompare(right.projectRequestName || right.name);
     })
     .slice(0, 3);
-  const featuredProjects = activeProjects
+  const clientPriorityProjects = organizationProjects
+    .filter(
+      (project) =>
+        !isCompletedProject(project.status, project.stage) &&
+        project.status !== "On Hold" &&
+        project.stage !== "On Hold",
+    )
     .slice()
     .sort((left, right) => {
-      const getStagePriority = (status: string) => {
-        switch (status) {
-          case "review":
-            return 0;
-          case "revision":
-            return 1;
-          case "active":
-            return 2;
-          default:
-            return 3;
-        }
-      };
+      const leftPriority = getProjectPriorityRank(left.status, left.stage);
+      const rightPriority = getProjectPriorityRank(right.status, right.stage);
 
-      const leftPriority = getStagePriority(left.status);
-      const rightPriority = getStagePriority(right.status);
       if (leftPriority !== rightPriority) {
         return leftPriority - rightPriority;
       }
 
       const leftDue = new Date(left.finalDeliverableDate ?? left.dueDate).getTime();
       const rightDue = new Date(right.finalDeliverableDate ?? right.dueDate).getTime();
+
       if (leftDue !== rightDue) {
         return leftDue - rightDue;
       }
@@ -445,6 +463,20 @@ export function ClientOrganizationDetailScreen({
       return (left.projectRequestName || left.name).localeCompare(right.projectRequestName || right.name);
     })
     .slice(0, 3);
+  const totalProjectsForOverview = Math.max(organizationProjects.length, 1);
+  const completedProjectsPct = Math.round((completedProjects.length / totalProjectsForOverview) * 100);
+  const inProgressProjectsPct = Math.round((activeProjects.length / totalProjectsForOverview) * 100);
+  const reviewProjectsPct = Math.round((projectsInReview.length / totalProjectsForOverview) * 100);
+  const holdProjectsPct = Math.max(
+    0,
+    100 - completedProjectsPct - inProgressProjectsPct - reviewProjectsPct,
+  );
+  const progressDonut = `conic-gradient(
+    #5ca16d 0 ${completedProjectsPct}%,
+    #1f4339 ${completedProjectsPct}% ${completedProjectsPct + inProgressProjectsPct}%,
+    #d69b47 ${completedProjectsPct + inProgressProjectsPct}% ${completedProjectsPct + inProgressProjectsPct + reviewProjectsPct}%,
+    #d3ccc1 ${completedProjectsPct + inProgressProjectsPct + reviewProjectsPct}% 100%
+  )`;
 
   if (homeMode && user.role === "client") {
     return (
@@ -593,13 +625,14 @@ export function ClientOrganizationDetailScreen({
             <ClientHomePanel>
               <SectionHeader>
                 <PanelTitle>Active Projects</PanelTitle>
-                <SectionLink href="/projects">View all projects</SectionLink>
+                <SectionLink href={scopedHref("/projects")}>View all projects</SectionLink>
               </SectionHeader>
-              {featuredProjects.length ? (
+              {clientPriorityProjects.length ? (
                 <ClientHomeList>
-                  {featuredProjects.map((project) => {
+                  {clientPriorityProjects.map((project) => {
+                    const tone = getClientProjectTone(project.status, project.stage);
                     return (
-                      <ClientProjectCard key={project.id} href={`/projects/${project.id}`}>
+                      <ClientProjectCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
                         <ClientProjectGlyph
                           organization={
                             project.clientOrganizationId
@@ -614,7 +647,6 @@ export function ClientOrganizationDetailScreen({
                             <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
                             <ClientHomeProjectDue>{formatShortDate(project.finalDeliverableDate ?? project.dueDate)}</ClientHomeProjectDue>
                           </ClientHomeProjectHeader>
-                          <ClientHomeProjectStage>{formatProjectStage(project.stage)}</ClientHomeProjectStage>
                           <ClientProjectTop>
                             <ClientProjectMetaGroup>
                               <ClientProjectMetaLabel>Due date</ClientProjectMetaLabel>
@@ -629,6 +661,11 @@ export function ClientOrganizationDetailScreen({
                               <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
                             </ClientProjectMetaGroup>
                           </ClientProjectTop>
+                          <ClientProjectStatusRow>
+                            <ClientProjectStatusPill style={{ background: tone.bg, color: tone.fg }}>
+                              {getClientProjectStatusLabel(project.status, project.stage)}
+                            </ClientProjectStatusPill>
+                          </ClientProjectStatusRow>
                         </ClientProjectBody>
                       </ClientProjectCard>
                     );
@@ -641,13 +678,50 @@ export function ClientOrganizationDetailScreen({
 
             <ClientHomePanel>
               <SectionHeader>
+                <PanelTitle>Project Progress Overview</PanelTitle>
+                <PanelTag>This Org</PanelTag>
+              </SectionHeader>
+              <ClientProgressWrap>
+                <ClientProgressDonut style={{ background: progressDonut }}>
+                  <ClientProgressCenter>
+                    <strong>{organizationProjects.length}</strong>
+                    <span>Projects</span>
+                  </ClientProgressCenter>
+                </ClientProgressDonut>
+                <ClientLegendList>
+                  <ClientLegendItem>
+                    <ClientLegendDot $color="#5ca16d" />
+                    <span>Completed</span>
+                    <strong>{completedProjectsPct}%</strong>
+                  </ClientLegendItem>
+                  <ClientLegendItem>
+                    <ClientLegendDot $color="#1f4339" />
+                    <span>In Progress</span>
+                    <strong>{inProgressProjectsPct}%</strong>
+                  </ClientLegendItem>
+                  <ClientLegendItem>
+                    <ClientLegendDot $color="#d69b47" />
+                    <span>In Review</span>
+                    <strong>{reviewProjectsPct}%</strong>
+                  </ClientLegendItem>
+                  <ClientLegendItem>
+                    <ClientLegendDot $color="#d3ccc1" />
+                    <span>On Hold</span>
+                    <strong>{holdProjectsPct}%</strong>
+                  </ClientLegendItem>
+                </ClientLegendList>
+              </ClientProgressWrap>
+            </ClientHomePanel>
+
+            <ClientHomePanel>
+              <SectionHeader>
                 <PanelTitle>Pending Your Review</PanelTitle>
-                <SectionLink href="/projects">View all reviews</SectionLink>
+                <SectionLink href={scopedHref("/projects")}>View all reviews</SectionLink>
               </SectionHeader>
               {pendingReviewItems.length ? (
                 <ClientHomeList>
                   {pendingReviewItems.map((task) => (
-                    <ClientReviewCard key={task.id} href={`/projects/${task.projectId}`}>
+                    <ClientReviewCard key={task.id} href={scopedHref(`/projects/${task.projectId}`)}>
                       <ClientReviewIcon>
                         <IconFolderMini />
                       </ClientReviewIcon>
@@ -673,14 +747,14 @@ export function ClientOrganizationDetailScreen({
             <ClientHomePanel>
               <SectionHeader>
                 <PanelTitle>Upcoming Deliveries</PanelTitle>
-                <SectionLink href="/projects">View all projects</SectionLink>
+                <SectionLink href={scopedHref("/projects")}>View all projects</SectionLink>
               </SectionHeader>
               {upcomingDeliveries.length ? (
                 <ClientHomeList>
                   {upcomingDeliveries.map((project) => {
                     const tone = getClientProjectTone(project.status, project.stage);
                     return (
-                      <CompactDeliveryCard key={project.id} href={`/projects/${project.id}`}>
+                      <CompactDeliveryCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
                         <CompactDeliveryIcon>
                           <IconCalendarMini />
                         </CompactDeliveryIcon>
@@ -707,7 +781,7 @@ export function ClientOrganizationDetailScreen({
             <ClientHomePanel>
               <SectionHeader>
                 <PanelTitle>Recent Activity</PanelTitle>
-                <SectionLink href="/projects">View all activity</SectionLink>
+                <SectionLink href={scopedHref("/projects")}>View all activity</SectionLink>
               </SectionHeader>
               {organizationActivities.length ? (
                 <ActivityList>
@@ -1464,7 +1538,7 @@ export function ClientOrganizationDetailScreen({
             {!organization.isUnassigned ? (
               <>
                 {canCreateOrganizationProject && organization.organizationId ? (
-                  <PrimaryActionLink href={`/projects/new?clientOrganizationId=${organization.organizationId}`}>
+                  <PrimaryActionLink href={scopedHref(`/projects/new?clientOrganizationId=${organization.organizationId}`)}>
                     <ButtonIcon aria-hidden="true">
                       <IconPlusMini />
                     </ButtonIcon>
@@ -1685,7 +1759,7 @@ export function ClientOrganizationDetailScreen({
                   const tone = getClientProjectTone(project.status, project.stage);
 
                   return (
-                    <CompactDeliveryCard key={project.id} href={`/projects/${project.id}`}>
+                    <CompactDeliveryCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
                       <CompactDeliveryIcon>
                         <IconBriefcase />
                       </CompactDeliveryIcon>
@@ -1722,7 +1796,7 @@ export function ClientOrganizationDetailScreen({
                   const tone = getClientProjectTone(project.status);
 
                   return (
-                    <CompactDeliveryCard key={project.id} href={`/projects/${project.id}`}>
+                    <CompactDeliveryCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
                       <CompactDeliveryIcon>
                         <IconFolderMini />
                       </CompactDeliveryIcon>
@@ -1774,7 +1848,7 @@ export function ClientOrganizationDetailScreen({
                         </RowMetaPills>
                       </RowCopy>
                       </RowLead>
-                      <RowLink href={`/projects/${task.projectId}`}>Open project</RowLink>
+                      <RowLink href={scopedHref(`/projects/${task.projectId}`)}>Open project</RowLink>
                     </Row>
                   )})}
                 </List>
@@ -2589,6 +2663,18 @@ const SectionLink = styled(Link)`
   text-decoration: none;
 `;
 
+const PanelTag = styled.span`
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(244, 241, 237, 0.92);
+  color: #7f7468;
+  font-size: 0.72rem;
+  font-weight: 700;
+`;
+
 const SectionToggleButton = styled.button`
   min-height: 28px;
   padding: 0 10px;
@@ -2981,6 +3067,77 @@ const CompactDeliveryArrow = styled(ClientProjectArrow)`
     width: 13px;
     height: 13px;
   }
+`;
+
+const ClientProgressWrap = styled.div`
+  display: grid;
+  gap: 14px;
+
+  ${desktop} {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+`;
+
+const ClientProgressDonut = styled.div`
+  width: 148px;
+  height: 148px;
+  margin: 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+
+  ${desktop} {
+    margin: 0;
+  }
+`;
+
+const ClientProgressCenter = styled.div`
+  width: 94px;
+  height: 94px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.96);
+  display: grid;
+  place-items: center;
+  text-align: center;
+
+  strong {
+    color: #1f1f1f;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  span {
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+`;
+
+const ClientLegendList = styled.div`
+  display: grid;
+  gap: 8px;
+`;
+
+const ClientLegendItem = styled.div`
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  color: #4f463d;
+  font-size: 0.82rem;
+
+  strong {
+    color: #1f1f1f;
+    font-size: 0.82rem;
+  }
+`;
+
+const ClientLegendDot = styled.span<{ $color: string }>`
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: ${({ $color }) => $color};
 `;
 
 const ActivityList = styled.div`

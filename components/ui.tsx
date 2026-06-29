@@ -7,7 +7,7 @@ import { useAppState } from "@/components/app-state";
 import { useChatUnreadTotal } from "@/components/chat/use-chat-unread-total";
 import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { getPrimaryNavItems } from "@/lib/navigation";
-import { getAttentionTaskCount } from "@/lib/task-attention";
+import { getAttentionTaskCount, getProjectAttentionCount } from "@/lib/task-attention";
 
 export function Shell({ children }: PropsWithChildren) {
   return (
@@ -30,8 +30,14 @@ export function BottomNav() {
     }
     return getAttentionTaskCount(user, state.projects);
   }, [state.projects, user]);
+  const projectBadgeCount = useMemo(() => {
+    if (!user) {
+      return 0;
+    }
+
+    return getProjectAttentionCount(user, state.users, state.projects);
+  }, [state.projects, state.users, user]);
   const chatBadgeCount = useChatUnreadTotal(user);
-  const badgeLabel = user?.role === "client" ? "Projects" : "Tasks";
 
   const items = getPrimaryNavItems(user?.role).map((item) => ({
     ...item,
@@ -63,7 +69,10 @@ export function BottomNav() {
         >
           <span className="nav-icon" aria-hidden="true">
             {item.icon}
-            {item.label === badgeLabel && taskBadgeCount > 0 ? (
+            {item.label === "Projects" && projectBadgeCount > 0 ? (
+              <span className="nav-badge">{projectBadgeCount > 99 ? "99+" : projectBadgeCount}</span>
+            ) : null}
+            {item.label === "Tasks" && user?.role !== "client" && taskBadgeCount > 0 ? (
               <span className="nav-badge">{taskBadgeCount > 99 ? "99+" : taskBadgeCount}</span>
             ) : null}
             {item.label === "Chat" && chatBadgeCount > 0 ? (

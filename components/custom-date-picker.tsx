@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styled, { css } from "styled-components";
 
 const mobile = "@media (max-width: 767px)";
@@ -85,6 +85,7 @@ function toDayTimestamp(value: string) {
 
 export function CustomDatePicker({ label, value, onChange, minDate }: CustomDatePickerProps) {
   const [open, setOpen] = useState(false);
+  const fieldRef = useRef<HTMLDivElement | null>(null);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const parsed = parseIsoDate(value);
     return startOfMonth(parsed ?? new Date());
@@ -104,14 +105,35 @@ export function CustomDatePicker({ label, value, onChange, minDate }: CustomDate
       return;
     }
 
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!fieldRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleFocusIn = (event: FocusEvent) => {
+      const target = event.target as Node;
+      if (!fieldRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpen(false);
       }
     };
 
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("focusin", handleFocusIn);
     window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("focusin", handleFocusIn);
+      window.removeEventListener("keydown", handleEscape);
+    };
   }, [open]);
 
   const monthLabel = useMemo(
@@ -129,7 +151,7 @@ export function CustomDatePicker({ label, value, onChange, minDate }: CustomDate
   }, [minDate]);
 
   return (
-    <FieldWrap $open={open}>
+    <FieldWrap ref={fieldRef} $open={open}>
       {open ? <MobileScrim type="button" aria-label="Close date picker" onClick={() => setOpen(false)} /> : null}
       <Trigger
         type="button"

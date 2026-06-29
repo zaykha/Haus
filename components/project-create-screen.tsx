@@ -41,6 +41,7 @@ export function ProjectCreateScreen() {
   const searchParams = useSearchParams();
   const [routingMessage, setRoutingMessage] = useState("");
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [autoCreateTask, setAutoCreateTask] = useState(true);
   const [showBulkDropOverlay, setShowBulkDropOverlay] = useState(false);
   const [bulkFileName, setBulkFileName] = useState("");
   const [bulkRows, setBulkRows] = useState<Array<{
@@ -67,7 +68,7 @@ export function ProjectCreateScreen() {
   const [bulkSummary, setBulkSummary] = useState("");
   const dragDepthRef = useRef(0);
   const safeUser = user;
-  const { activeClientOrganization, activeClientOrganizationId, clientOrganizationIds } =
+  const { activeClientOrganization, activeClientOrganizationId, clientOrganizationIds, scopedHref } =
     useActiveClientOrganization(safeUser, state.clientOrganizations);
   const canManage = safeUser ? canCreateProject(safeUser.role) : false;
   const departments = state.departments;
@@ -132,10 +133,11 @@ export function ProjectCreateScreen() {
       description: values.description,
       referenceAttachmentUrl: values.referenceAttachmentUrl,
       clientOrganizationId: values.clientOrganizationId,
+      autoCreateTask,
     });
 
     setRoutingMessage("Opening project...");
-    router.push(`/projects/${project.id}`);
+    router.push(scopedHref(`/projects/${project.id}`));
   };
 
   const processBulkFile = async (file: File) => {
@@ -346,7 +348,7 @@ export function ProjectCreateScreen() {
       setBulkRows([]);
       setBulkFileName("");
       setShowBulkModal(false);
-      router.push("/projects");
+      router.push(scopedHref("/projects"));
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : "Bulk import failed.";
       setBulkError(message);
@@ -424,7 +426,10 @@ export function ProjectCreateScreen() {
             clientCreateMode={safeUser.role === "client"}
             submitLabel="Create Project"
             onSubmit={handleSubmit}
-            onCancel={() => router.push("/projects")}
+            autoCreateTask={autoCreateTask}
+            onAutoCreateTaskChange={setAutoCreateTask}
+            showAutoCreateTaskToggle
+            onCancel={() => router.push(scopedHref("/projects"))}
           />
         ) : (
           <EmptyCard>

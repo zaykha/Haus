@@ -6,12 +6,14 @@ import { useEffect, useState } from "react";
 import styled from "styled-components";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { useAppState } from "@/components/app-state";
+import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { UserAvatar } from "@/components/user-avatar";
 import { formatRole } from "@/lib/display";
 
 export function ProfileScreen() {
   const router = useRouter();
-  const { user, logout, updateProfileAvatar } = useAppState();
+  const { user, state, logout, updateProfileAvatar } = useAppState();
+  const { scopedHref } = useActiveClientOrganization(user, state.clientOrganizations);
   const [selectedAvatarPath, setSelectedAvatarPath] = useState(user?.avatarPath ?? "");
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState("");
@@ -110,7 +112,7 @@ export function ProfileScreen() {
               return;
             }
 
-            router.push("/dashboard");
+            router.push(scopedHref("/dashboard"));
           }}
         >
           <BackIcon aria-hidden="true">←</BackIcon>

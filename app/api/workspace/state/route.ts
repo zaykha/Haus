@@ -119,7 +119,7 @@ type TaskRecord = {
   id: string;
   project_id: string;
   title: string;
-  assignee_id: string;
+  assignee_id: string | null;
   status: TaskStatus;
   due_date: string;
   priority: TaskPriority;

@@ -14,7 +14,7 @@ import { useActiveClientOrganization } from "@/components/use-active-client-orga
 import { UserAvatar } from "@/components/user-avatar";
 import { getClientBrandStyle } from "@/lib/client-branding";
 import { canCreateProject as canCreateProjectPermission, canCreateProjectForOrganization, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
-import { getAttentionTasksForProject } from "@/lib/task-attention";
+import { getAttentionCountForProject, projectHasUnacknowledgedClientRequest } from "@/lib/task-attention";
 import { formatProjectStage, formatRole } from "@/lib/display";
 import { Project, ProjectWorkflowStage } from "@/lib/types";
 
@@ -251,7 +251,7 @@ export function ProjectsScreen() {
     (priorityFilter !== "all" ? 1 : 0) +
     (organizationFilter !== "all" ? 1 : 0);
   const appliedSortCount = sort !== DEFAULT_SORT ? 1 : 0;
-  const { activeClientOrganization, activeClientOrganizationId } = useActiveClientOrganization(
+  const { activeClientOrganization, activeClientOrganizationId, scopedHref } = useActiveClientOrganization(
     user,
     state.clientOrganizations,
   );
@@ -359,6 +359,19 @@ export function ProjectsScreen() {
     });
 
     return [...nextProjects].sort((left, right) => {
+      const leftIsNew =
+        user && user.role !== "client"
+          ? projectHasUnacknowledgedClientRequest(user, state.users, left)
+          : false;
+      const rightIsNew =
+        user && user.role !== "client"
+          ? projectHasUnacknowledgedClientRequest(user, state.users, right)
+          : false;
+
+      if (leftIsNew !== rightIsNew) {
+        return leftIsNew ? -1 : 1;
+      }
+
       if (sortField === "project") {
         return compareText(left.name, right.name, sortDirection);
       }
@@ -411,6 +424,7 @@ export function ProjectsScreen() {
     search,
     sort,
     stageFilter,
+    state.users,
     user,
     userNames,
     usersById,
@@ -683,7 +697,7 @@ export function ProjectsScreen() {
           ) : null}
 
           {canCreateAnyProject ? (
-            <CreateButton href="/projects/new">
+            <CreateButton href={scopedHref("/projects/new")}>
               <ButtonIcon>
                 <IconPlus />
               </ButtonIcon>
@@ -698,16 +712,24 @@ export function ProjectsScreen() {
               paginatedProjects.map((project) => {
                 const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
                 const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
-                const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
+                const attentionCount = user ? getAttentionCountForProject(user, state.users, project) : 0;
+                const isNewProject =
+                  user ? projectHasUnacknowledgedClientRequest(user, state.users, project) : false;
                 const clientOrganization = project.clientOrganizationId
                   ? organizationsById.get(project.clientOrganizationId) ?? null
                   : null;
 
                 return (
-                  <ProjectRow key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
+                  <ProjectRow
+                    key={project.id}
+                    href={scopedHref(`/projects/${project.id}`)}
+                    $attention={attentionCount > 0}
+                    $new={isNewProject}
+                  >
                     <ProjectTopleft>
                       <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
                       <OrganizationPill>{clientOrganizationName}</OrganizationPill>
+                      {isNewProject ? <NewProjectPill>New</NewProjectPill> : null}
                     </ProjectTopleft>
                     
                     {attentionCount > 0 ? (
@@ -834,7 +856,9 @@ export function ProjectsScreen() {
                     {tableProjects.map((project) => {
                       const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
                       const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
-                      const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
+                      const attentionCount = user ? getAttentionCountForProject(user, state.users, project) : 0;
+                      const isNewProject =
+                        user ? projectHasUnacknowledgedClientRequest(user, state.users, project) : false;
                       const clientOrganization = project.clientOrganizationId
                         ? organizationsById.get(project.clientOrganizationId) ?? null
                         : null;
@@ -845,18 +869,22 @@ export function ProjectsScreen() {
                         <DesktopTableRow
                           key={project.id}
                           $attention={attentionCount > 0}
+                          $new={isNewProject}
                           $clientBranded={isClient}
                           onClick={() => {
-                            void router.push(`/projects/${project.id}`);
+                            void router.push(scopedHref(`/projects/${project.id}`));
                           }}
                         >
-                          <StickyProjectCell $attention={attentionCount > 0} $clientBranded={isClient}>
+                          <StickyProjectCell $attention={attentionCount > 0} $new={isNewProject} $clientBranded={isClient}>
                             <TableProjectCell>
                               <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
-                              <strong>{project.name}</strong>
+                              <TableProjectTitleRow>
+                                <strong>{project.name}</strong>
+                                {isNewProject ? <NewProjectPill>New</NewProjectPill> : null}
+                              </TableProjectTitleRow>
                             </TableProjectCell>
                           </StickyProjectCell>
-                          <StickyOrganizationCell $attention={attentionCount > 0} $clientBranded={isClient}>
+                          <StickyOrganizationCell $attention={attentionCount > 0} $new={isNewProject} $clientBranded={isClient}>
                             <TableOrganizationCell>
                               <TableOrganizationLogo organization={clientOrganization} />
                               <TableOrganizationName>{clientOrganizationName}</TableOrganizationName>
@@ -900,19 +928,27 @@ export function ProjectsScreen() {
         <MobileList>
           {mobileProjects.length ? (
             mobileProjects.map((project) => {
-              const attentionCount = user ? getAttentionTasksForProject(user, project).length : 0;
+              const attentionCount = user ? getAttentionCountForProject(user, state.users, project) : 0;
+              const isNewProject =
+                user ? projectHasUnacknowledgedClientRequest(user, state.users, project) : false;
               const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
               const clientOrganization = project.clientOrganizationId
                 ? organizationsById.get(project.clientOrganizationId) ?? null
                 : null;
 
               return (
-                <MobileProjectCard key={project.id} href={`/projects/${project.id}`} $attention={attentionCount > 0}>
+                <MobileProjectCard
+                  key={project.id}
+                  href={scopedHref(`/projects/${project.id}`)}
+                  $attention={attentionCount > 0}
+                  $new={isNewProject}
+                >
                   <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
                   {attentionCount > 0 ? (
                     <ProjectAttentionBadge>{attentionCount > 99 ? "99+" : attentionCount}</ProjectAttentionBadge>
                   ) : null}
                   <MobileProjectCompanyHeader>{clientOrganizationName}</MobileProjectCompanyHeader>
+                  {isNewProject ? <NewProjectPill>New</NewProjectPill> : null}
                   <MobileProjectStageBadge>{formatProjectStage(project.stage)}</MobileProjectStageBadge>
                   <MobileProjectLead>
                     <MobileProjectMark organization={clientOrganization} />
@@ -1492,8 +1528,9 @@ const SortGlyph = styled.span<{ $direction: SortDirection | null }>`
   transform: ${({ $direction }) => ($direction === "desc" ? "rotate(180deg)" : "none")};
 `;
 
-const DesktopTableRow = styled.tr<{ $attention?: boolean; $clientBranded?: boolean }>`
-  background: ${({ $attention }) => ($attention ? "rgba(255, 244, 244, 0.92)" : "transparent")};
+const DesktopTableRow = styled.tr<{ $attention?: boolean; $clientBranded?: boolean; $new?: boolean }>`
+  background: ${({ $attention, $new }) =>
+    $new ? "rgba(255, 244, 226, 0.96)" : $attention ? "rgba(255, 244, 244, 0.92)" : "transparent"};
   cursor: pointer;
   transition:
     background-color 0.18s ease,
@@ -1501,13 +1538,16 @@ const DesktopTableRow = styled.tr<{ $attention?: boolean; $clientBranded?: boole
     box-shadow 0.18s ease;
 
   &:hover {
-    background: ${({ $attention, $clientBranded }) =>
-      $attention
-        ? "rgba(255, 232, 232, 0.98)"
-        : $clientBranded
-          ? "var(--client-screen-soft-flat, rgba(245, 247, 244, 0.98))"
-          : "rgba(252, 241, 226, 0.98)"};
-    box-shadow: inset 0 0 0 1px rgba(220, 208, 194, 0.75);
+    background: ${({ $attention, $clientBranded, $new }) =>
+      $new
+        ? "rgba(255, 236, 204, 0.98)"
+        : $attention
+          ? "rgba(255, 232, 232, 0.98)"
+          : $clientBranded
+            ? "var(--client-screen-soft-flat, rgba(245, 247, 244, 0.98))"
+            : "rgba(252, 241, 226, 0.98)"};
+    box-shadow: inset 0 0 0 1px
+      ${({ $new }) => ($new ? "rgba(214, 154, 56, 0.45)" : "rgba(220, 208, 194, 0.75)")};
   }
 `;
 
@@ -1526,37 +1566,52 @@ const TableProjectCell = styled.div`
   }
 `;
 
-const StickyProjectCell = styled.td<{ $attention?: boolean; $clientBranded?: boolean }>`
+const TableProjectTitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+`;
+
+const StickyProjectCell = styled.td<{ $attention?: boolean; $clientBranded?: boolean; $new?: boolean }>`
   position: sticky;
   left: 0;
   z-index: 1;
   min-width: 220px;
-  background: ${({ $attention }) => ($attention ? "#fff4f4" : "#ffffff")};
+  background: ${({ $attention, $new }) => ($new ? "#fff4df" : $attention ? "#fff4f4" : "#ffffff")};
 
   ${DesktopTableRow}:hover & {
-    background: ${({ $attention, $clientBranded }) =>
-      $attention
-        ? "#ffe8e8"
+    background: ${({ $attention, $clientBranded, $new }) =>
+      $new
+        ? "#ffeccc"
         : $clientBranded
-          ? "var(--client-screen-soft-solid, #f3f7f4)"
-          : "#fcf1e2"};
+          ? "var(--client-screen-soft-flat, rgba(245, 247, 244, 0.98))"
+          : $attention
+            ? "#ffe8e8"
+            : $clientBranded
+              ? "var(--client-screen-soft-solid, #f3f7f4)"
+              : "#fcf1e2"};
   }
 `;
 
-const StickyOrganizationCell = styled.td<{ $attention?: boolean; $clientBranded?: boolean }>`
+const StickyOrganizationCell = styled.td<{ $attention?: boolean; $clientBranded?: boolean; $new?: boolean }>`
   position: sticky;
   left: 220px;
   z-index: 1;
   min-width: 170px;
-  background: ${({ $attention }) => ($attention ? "#fff4f4" : "#ffffff")};
+  background: ${({ $attention, $new }) => ($new ? "#fff4df" : $attention ? "#fff4f4" : "#ffffff")};
 
   ${DesktopTableRow}:hover & {
-    background: ${({ $attention, $clientBranded }) =>
-      $attention
-        ? "#ffe8e8"
+    background: ${({ $attention, $clientBranded, $new }) =>
+      $new
+        ? "#ffeccc"
         : $clientBranded
           ? "var(--client-screen-soft-solid, #f3f7f4)"
-          : "#fcf1e2"};
+          : $attention
+            ? "#ffe8e8"
+            : $clientBranded
+              ? "var(--client-screen-soft-solid, #f3f7f4)"
+              : "#fcf1e2"};
   }
 `;
 
@@ -1577,7 +1632,7 @@ const PriorityPill = styled(StagePill)`
   font-size: 0.74rem;
 `;
 
-const ProjectRow = styled(Link)<{ $attention?: boolean }>`
+const ProjectRow = styled(Link)<{ $attention?: boolean; $new?: boolean }>`
   ${cardSurface}
   position: relative;
   display: flex;
@@ -1587,9 +1642,15 @@ const ProjectRow = styled(Link)<{ $attention?: boolean }>`
   padding: 40px 20px 22px;
   border-radius: 24px;
   text-decoration: none;
-  border-color: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)")};
-  box-shadow: ${({ $attention }) =>
-    $attention ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)" : "var(--shadow-sm)"};
+  border-color: ${({ $attention, $new }) =>
+    $new ? "rgba(214, 154, 56, 0.72)" : $attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)"};
+  background: ${({ $new }) => ($new ? "rgba(255, 249, 239, 0.96)" : undefined)};
+  box-shadow: ${({ $attention, $new }) =>
+    $new
+      ? "0 0 0 1px rgba(214, 154, 56, 0.16), var(--shadow-sm)"
+      : $attention
+        ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)"
+        : "var(--shadow-sm)"};
   transition:
     transform 0.18s ease,
     box-shadow 0.18s ease,
@@ -1599,13 +1660,15 @@ const ProjectRow = styled(Link)<{ $attention?: boolean }>`
   ${desktop} {
     &:hover {
       transform: translateY(-2px);
-      background: rgba(255, 248, 239, 0.94);
-      border-color: ${({ $attention }) =>
-        $attention ? "rgba(217, 75, 75, 0.82)" : "rgba(220, 208, 194, 0.95)"};
-      box-shadow: ${({ $attention }) =>
-        $attention
-          ? "0 0 0 1px rgba(217, 75, 75, 0.18), 0 18px 32px rgba(31, 31, 31, 0.08)"
-          : "0 18px 32px rgba(31, 31, 31, 0.08)"};
+      background: ${({ $new }) => ($new ? "rgba(255, 244, 220, 0.98)" : "rgba(255, 248, 239, 0.94)")};
+      border-color: ${({ $attention, $new }) =>
+        $new ? "rgba(214, 154, 56, 0.82)" : $attention ? "rgba(217, 75, 75, 0.82)" : "rgba(220, 208, 194, 0.95)"};
+      box-shadow: ${({ $attention, $new }) =>
+        $new
+          ? "0 0 0 1px rgba(214, 154, 56, 0.18), 0 18px 32px rgba(31, 31, 31, 0.08)"
+          : $attention
+            ? "0 0 0 1px rgba(217, 75, 75, 0.18), 0 18px 32px rgba(31, 31, 31, 0.08)"
+            : "0 18px 32px rgba(31, 31, 31, 0.08)"};
     }
   }
 `;
@@ -1613,6 +1676,10 @@ const ProjectTopleft = styled.div`
   position: absolute;
   top: 5px;
   left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 `;
 
 const ProjectIdBadge = styled.span`
@@ -1621,6 +1688,19 @@ const ProjectIdBadge = styled.span`
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+`;
+
+const NewProjectPill = styled.span`
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #fff0d1;
+  color: #a86b12;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
 `;
 
 const ProjectAttentionBadge = styled.span`
@@ -1883,7 +1963,7 @@ const MobileList = styled.section`
   }
 `;
 
-const MobileProjectCard = styled(Link)<{ $attention?: boolean }>`
+const MobileProjectCard = styled(Link)<{ $attention?: boolean; $new?: boolean }>`
   ${cardSurface}
   position: relative;
   display: grid;
@@ -1891,9 +1971,15 @@ const MobileProjectCard = styled(Link)<{ $attention?: boolean }>`
   padding: 28px 12px 12px;
   border-radius: 18px;
   text-decoration: none;
-  border-color: ${({ $attention }) => ($attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)")};
-  box-shadow: ${({ $attention }) =>
-    $attention ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)" : "var(--shadow-sm)"};
+  border-color: ${({ $attention, $new }) =>
+    $new ? "rgba(214, 154, 56, 0.72)" : $attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)"};
+  background: ${({ $new }) => ($new ? "rgba(255, 249, 239, 0.96)" : undefined)};
+  box-shadow: ${({ $attention, $new }) =>
+    $new
+      ? "0 0 0 1px rgba(214, 154, 56, 0.16), var(--shadow-sm)"
+      : $attention
+        ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)"
+        : "var(--shadow-sm)"};
 `;
 
 const MobileProjectCompanyHeader = styled.span`
