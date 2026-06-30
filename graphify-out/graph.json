@@ -15046,7 +15046,7 @@
       "label": "cardSurface",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L551",
+      "source_location": "L555",
       "id": "components_project_create_screen_cardsurface",
       "community": 13,
       "norm_label": "cardsurface"
@@ -15055,7 +15055,7 @@
       "label": "Shell",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L557",
+      "source_location": "L561",
       "id": "components_project_create_screen_shell",
       "community": 13,
       "norm_label": "shell"
@@ -15064,7 +15064,7 @@
       "label": "SidebarRail",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L570",
+      "source_location": "L574",
       "id": "components_project_create_screen_sidebarrail",
       "community": 13,
       "norm_label": "sidebarrail"
@@ -15073,7 +15073,7 @@
       "label": "Content",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L578",
+      "source_location": "L582",
       "id": "components_project_create_screen_content",
       "community": 13,
       "norm_label": "content"
@@ -15082,7 +15082,7 @@
       "label": "Header",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L594",
+      "source_location": "L598",
       "id": "components_project_create_screen_header",
       "community": 13,
       "norm_label": "header"
@@ -15091,7 +15091,7 @@
       "label": "HeaderCopy",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L606",
+      "source_location": "L610",
       "id": "components_project_create_screen_headercopy",
       "community": 13,
       "norm_label": "headercopy"
@@ -15100,7 +15100,7 @@
       "label": "TitleRow",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L612",
+      "source_location": "L616",
       "id": "components_project_create_screen_titlerow",
       "community": 13,
       "norm_label": "titlerow"
@@ -15109,7 +15109,7 @@
       "label": "HeaderActions",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L619",
+      "source_location": "L623",
       "id": "components_project_create_screen_headeractions",
       "community": 13,
       "norm_label": "headeractions"
@@ -15118,7 +15118,7 @@
       "label": "Eyebrow",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L626",
+      "source_location": "L630",
       "id": "components_project_create_screen_eyebrow",
       "community": 13,
       "norm_label": "eyebrow"
@@ -15127,7 +15127,7 @@
       "label": "Title",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L635",
+      "source_location": "L639",
       "id": "components_project_create_screen_title",
       "community": 13,
       "norm_label": "title"
@@ -15136,7 +15136,7 @@
       "label": "HeaderClientLogo",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L642",
+      "source_location": "L646",
       "id": "components_project_create_screen_headerclientlogo",
       "community": 13,
       "norm_label": "headerclientlogo"
@@ -15145,7 +15145,7 @@
       "label": "Subtitle",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L652",
+      "source_location": "L656",
       "id": "components_project_create_screen_subtitle",
       "community": 13,
       "norm_label": "subtitle"
@@ -15154,7 +15154,7 @@
       "label": "EmptyCard",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L660",
+      "source_location": "L664",
       "id": "components_project_create_screen_emptycard",
       "community": 13,
       "norm_label": "emptycard"
@@ -15163,7 +15163,7 @@
       "label": "BulkTitle",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L679",
+      "source_location": "L683",
       "id": "components_project_create_screen_bulktitle",
       "community": 13,
       "norm_label": "bulktitle"
@@ -15172,7 +15172,7 @@
       "label": "TemplateLink",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L684",
+      "source_location": "L688",
       "id": "components_project_create_screen_templatelink",
       "community": 13,
       "norm_label": "templatelink"
@@ -15181,7 +15181,7 @@
       "label": "BulkTriggerButton",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L699",
+      "source_location": "L703",
       "id": "components_project_create_screen_bulktriggerbutton",
       "community": 13,
       "norm_label": "bulktriggerbutton"
@@ -15190,7 +15190,7 @@
       "label": "BulkUploadGrid",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L710",
+      "source_location": "L714",
       "id": "components_project_create_screen_bulkuploadgrid",
       "community": 13,
       "norm_label": "bulkuploadgrid"
@@ -15199,7 +15199,7 @@
       "label": "BulkUploadTile",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L720",
+      "source_location": "L724",
       "id": "components_project_create_screen_bulkuploadtile",
       "community": 13,
       "norm_label": "bulkuploadtile"
@@ -15208,7 +15208,7 @@
       "label": "BulkUploadInner",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L730",
+      "source_location": "L734",
       "id": "components_project_create_screen_bulkuploadinner",
       "community": 13,
       "norm_label": "bulkuploadinner"
@@ -15217,7 +15217,7 @@
       "label": "HiddenFileInput",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L751",
+      "source_location": "L755",
       "id": "components_project_create_screen_hiddenfileinput",
       "community": 13,
       "norm_label": "hiddenfileinput"
@@ -15226,7 +15226,7 @@
       "label": "BulkImportMeta",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L755",
+      "source_location": "L759",
       "id": "components_project_create_screen_bulkimportmeta",
       "community": 13,
       "norm_label": "bulkimportmeta"
@@ -15235,7 +15235,7 @@
       "label": "BulkToggleCardButton",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L774",
+      "source_location": "L778",
       "id": "components_project_create_screen_bulktogglecardbutton",
       "community": 13,
       "norm_label": "bulktogglecardbutton"
@@ -15244,7 +15244,7 @@
       "label": "BulkToggleCopy",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L787",
+      "source_location": "L791",
       "id": "components_project_create_screen_bulktogglecopy",
       "community": 13,
       "norm_label": "bulktogglecopy"
@@ -15253,7 +15253,7 @@
       "label": "BulkToggleTrack",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L802",
+      "source_location": "L806",
       "id": "components_project_create_screen_bulktoggletrack",
       "community": 13,
       "norm_label": "bulktoggletrack"
@@ -15262,7 +15262,7 @@
       "label": "BulkToggleThumb",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L814",
+      "source_location": "L818",
       "id": "components_project_create_screen_bulktogglethumb",
       "community": 13,
       "norm_label": "bulktogglethumb"
@@ -15271,7 +15271,7 @@
       "label": "BulkError",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L824",
+      "source_location": "L828",
       "id": "components_project_create_screen_bulkerror",
       "community": 13,
       "norm_label": "bulkerror"
@@ -15280,7 +15280,7 @@
       "label": "BulkActions",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L831",
+      "source_location": "L835",
       "id": "components_project_create_screen_bulkactions",
       "community": 13,
       "norm_label": "bulkactions"
@@ -15289,7 +15289,7 @@
       "label": "ModalBackdrop",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L836",
+      "source_location": "L840",
       "id": "components_project_create_screen_modalbackdrop",
       "community": 13,
       "norm_label": "modalbackdrop"
@@ -15298,7 +15298,7 @@
       "label": "BulkDropOverlay",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L848",
+      "source_location": "L852",
       "id": "components_project_create_screen_bulkdropoverlay",
       "community": 13,
       "norm_label": "bulkdropoverlay"
@@ -15307,7 +15307,7 @@
       "label": "BulkDropCard",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L859",
+      "source_location": "L863",
       "id": "components_project_create_screen_bulkdropcard",
       "community": 13,
       "norm_label": "bulkdropcard"
@@ -15316,7 +15316,7 @@
       "label": "ModalCard",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L879",
+      "source_location": "L883",
       "id": "components_project_create_screen_modalcard",
       "community": 13,
       "norm_label": "modalcard"
@@ -15325,7 +15325,7 @@
       "label": "ModalHeader",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L889",
+      "source_location": "L893",
       "id": "components_project_create_screen_modalheader",
       "community": 13,
       "norm_label": "modalheader"
@@ -15334,7 +15334,7 @@
       "label": "ModalDescription",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L896",
+      "source_location": "L900",
       "id": "components_project_create_screen_modaldescription",
       "community": 13,
       "norm_label": "modaldescription"
@@ -15343,7 +15343,7 @@
       "label": "ModalLinkRow",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L903",
+      "source_location": "L907",
       "id": "components_project_create_screen_modallinkrow",
       "community": 13,
       "norm_label": "modallinkrow"
@@ -15352,7 +15352,7 @@
       "label": "ModalClose",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L908",
+      "source_location": "L912",
       "id": "components_project_create_screen_modalclose",
       "community": 13,
       "norm_label": "modalclose"
@@ -15361,7 +15361,7 @@
       "label": "IconUpload()",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L927",
+      "source_location": "L931",
       "id": "components_project_create_screen_iconupload",
       "community": 13,
       "norm_label": "iconupload()"
@@ -15370,7 +15370,7 @@
       "label": "IconClose()",
       "file_type": "code",
       "source_file": "components/project-create-screen.tsx",
-      "source_location": "L937",
+      "source_location": "L941",
       "id": "components_project_create_screen_iconclose",
       "community": 13,
       "norm_label": "iconclose()"
@@ -65743,5 +65743,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "0335e9e1afd1fc6d66480b4195da0db7f6008ed1"
+  "built_at_commit": "0c988f0be83dea3b699adecd5f21a85f3a1fec19"
 }

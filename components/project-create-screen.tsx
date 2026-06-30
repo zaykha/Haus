@@ -167,6 +167,10 @@ export function ProjectCreateScreen() {
           "",
         requestStatus:
           row.status ||
+          row.stage ||
+          row.workflow_stage ||
+          row.project_stage ||
+          row.current_stage ||
           row.request_status ||
           "Waiting List",
         departmentName:
