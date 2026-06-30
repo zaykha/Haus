@@ -46,6 +46,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   const [selectedVersionId, setSelectedVersionId] = useState("current");
   const [title, setTitle] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
+  const [editOpenForAll, setEditOpenForAll] = useState(false);
   const [status, setStatus] = useState<TaskStatus>("todo");
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("medium");
@@ -256,6 +257,32 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
         : [],
     [project, state.users, task],
   );
+  const selectedVersionFeedbackEntries = useMemo(() => {
+    if (!selectedVersion || selectedVersion.isCurrent) {
+      return designerTaskFeedbackEntries;
+    }
+
+    const historicalVersions = versionOptions
+      .filter((option) => !option.isCurrent && option.createdAt)
+      .slice()
+      .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+    const versionIndex = historicalVersions.findIndex((option) => option.id === selectedVersion.id);
+
+    if (versionIndex < 0) {
+      return designerTaskFeedbackEntries;
+    }
+
+    const selectedCreatedAt = historicalVersions[versionIndex]?.createdAt ?? "";
+    const nextVersionCreatedAt = historicalVersions[versionIndex + 1]?.createdAt ?? null;
+
+    return designerTaskFeedbackEntries.filter((entry) => {
+      const entryTime = new Date(entry.createdAt).getTime();
+      const selectedTime = new Date(selectedCreatedAt).getTime();
+      const nextTime = nextVersionCreatedAt ? new Date(nextVersionCreatedAt).getTime() : Number.POSITIVE_INFINITY;
+
+      return entryTime >= selectedTime && entryTime < nextTime;
+    });
+  }, [designerTaskFeedbackEntries, selectedVersion, versionOptions]);
 
   useEffect(() => {
     if (!task || !project) {
@@ -264,6 +291,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
 
     setTitle(task.title);
     setAssigneeId(task.assigneeId ?? "");
+    setEditOpenForAll(task.assigneeId === null);
     setStatus(task.status);
     setDueDate(task.dueDate ?? project.dueDate);
     setPriority(task.priority ?? "medium");
@@ -305,7 +333,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
       setShowErrorPopup(true);
       return;
     }
-    if (!assigneeId) {
+    if (!editOpenForAll && !assigneeId) {
       setError("Assignee is required.");
       setShowErrorPopup(true);
       return;
@@ -321,7 +349,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
     try {
       await updateTask(project.id, task.id, {
         title,
-        assigneeId,
+        assigneeId: editOpenForAll ? null : assigneeId,
         status,
         dueDate,
         priority,
@@ -660,42 +688,64 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
                   </TaskFloatingField>
                 </TaskFormField>
 
-                <TaskFormField>
-                  <TaskFloatingSelect $filled={Boolean(assigneeId)} $open={selectOpen === "assignee"} $invalid={editSubmitAttempted && !assigneeId}>
-                    <TaskSelectTrigger
-                      $invalid={editSubmitAttempted && !assigneeId}
-                      type="button"
-                      aria-haspopup="listbox"
-                      aria-expanded={selectOpen === "assignee"}
-                      onClick={() => setSelectOpen((current) => (current === "assignee" ? null : "assignee"))}
-                    >
-                      <TaskSelectValue>{assignee?.name ?? "Select staff"}</TaskSelectValue>
-                      <TaskSelectChevron $open={selectOpen === "assignee"}>
-                        <IconChevronDown />
-                      </TaskSelectChevron>
-                    </TaskSelectTrigger>
-                    <TaskFloatingLabel $invalid={editSubmitAttempted && !assigneeId}>Assignee</TaskFloatingLabel>
-                    {selectOpen === "assignee" ? (
-                      <TaskSelectMenu role="listbox" aria-label="Assignee">
-                        {availableStaff.map((member) => (
-                          <TaskSelectOption
-                            key={member.id}
-                            type="button"
-                            role="option"
-                            aria-selected={assigneeId === member.id}
-                            $active={assigneeId === member.id}
-                            onClick={() => {
-                              setAssigneeId(member.id);
-                              setSelectOpen(null);
-                            }}
-                          >
-                            {member.name}
-                          </TaskSelectOption>
-                        ))}
-                      </TaskSelectMenu>
-                    ) : null}
-                  </TaskFloatingSelect>
+                <TaskFormField $wide>
+                  <TaskToggleButton
+                    type="button"
+                    aria-pressed={editOpenForAll}
+                    onClick={() => {
+                      setEditOpenForAll((current) => !current);
+                      setAssigneeId("");
+                      setSelectOpen((current) => (current === "assignee" ? null : current));
+                    }}
+                  >
+                    <TaskToggleCopy>
+                      <strong>Open for all</strong>
+                      <span>Keep this task visible to all designers until you assign it.</span>
+                    </TaskToggleCopy>
+                    <TaskToggleTrack $active={editOpenForAll}>
+                      <TaskToggleThumb $active={editOpenForAll} />
+                    </TaskToggleTrack>
+                  </TaskToggleButton>
                 </TaskFormField>
+
+                {editOpenForAll ? null : (
+                  <TaskFormField>
+                    <TaskFloatingSelect $filled={Boolean(assigneeId)} $open={selectOpen === "assignee"} $invalid={editSubmitAttempted && !assigneeId}>
+                      <TaskSelectTrigger
+                        $invalid={editSubmitAttempted && !assigneeId}
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={selectOpen === "assignee"}
+                        onClick={() => setSelectOpen((current) => (current === "assignee" ? null : "assignee"))}
+                      >
+                        <TaskSelectValue>{assignee?.name ?? "Select staff"}</TaskSelectValue>
+                        <TaskSelectChevron $open={selectOpen === "assignee"}>
+                          <IconChevronDown />
+                        </TaskSelectChevron>
+                      </TaskSelectTrigger>
+                      <TaskFloatingLabel $invalid={editSubmitAttempted && !assigneeId}>Assignee</TaskFloatingLabel>
+                      {selectOpen === "assignee" ? (
+                        <TaskSelectMenu role="listbox" aria-label="Assignee">
+                          {availableStaff.map((member) => (
+                            <TaskSelectOption
+                              key={member.id}
+                              type="button"
+                              role="option"
+                              aria-selected={assigneeId === member.id}
+                              $active={assigneeId === member.id}
+                              onClick={() => {
+                                setAssigneeId(member.id);
+                                setSelectOpen(null);
+                              }}
+                            >
+                              {member.name}
+                            </TaskSelectOption>
+                          ))}
+                        </TaskSelectMenu>
+                      ) : null}
+                    </TaskFloatingSelect>
+                  </TaskFormField>
+                )}
 
                 <TaskFormField>
                   <TaskFloatingSelect $filled $open={selectOpen === "status"}>
@@ -896,6 +946,42 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
           </Panel>
         ) : null}
 
+        {!isEditing ? (
+          <Panel>
+            <PanelHeader>
+              <PanelTitle>Feedback</PanelTitle>
+            </PanelHeader>
+            <PanelCaption>
+              {selectedVersion?.isCurrent
+                ? "Latest manager and client feedback for this task."
+                : "Manager and client feedback for the selected previous version."}
+            </PanelCaption>
+            {selectedVersionFeedbackEntries.length ? (
+              <FeedbackEntryList>
+                {selectedVersionFeedbackEntries.map((entry) => (
+                  <FeedbackEntryCard key={entry.id}>
+                    <FeedbackEntryHeader>
+                      <strong>{entry.author}</strong>
+                      <FeedbackSourcePill $source={entry.source}>
+                        {entry.source === "client" ? "Client" : "Manager"}
+                      </FeedbackSourcePill>
+                    </FeedbackEntryHeader>
+                    <FeedbackEntryMeta>{formatDueDate(entry.createdAt)}</FeedbackEntryMeta>
+                    {entry.rating ? <FeedbackEntryMeta>Rating {entry.rating}/5</FeedbackEntryMeta> : null}
+                    <FeedbackEntryBody>{entry.body}</FeedbackEntryBody>
+                  </FeedbackEntryCard>
+                ))}
+              </FeedbackEntryList>
+            ) : (
+              <EmptyInline>
+                {selectedVersion?.isCurrent
+                  ? "No feedback for this task yet."
+                  : "No feedback was recorded for this previous version."}
+              </EmptyInline>
+            )}
+          </Panel>
+        ) : null}
+
         {!isEditing && canManagerReview ? (
           <Panel>
             <PanelTitle>Manager review</PanelTitle>
@@ -1070,6 +1156,58 @@ const PanelCaption = styled.p`
   line-height: 1.4;
 `;
 
+const FeedbackEntryList = styled.div`
+  display: grid;
+  gap: 10px;
+`;
+
+const FeedbackEntryCard = styled.div`
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+`;
+
+const FeedbackEntryHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  strong {
+    font-size: 0.88rem;
+    color: var(--color-text);
+  }
+`;
+
+const FeedbackSourcePill = styled.span<{ $source: "client" | "internal" }>`
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: ${({ $source }) => ($source === "client" ? "#fff1da" : "#eef4f1")};
+  color: ${({ $source }) => ($source === "client" ? "#b97912" : "#2f5d50")};
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+`;
+
+const FeedbackEntryMeta = styled.span`
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+  line-height: 1.3;
+`;
+
+const FeedbackEntryBody = styled.p`
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.84rem;
+  line-height: 1.5;
+`;
+
 const TaskMetaGrid = styled.section`
   display: none;
 
@@ -1202,6 +1340,60 @@ const TaskFormField = styled.div<{ $wide?: boolean }>`
           }
         `
       : ""}
+`;
+
+const TaskToggleButton = styled.button`
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  text-align: left;
+  cursor: pointer;
+`;
+
+const TaskToggleCopy = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  strong {
+    color: #2e2a27;
+    font-size: 0.92rem;
+  }
+
+  span {
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+`;
+
+const TaskToggleTrack = styled.span<{ $active: boolean }>`
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  position: relative;
+  flex: 0 0 auto;
+  background: ${({ $active }) => ($active ? "#214f39" : "rgba(223, 214, 201, 0.95)")};
+`;
+
+const TaskToggleThumb = styled.span<{ $active: boolean }>`
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(49, 35, 18, 0.16);
+  transform: translateX(${({ $active }) => ($active ? "18px" : "0")});
+  transition: transform 0.18s ease;
 `;
 
 const TaskFloatingField = styled.label<{ $invalid?: boolean }>`

@@ -424,7 +424,29 @@ export function ClientOrganizationDetailScreen({
   );
   const projectsInReview = organizationProjects.filter((project) => isPendingReviewProject(project.status, project.stage));
   const completedProjects = organizationProjects.filter((project) => isCompletedProject(project.status, project.stage));
-  const visibleOrganizationProjects = organizationProjects.slice(0, PROJECT_LIST_CAP);
+  const holdProjects = organizationProjects.filter(
+    (project) => project.status === "On Hold" || project.stage === "On Hold",
+  );
+  const visibleOrganizationProjects = organizationProjects
+    .slice()
+    .sort((left, right) => {
+      const leftPriority = getProjectPriorityRank(left.status, left.stage);
+      const rightPriority = getProjectPriorityRank(right.status, right.stage);
+
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+
+      const leftDue = new Date(left.finalDeliverableDate ?? left.dueDate).getTime();
+      const rightDue = new Date(right.finalDeliverableDate ?? right.dueDate).getTime();
+
+      if (leftDue !== rightDue) {
+        return leftDue - rightDue;
+      }
+
+      return (left.projectRequestName || left.name).localeCompare(right.projectRequestName || right.name);
+    })
+    .slice(0, PROJECT_LIST_CAP);
   const visiblePendingProjects = organization.pendingProjects.slice(0, PENDING_ITEMS_CAP);
   const pendingReviewItems = organization.openTasks.slice(0, 3);
   const upcomingDeliveries = activeProjects
@@ -470,10 +492,7 @@ export function ClientOrganizationDetailScreen({
   const completedProjectsPct = Math.round((completedProjects.length / totalProjectsForOverview) * 100);
   const inProgressProjectsPct = Math.round((activeProjects.length / totalProjectsForOverview) * 100);
   const reviewProjectsPct = Math.round((projectsInReview.length / totalProjectsForOverview) * 100);
-  const holdProjectsPct = Math.max(
-    0,
-    100 - completedProjectsPct - inProgressProjectsPct - reviewProjectsPct,
-  );
+  const holdProjectsPct = Math.round((holdProjects.length / totalProjectsForOverview) * 100);
   const progressDonut = `conic-gradient(
     #5ca16d 0 ${completedProjectsPct}%,
     #1f4339 ${completedProjectsPct}% ${completedProjectsPct + inProgressProjectsPct}%,
@@ -634,6 +653,7 @@ export function ClientOrganizationDetailScreen({
                 <ClientHomeList>
                   {clientPriorityProjects.map((project) => {
                     const tone = getClientProjectTone(project.status, project.stage);
+                    const needsClientReview = isPendingReviewProject(project.status, project.stage);
                     return (
                       <ClientProjectCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
                         <ClientProjectGlyph
@@ -665,6 +685,7 @@ export function ClientOrganizationDetailScreen({
                             </ClientProjectMetaGroup>
                           </ClientProjectTop>
                           <ClientProjectStatusRow>
+                            {needsClientReview ? <ClientAttentionPill>Needs Review</ClientAttentionPill> : null}
                             <ClientProjectStatusPill style={{ background: tone.bg, color: tone.fg }}>
                               {getClientProjectStatusLabel(project.status, project.stage)}
                             </ClientProjectStatusPill>
@@ -1786,6 +1807,7 @@ export function ClientOrganizationDetailScreen({
               <ClientHomeList>
                 {visibleOrganizationProjects.map((project) => {
                   const tone = getClientProjectTone(project.status, project.stage);
+                  const needsClientReview = isPendingReviewProject(project.status, project.stage);
 
                   return (
                     <CompactDeliveryCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
@@ -1794,6 +1816,7 @@ export function ClientOrganizationDetailScreen({
                       </CompactDeliveryIcon>
                       <CompactDeliveryBody>
                         <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
+                        {needsClientReview ? <CompactAttentionPill>Needs Review</CompactAttentionPill> : null}
                         <CompactDeliveryMeta>Due {formatDate(project.finalDeliverableDate ?? project.dueDate)}</CompactDeliveryMeta>
                         <CompactDeliveryMeta>{project.projectCode ?? "Project"}</CompactDeliveryMeta>
                       </CompactDeliveryBody>
@@ -3079,6 +3102,18 @@ const ClientReviewPill = styled.span`
   color: #c58911;
   font-size: 0.72rem;
   font-weight: 700;
+`;
+
+const ClientAttentionPill = styled(ClientReviewPill)`
+  min-height: 22px;
+  padding: 0 8px;
+  background: #fff1da;
+  color: #b97912;
+  font-size: 0.68rem;
+`;
+
+const CompactAttentionPill = styled(ClientAttentionPill)`
+  width: fit-content;
 `;
 
 const CompactDeliveryStatusPill = styled(ClientProjectStatusPill)`

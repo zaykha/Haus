@@ -34,23 +34,36 @@ export function getAttentionTaskCount(user: User, projects: Project[]) {
   return projects.reduce((count, project) => count + getAttentionTasksForProject(user, project).length, 0);
 }
 
-export function projectHasUnacknowledgedClientRequest(user: User, users: User[], project: Project) {
-  if (!canManageProjects(user.role)) {
-    return false;
-  }
-
+function getLatestManagerAttentionTriggerAt(users: User[], project: Project) {
   const owner = users.find((candidate) => candidate.id === project.ownerId) ?? null;
-  if (!owner || owner.role !== "client") {
-    return false;
-  }
-
   const latestCreatedActivity =
-    [...project.activities]
-      .filter((activity) => activity.action === "project_created")
+    owner?.role === "client"
+      ? [...project.activities]
+          .filter((activity) => activity.action === "project_created")
+          .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] ?? null
+      : null;
+
+  const latestClientFeedback =
+    [...project.feedback]
+      .filter((item) => {
+        const author = users.find((candidate) => candidate.id === item.authorId) ?? null;
+        return author?.role === "client" && (item.action === "approve" || item.action === "request_revision");
+      })
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] ?? null;
 
-  if (!latestCreatedActivity) {
-    return false;
+  return [latestCreatedActivity?.createdAt ?? null, latestClientFeedback?.createdAt ?? null]
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
+}
+
+export function getProjectManagerAttentionKind(user: User, users: User[], project: Project) {
+  if (!canManageProjects(user.role)) {
+    return null;
+  }
+
+  const latestTriggerAt = getLatestManagerAttentionTriggerAt(users, project);
+  if (!latestTriggerAt) {
+    return null;
   }
 
   const latestAcknowledgedActivity =
@@ -58,14 +71,30 @@ export function projectHasUnacknowledgedClientRequest(user: User, users: User[],
       .filter((activity) => activity.action === "project_attention_acknowledged")
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] ?? null;
 
-  if (!latestAcknowledgedActivity) {
-    return true;
+  if (
+    latestAcknowledgedActivity &&
+    new Date(latestAcknowledgedActivity.createdAt).getTime() >= new Date(latestTriggerAt).getTime()
+  ) {
+    return null;
   }
 
-  return (
-    new Date(latestCreatedActivity.createdAt).getTime() >
-    new Date(latestAcknowledgedActivity.createdAt).getTime()
-  );
+  const latestClientFeedback =
+    [...project.feedback]
+      .filter((item) => {
+        const author = users.find((candidate) => candidate.id === item.authorId) ?? null;
+        return author?.role === "client" && (item.action === "approve" || item.action === "request_revision");
+      })
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] ?? null;
+
+  if (latestClientFeedback && latestClientFeedback.createdAt === latestTriggerAt) {
+    return "feedback";
+  }
+
+  return "new_request";
+}
+
+export function projectHasUnacknowledgedClientRequest(user: User, users: User[], project: Project) {
+  return getProjectManagerAttentionKind(user, users, project) !== null;
 }
 
 export function projectNeedsManagerAttention(user: User, users: User[], project: Project) {

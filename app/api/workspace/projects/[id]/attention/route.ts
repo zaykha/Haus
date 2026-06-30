@@ -51,10 +51,6 @@ export async function POST(
     return NextResponse.json({ error: ownerError.message }, { status: 500 });
   }
 
-  if (!owner || owner.role !== "client") {
-    return NextResponse.json({ ok: true });
-  }
-
   const { data: activities, error: activityError } = await supabase
     .from("project_activity")
     .select("action, created_at")
@@ -67,17 +63,60 @@ export async function POST(
   }
 
   const latestProjectCreatedAt =
-    (activities ?? []).find((activity) => activity.action === "project_created")?.created_at ?? null;
+    owner?.role === "client"
+      ? (activities ?? []).find((activity) => activity.action === "project_created")?.created_at ?? null
+      : null;
   const latestAcknowledgedAt =
     (activities ?? []).find((activity) => activity.action === "project_attention_acknowledged")?.created_at ?? null;
 
-  if (!latestProjectCreatedAt) {
+  const { data: feedbackRows, error: feedbackError } = await supabase
+    .from("project_feedback")
+    .select("author_id, action, created_at")
+    .eq("project_id", id)
+    .in("action", ["approve", "request_revision"]);
+
+  if (feedbackError) {
+    return NextResponse.json({ error: feedbackError.message }, { status: 500 });
+  }
+
+  const feedbackAuthorIds = Array.from(
+    new Set((feedbackRows ?? []).map((row) => String(row.author_id ?? "")).filter(Boolean)),
+  );
+  let clientAuthorIds = new Set<string>();
+
+  if (feedbackAuthorIds.length > 0) {
+    const { data: feedbackAuthors, error: feedbackAuthorsError } = await supabase
+      .from("profiles")
+      .select("id, role")
+      .in("id", feedbackAuthorIds);
+
+    if (feedbackAuthorsError) {
+      return NextResponse.json({ error: feedbackAuthorsError.message }, { status: 500 });
+    }
+
+    clientAuthorIds = new Set(
+      (feedbackAuthors ?? [])
+        .filter((profile) => profile.role === "client")
+        .map((profile) => String(profile.id)),
+    );
+  }
+
+  const latestClientFeedbackAt =
+    (feedbackRows ?? [])
+      .filter((row) => clientAuthorIds.has(String(row.author_id ?? "")))
+      .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())[0]?.created_at ?? null;
+
+  const latestTriggerAt = [latestProjectCreatedAt, latestClientFeedbackAt]
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
+
+  if (!latestTriggerAt) {
     return NextResponse.json({ ok: true });
   }
 
   if (
     latestAcknowledgedAt &&
-    new Date(latestAcknowledgedAt).getTime() >= new Date(latestProjectCreatedAt).getTime()
+    new Date(latestAcknowledgedAt).getTime() >= new Date(latestTriggerAt).getTime()
   ) {
     return NextResponse.json({ ok: true });
   }
@@ -86,7 +125,7 @@ export async function POST(
     project_id: id,
     actor_id: user.id,
     action: "project_attention_acknowledged",
-    message: "opened the new client project request",
+    message: "opened the latest client attention item",
   });
 
   if (insertError && !isIgnorableProjectActivityError(insertError.message)) {

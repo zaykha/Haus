@@ -14,7 +14,11 @@ import { useActiveClientOrganization } from "@/components/use-active-client-orga
 import { UserAvatar } from "@/components/user-avatar";
 import { getClientBrandStyle } from "@/lib/client-branding";
 import { canCreateProject as canCreateProjectPermission, canCreateProjectForOrganization, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
-import { getAttentionCountForProject, projectHasUnacknowledgedClientRequest } from "@/lib/task-attention";
+import {
+  getAttentionCountForProject,
+  getProjectManagerAttentionKind,
+  projectHasUnacknowledgedClientRequest,
+} from "@/lib/task-attention";
 import { formatProjectStage, formatRole } from "@/lib/display";
 import { Project, ProjectWorkflowStage } from "@/lib/types";
 
@@ -717,8 +721,11 @@ export function ProjectsScreen() {
                 const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
                 const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
                 const attentionCount = user ? getAttentionCountForProject(user, state.users, project) : 0;
-                const isNewProject =
-                  user ? projectHasUnacknowledgedClientRequest(user, state.users, project) : false;
+                const attentionKind =
+                  user && user.role !== "client"
+                    ? getProjectManagerAttentionKind(user, state.users, project)
+                    : null;
+                const isNewProject = attentionKind === "new_request";
                 const clientOrganization = project.clientOrganizationId
                   ? organizationsById.get(project.clientOrganizationId) ?? null
                   : null;
@@ -733,7 +740,8 @@ export function ProjectsScreen() {
                     <ProjectTopleft>
                       <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
                       <OrganizationPill>{clientOrganizationName}</OrganizationPill>
-                      {isNewProject ? <NewProjectPill>New</NewProjectPill> : null}
+                      {attentionKind === "new_request" ? <NewProjectPill>New</NewProjectPill> : null}
+                      {attentionKind === "feedback" ? <FeedbackNotifiedPill>Feedback</FeedbackNotifiedPill> : null}
                     </ProjectTopleft>
                     
                     {attentionCount > 0 ? (
@@ -861,8 +869,11 @@ export function ProjectsScreen() {
                       const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
                       const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
                       const attentionCount = user ? getAttentionCountForProject(user, state.users, project) : 0;
-                      const isNewProject =
-                        user ? projectHasUnacknowledgedClientRequest(user, state.users, project) : false;
+                      const attentionKind =
+                        user && user.role !== "client"
+                          ? getProjectManagerAttentionKind(user, state.users, project)
+                          : null;
+                      const isNewProject = attentionKind === "new_request";
                       const clientOrganization = project.clientOrganizationId
                         ? organizationsById.get(project.clientOrganizationId) ?? null
                         : null;
@@ -884,7 +895,8 @@ export function ProjectsScreen() {
                               <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
                               <TableProjectTitleRow>
                                 <strong>{project.name}</strong>
-                                {isNewProject ? <NewProjectPill>New</NewProjectPill> : null}
+                                {attentionKind === "new_request" ? <NewProjectPill>New</NewProjectPill> : null}
+                                {attentionKind === "feedback" ? <FeedbackNotifiedPill>Feedback</FeedbackNotifiedPill> : null}
                               </TableProjectTitleRow>
                             </TableProjectCell>
                           </StickyProjectCell>
@@ -933,8 +945,11 @@ export function ProjectsScreen() {
           {mobileProjects.length ? (
             mobileProjects.map((project) => {
               const attentionCount = user ? getAttentionCountForProject(user, state.users, project) : 0;
-              const isNewProject =
-                user ? projectHasUnacknowledgedClientRequest(user, state.users, project) : false;
+              const attentionKind =
+                user && user.role !== "client"
+                  ? getProjectManagerAttentionKind(user, state.users, project)
+                  : null;
+              const isNewProject = attentionKind === "new_request";
               const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
               const clientOrganization = project.clientOrganizationId
                 ? organizationsById.get(project.clientOrganizationId) ?? null
@@ -952,7 +967,8 @@ export function ProjectsScreen() {
                     <ProjectAttentionBadge>{attentionCount > 99 ? "99+" : attentionCount}</ProjectAttentionBadge>
                   ) : null}
                   <MobileProjectCompanyHeader>{clientOrganizationName}</MobileProjectCompanyHeader>
-                  {isNewProject ? <NewProjectPill>New</NewProjectPill> : null}
+                  {attentionKind === "new_request" ? <NewProjectPill>New</NewProjectPill> : null}
+                  {attentionKind === "feedback" ? <FeedbackNotifiedPill>Feedback</FeedbackNotifiedPill> : null}
                   <MobileProjectStageBadge>{formatProjectStage(project.stage)}</MobileProjectStageBadge>
                   <MobileProjectLead>
                     <MobileProjectMark organization={clientOrganization} />
@@ -1715,6 +1731,11 @@ const NewProjectPill = styled.span`
   font-size: 0.7rem;
   font-weight: 700;
   white-space: nowrap;
+`;
+
+const FeedbackNotifiedPill = styled(NewProjectPill)`
+  background: #fff1da;
+  color: #b97912;
 `;
 
 const ProjectAttentionBadge = styled.span`
