@@ -99,6 +99,14 @@ function normalizeTaskCreationError(message: string | undefined) {
   return message ?? "Unable to create task";
 }
 
+function isProjectCodeConflict(message: string | undefined) {
+  return Boolean(
+    message &&
+      (message.includes("projects_project_code_key") ||
+        message.includes('duplicate key value violates unique constraint "projects_project_code_key"')),
+  );
+}
+
 function isIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -276,8 +284,12 @@ export async function POST(request: NextRequest) {
   }
 
   const projectCodeSequenceByPrefix = new Map<string, number>();
+  const existingProjectCodes = new Set<string>();
   for (const project of existingProjectsResult.data ?? []) {
     const projectCode = String(project.project_code ?? "").trim().toUpperCase();
+    if (projectCode) {
+      existingProjectCodes.add(projectCode);
+    }
     const match = /^([A-Z0-9]+?)(\d+)$/.exec(projectCode);
     if (!match) {
       continue;
@@ -292,7 +304,10 @@ export async function POST(request: NextRequest) {
   }
 
   const normalizedRows: Array<Record<string, unknown>> = [];
+  const generatedProjectCodeIndexes = new Set<number>();
   const errors: string[] = [];
+  const seenExplicitProjectCodes = new Map<string, number>();
+  const reservedProjectCodes = new Set(existingProjectCodes);
 
   rows.forEach((row, rowIndex) => {
     const lineNumber = rowIndex + 2;
@@ -350,7 +365,23 @@ export async function POST(request: NextRequest) {
 
     let resolvedProjectCode = projectId;
     if (resolvedProjectCode) {
-      const explicitCodeMatch = /^([A-Z0-9]+?)(\d+)$/.exec(resolvedProjectCode.trim().toUpperCase());
+      resolvedProjectCode = resolvedProjectCode.trim().toUpperCase();
+      const previousRow = seenExplicitProjectCodes.get(resolvedProjectCode);
+      if (previousRow !== undefined) {
+        errors.push(
+          `Row ${lineNumber}: Project ID "${resolvedProjectCode}" is duplicated in the spreadsheet (also used on row ${previousRow + 2}).`,
+        );
+        return;
+      }
+      seenExplicitProjectCodes.set(resolvedProjectCode, rowIndex);
+
+      if (reservedProjectCodes.has(resolvedProjectCode)) {
+        errors.push(`Row ${lineNumber}: Project ID "${resolvedProjectCode}" already exists.`);
+        return;
+      }
+      reservedProjectCodes.add(resolvedProjectCode);
+
+      const explicitCodeMatch = /^([A-Z0-9]+?)(\d+)$/.exec(resolvedProjectCode);
       if (explicitCodeMatch) {
         const explicitPrefix = explicitCodeMatch[1] ?? "";
         const explicitSequence = Number.parseInt(explicitCodeMatch[2] ?? "0", 10);
@@ -361,9 +392,13 @@ export async function POST(request: NextRequest) {
       }
     } else {
       resolvedProjectCode = buildNextProjectCode(organizationRecord.prefix, projectCodeSequenceByPrefix);
+      while (reservedProjectCodes.has(resolvedProjectCode)) {
+        resolvedProjectCode = buildNextProjectCode(organizationRecord.prefix, projectCodeSequenceByPrefix);
+      }
+      reservedProjectCodes.add(resolvedProjectCode);
     }
 
-    normalizedRows.push({
+    const normalizedRow = {
       name: projectRequestName,
       project_code: resolvedProjectCode,
       requested_date: requestedDate || getTodayIsoDate(),
@@ -385,25 +420,77 @@ export async function POST(request: NextRequest) {
       category: projectType || null,
       stage: normalizedStage,
       due_date: finalDeliverableDate || firstDraftDate || requestedDate || null,
-    });
+    };
+
+    normalizedRows.push(normalizedRow);
+    if (!projectId) {
+      generatedProjectCodeIndexes.add(normalizedRows.length - 1);
+    }
   });
 
   if (errors.length) {
     return NextResponse.json({ error: "Bulk import validation failed", details: errors }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from("projects")
-    .insert(normalizedRows)
-    .select("id, project_request_name, priority_level, first_draft_date, final_deliverable_date, stage");
+  const createdProjects: Array<{
+    id: string;
+    project_request_name: string | null;
+    priority_level: string | null;
+    first_draft_date: string | null;
+    final_deliverable_date: string | null;
+    stage: string | null;
+  }> = [];
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  for (let index = 0; index < normalizedRows.length; index += 1) {
+    const row = normalizedRows[index];
+    let rowToInsert = row;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const { data, error } = await supabase
+        .from("projects")
+        .insert(rowToInsert)
+        .select("id, project_request_name, priority_level, first_draft_date, final_deliverable_date, stage")
+        .single();
+
+      if (!error && data) {
+        createdProjects.push(data);
+        const insertedProjectCode = String(rowToInsert.project_code ?? "").trim().toUpperCase();
+        if (insertedProjectCode) {
+          existingProjectCodes.add(insertedProjectCode);
+        }
+        break;
+      }
+
+      if (!isProjectCodeConflict(error?.message) || !generatedProjectCodeIndexes.has(index)) {
+        return NextResponse.json({ error: error?.message ?? "Unable to create projects" }, { status: 500 });
+      }
+
+      const currentProjectCode = String(rowToInsert.project_code ?? "").trim().toUpperCase();
+      const match = /^([A-Z0-9]+?)(\d+)$/.exec(currentProjectCode);
+      const prefix = match?.[1] ?? "";
+      if (!prefix) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      const nextProjectCode = buildNextProjectCode(prefix, projectCodeSequenceByPrefix);
+      rowToInsert = {
+        ...rowToInsert,
+        project_code: nextProjectCode,
+      };
+      normalizedRows[index] = rowToInsert;
+
+      if (attempt === 4) {
+        return NextResponse.json(
+          { error: `Unable to generate a unique Project ID for row ${index + 2}. Please try again.` },
+          { status: 500 },
+        );
+      }
+    }
   }
 
   if (body.autoCreateTask !== false) {
     const taskRows =
-      data
+      createdProjects
         ?.filter((project) => project.stage === "WIP" || project.stage === "Pending Review")
         .map((project) => ({
           project_id: String(project.id),
@@ -430,6 +517,6 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    createdCount: data?.length ?? normalizedRows.length,
+    createdCount: createdProjects.length,
   });
 }

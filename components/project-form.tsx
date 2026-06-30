@@ -265,15 +265,15 @@ function validateProjectFormRequiredFields({
     missingFields.add("requestStatus");
   }
 
-  if (!effectiveDepartmentName.trim()) {
+  if (!clientCreateMode && !effectiveDepartmentName.trim()) {
     missingFields.add("departmentName");
   }
 
-  if (!effectiveContactPerson.trim()) {
+  if (!clientCreateMode && !effectiveContactPerson.trim()) {
     missingFields.add("contactPerson");
   }
 
-  if (effectiveContactPerson.trim() && !effectiveContactNumber.trim()) {
+  if (!clientCreateMode && effectiveContactPerson.trim() && !effectiveContactNumber.trim()) {
     missingFields.add("contactNumber");
   }
 
@@ -285,7 +285,7 @@ function validateProjectFormRequiredFields({
       };
     }
 
-    if (!hasAvailableContacts && !effectiveContactPerson.trim()) {
+    if (!clientCreateMode && !hasAvailableContacts && !effectiveContactPerson.trim()) {
       return {
         message: "Add a primary contact to this organization before creating the project.",
         missingFields,
@@ -293,7 +293,9 @@ function validateProjectFormRequiredFields({
     }
 
     return {
-      message: "Complete all required fields in Deliverable, Request Intake, and Contact before submitting.",
+      message: clientCreateMode
+        ? "Complete all required fields in Deliverable and Organization before submitting."
+        : "Complete all required fields in Deliverable, Request Intake, and Contact before submitting.",
       missingFields,
     };
   }

@@ -185,7 +185,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/client-organizations/route.ts": {
-    "mtime": 1782745235.6268344,
+    "mtime": 1782795552.8305755,
     "ast_hash": "21dff2c8b57c96182cabc760656599dc",
     "semantic_hash": ""
   },
@@ -200,13 +200,13 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/route.ts": {
-    "mtime": 1782789892.408153,
+    "mtime": 1782795552.8386583,
     "ast_hash": "48f3e842f2e3eafb67db7c512a8dbd65",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/bulk/route.ts": {
-    "mtime": 1782789647.5575259,
-    "ast_hash": "7ab15c9a7a127a604c440fa71401859f",
+    "mtime": 1782802699.0493336,
+    "ast_hash": "63873268ea0e49f4238168e53e4596e3",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/route.ts": {
@@ -215,17 +215,17 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/attention/route.ts": {
-    "mtime": 1782743928.101882,
+    "mtime": 1782795552.8318717,
     "ast_hash": "16f33de6da41c12df68e18ad0026f8ae",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/tasks/route.ts": {
-    "mtime": 1782746549.8465114,
+    "mtime": 1782795552.833931,
     "ast_hash": "b12baf8acefa2d8bd5eec729c03caf9f",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/tasks/[taskId]/route.ts": {
-    "mtime": 1782746725.3530838,
+    "mtime": 1782795552.833042,
     "ast_hash": "7d762b3777c32c289a07e27efdf5540d",
     "semantic_hash": ""
   },
@@ -235,12 +235,12 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/workflow/client-approval/route.ts": {
-    "mtime": 1782790610.834212,
+    "mtime": 1782795552.8355713,
     "ast_hash": "0d61951a19cb5f895f84d28eaa01c735",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/state/route.ts": {
-    "mtime": 1782746342.6611323,
+    "mtime": 1782795552.840957,
     "ast_hash": "65ab43bd5fb26f39d63d9c359a8f03ac",
     "semantic_hash": ""
   },
@@ -380,7 +380,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/supabase/migrations/20260630113526_allow_unassigned_open_tasks.sql": {
-    "mtime": 1782786950.0571296,
+    "mtime": 1782795553.0751889,
     "ast_hash": "3058b1f5e2eabb8fa8ee18bbebc3a335",
     "semantic_hash": ""
   },
@@ -410,7 +410,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/tasks-screen.tsx": {
-    "mtime": 1782794078.829209,
+    "mtime": 1782795552.8760052,
     "ast_hash": "2b54103c4aa62ea7279fc7acb96476e1",
     "semantic_hash": ""
   },
@@ -420,7 +420,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/client-organization-detail-screen.tsx": {
-    "mtime": 1782793339.757443,
+    "mtime": 1782795552.8506985,
     "ast_hash": "2a68af8f0c084e6a2607b3cc157a25b4",
     "semantic_hash": ""
   },
@@ -430,7 +430,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/accept-invite-screen.tsx": {
-    "mtime": 1782793704.785691,
+    "mtime": 1782795552.8442893,
     "ast_hash": "6810f5ee211ed1a0533608d3d5a3aaa6",
     "semantic_hash": ""
   },
@@ -455,22 +455,22 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/custom-date-picker.tsx": {
-    "mtime": 1782788157.1189957,
+    "mtime": 1782795552.852135,
     "ast_hash": "aa4244a415d75f6389a6ab95794f791a",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/projects-screen.tsx": {
-    "mtime": 1782788906.8976996,
+    "mtime": 1782795552.8717139,
     "ast_hash": "abbfe5519f1031bf031ea51c282cee8c",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/app-state.tsx": {
-    "mtime": 1782786516.672146,
+    "mtime": 1782795552.8472695,
     "ast_hash": "d3a61dcd12acd4d64b4caa4bb9a50b0f",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/task-detail-screen.tsx": {
-    "mtime": 1782793270.0359037,
+    "mtime": 1782795552.873355,
     "ast_hash": "4c51f2d906f99fbc8ff09ad39eefdd0b",
     "semantic_hash": ""
   },
@@ -485,8 +485,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/project-detail-screen.tsx": {
-    "mtime": 1782793785.7192082,
-    "ast_hash": "4818d948a8bf7e75bbb84732f9f98362",
+    "mtime": 1782795552.8666482,
+    "ast_hash": "28532bf0c571bd861f706616cd1724b4",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/team-screen.tsx": {
@@ -495,12 +495,12 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/profile-screen.tsx": {
-    "mtime": 1782742858.4874227,
+    "mtime": 1782795552.860536,
     "ast_hash": "e9de7556f0d145d2193d8100a1810156",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/app-sidebar.tsx": {
-    "mtime": 1782789037.1165512,
+    "mtime": 1782795552.8453572,
     "ast_hash": "ee152a2f85ac1f6ca94c224c682cf0be",
     "semantic_hash": ""
   },
@@ -510,17 +510,17 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/designer-task-modal.tsx": {
-    "mtime": 1782794133.3222718,
+    "mtime": 1782795552.8572161,
     "ast_hash": "7cd84861f5712175505b1bd59fadbf6f",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/project-form.tsx": {
-    "mtime": 1782788257.8998017,
-    "ast_hash": "a0dc8af17f840b21fd54528d8e5e2e6b",
+    "mtime": 1782802536.0877142,
+    "ast_hash": "f3b3596eb84552ba59f5b40b160821f2",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/login-screen.tsx": {
-    "mtime": 1782793683.9958684,
+    "mtime": 1782795552.859413,
     "ast_hash": "2fe18be323d2ece186ba13093ef0ae5b",
     "semantic_hash": ""
   },
@@ -530,7 +530,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/project-create-screen.tsx": {
-    "mtime": 1782789105.4188912,
+    "mtime": 1782795552.8628898,
     "ast_hash": "1e405973e7a7267827f4ed4a443f25fb",
     "semantic_hash": ""
   },
@@ -540,12 +540,12 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/invite-workspace-modal.tsx": {
-    "mtime": 1782793110.792802,
+    "mtime": 1782795552.8582191,
     "ast_hash": "4cd66d9fa09837560b20892ea4fb72e2",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/dashboard-screen.tsx": {
-    "mtime": 1782793974.650492,
+    "mtime": 1782795552.854455,
     "ast_hash": "23d3131c3fc58212f3673cfcde22d366",
     "semantic_hash": ""
   },
@@ -565,7 +565,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/ui.tsx": {
-    "mtime": 1782739992.2614837,
+    "mtime": 1782795552.8770993,
     "ast_hash": "b38e8a6d78952a803d5216256eaf7e56",
     "semantic_hash": ""
   },
@@ -610,12 +610,12 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/permissions.ts": {
-    "mtime": 1782746276.9156027,
+    "mtime": 1782795553.071499,
     "ast_hash": "3549e78d2a9fed35a390c26ddf35aaa9",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/client-organizations.ts": {
-    "mtime": 1782748084.7322977,
+    "mtime": 1782795553.0703313,
     "ast_hash": "1bcaba64540e7fa9a1168e00518382a3",
     "semantic_hash": ""
   },
@@ -630,7 +630,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/project-code.ts": {
-    "mtime": 1782745148.9492764,
+    "mtime": 1782795553.072252,
     "ast_hash": "454ab657bf41b9c9044b2e5f5e1f1bc3",
     "semantic_hash": ""
   },
@@ -640,7 +640,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/types.ts": {
-    "mtime": 1782746258.9297674,
+    "mtime": 1782795553.0738752,
     "ast_hash": "e92a9af0c53013d4e80277207f7bfaac",
     "semantic_hash": ""
   },
@@ -655,7 +655,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/task-attention.ts": {
-    "mtime": 1782791239.7689562,
+    "mtime": 1782795553.0731723,
     "ast_hash": "6b047d1832f3aa9be60c726c2e2cece4",
     "semantic_hash": ""
   },
@@ -745,12 +745,12 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/docs/TEST_CHECKLIST.md": {
-    "mtime": 1782789578.958603,
+    "mtime": 1782795552.8791778,
     "ast_hash": "07615b118ebc21eeabbb57ea8d5b8104",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/docs/FORM_VALIDATION_ROLLOUT.md": {
-    "mtime": 1782794139.190076,
+    "mtime": 1782795552.8781424,
     "ast_hash": "e45c41d57406132183fecff197caa060",
     "semantic_hash": ""
   },
