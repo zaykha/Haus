@@ -10,9 +10,9 @@ import { ClientTitleLogo } from "@/components/client-title-logo";
 import { CustomDatePicker } from "@/components/custom-date-picker";
 import { DesignerTaskModal } from "@/components/designer-task-modal";
 import { FilterModal } from "@/components/filter-modal";
+import { HeaderProfileAvatarLink } from "@/components/header-profile-avatar-link";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { useActiveClientOrganization } from "@/components/use-active-client-organization";
-import { UserAvatar } from "@/components/user-avatar";
 import { getClientBrandStyle } from "@/lib/client-branding";
 import { canCreateTask, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import { taskNeedsAttention } from "@/lib/task-attention";
@@ -946,9 +946,7 @@ export function TasksScreen() {
                 : "Manage deliverables, assign staff, and track project work across all active projects."}
             </Subtitle>
           </div>
-          <HeaderAvatarLink href="/profile" aria-label="Open profile">
-            <UserAvatar user={user} />
-          </HeaderAvatarLink>
+          <HeaderProfileAvatarLink user={user} />
         </Header>
 
         <Toolbar>
@@ -1451,22 +1449,6 @@ const Subtitle = styled.p`
     display: block;
     font-size: 0.86rem;
   }
-`;
-
-const HeaderAvatarLink = styled(Link)`
-  position: relative;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 999px;
-  background: #ded6c8;
-  color: #fff;
-  font-weight: 700;
-  text-decoration: none;
 `;
 
 const Toolbar = styled.section`

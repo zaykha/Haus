@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ClientTitleLogo } from "@/components/client-title-logo";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { FilterModal } from "@/components/filter-modal";
+import { HeaderProfileAvatarLink } from "@/components/header-profile-avatar-link";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
@@ -470,9 +471,7 @@ export function LiaisonsScreen() {
                 : "Browse all client liaison accounts and manage their organization memberships."}
             </Subtitle>
           </div>
-          <HeaderAvatarLink href="/profile" aria-label="Open profile">
-            <UserAvatar user={user} />
-          </HeaderAvatarLink>
+          <HeaderProfileAvatarLink user={user} />
         </Header>
 
         <Toolbar>
@@ -967,21 +966,6 @@ const Subtitle = styled.p`
   ${desktop} {
     display: block;
   }
-`;
-
-const HeaderAvatarLink = styled(Link)`
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 999px;
-  background: #ded6c8;
-  color: #fff;
-  font-weight: 700;
-  text-decoration: none;
 `;
 
 const Overlay = styled.div`

@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { useAppState } from "@/components/app-state";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
 import { FilterModal } from "@/components/filter-modal";
+import { HeaderProfileAvatarLink } from "@/components/header-profile-avatar-link";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { UserAvatar } from "@/components/user-avatar";
@@ -627,6 +628,7 @@ export function TeamScreen() {
             <Title>Team</Title>
             <Subtitle>Manage your team members, roles, and permissions.</Subtitle>
           </HeaderCopy>
+          <HeaderProfileAvatarLink user={user} />
         </Header>
 
         <Toolbar>

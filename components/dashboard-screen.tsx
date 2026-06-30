@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ClientOrganizationDetailScreen } from "@/components/client-organization-detail-screen";
 import { ClientTitleLogo } from "@/components/client-title-logo";
 import { CustomDatePicker } from "@/components/custom-date-picker";
+import { HeaderProfileAvatarLink } from "@/components/header-profile-avatar-link";
 import { DashboardScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { useActiveClientOrganization } from "@/components/use-active-client-organization";
@@ -213,7 +214,7 @@ function isDateToday(value: string, reference: Date) {
 }
 
 export function DashboardScreen() {
-  const { ready, state, user, createTask } = useAppState();
+  const { ready, workspaceReady, state, user, createTask } = useAppState();
   const [priorityPage, setPriorityPage] = useState(1);
   const [tasksPage, setTasksPage] = useState(1);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
@@ -561,7 +562,7 @@ export function DashboardScreen() {
 
   const clientHomeOrganizationId = safeUser?.role === "client" ? activeClientOrganizationId : null;
 
-  if (!ready) {
+  if (!ready || (safeUser ? !workspaceReady : false)) {
     return <DashboardScreenSkeleton variant={safeUser?.role === "client" ? "client" : "manager"} />;
   }
 
@@ -979,7 +980,7 @@ export function DashboardScreen() {
 
       {safeUser ? (
         <DesktopSidebarSlot>
-          <AppSidebar user={safeUser} activeLabel="Home" />
+          <AppSidebar user={safeUser} activeLabel="Home" pinToViewport />
         </DesktopSidebarSlot>
       ) : null}
 
@@ -994,15 +995,7 @@ export function DashboardScreen() {
                 : "Track projects, team activity, feedback, and upcoming deadlines."}
             </Subtitle>
           </div>
-          <MobileProfileLink href="/profile" aria-label="Open profile">
-            <HeaderAvatar>{safeUser ? <UserAvatar user={safeUser} /> : null}</HeaderAvatar>
-          </MobileProfileLink>
-          <HeaderUser href="/profile" aria-label="Open profile">
-            <HeaderAvatar>{safeUser ? <UserAvatar user={safeUser} /> : null}</HeaderAvatar>
-            <div>
-              <HeaderUserName>{safeUser?.name ?? ""}</HeaderUserName>
-            </div>
-          </HeaderUser>
+          {safeUser ? <HeaderProfileAvatarLink user={safeUser} /> : null}
         </Header>
 
         {isDesigner ? null : (
@@ -1078,116 +1071,131 @@ export function DashboardScreen() {
           <Panel>
             <PanelHeader>
               <PanelTitle>{isDesigner ? "Projects" : isClient ? "Active Projects" : "Priority Projects"}</PanelTitle>
-              <PanelLink href={scopedHref("/projects")}>View all</PanelLink>
+              {(isDesigner
+                ? projectRows.length > 3
+                : isClient
+                  ? projectRows.filter((project) => project.status !== "done" && !isOnHoldProject(project)).length > 3
+                  : managerReviewProjects.length > 3) ? (
+                <PanelLink href={scopedHref("/projects")}>View all</PanelLink>
+              ) : null}
             </PanelHeader>
-            <ProjectList>
-              {mobileProjects.length ? (
-                mobileProjects.map((project) => {
-                  return (
-                    <MobileProjectRow key={project.id} href={scopedHref(`/projects/${project.id}`)}>
-                      <ProjectMark organization={getProjectOrganization(project, state.clientOrganizations)} />
-                      <ProjectBody>
-                        <MobileProjectHeader>
-                          <div>
-                            <ProjectTitle>{project.name}</ProjectTitle>
-                            <TaskSub>{project.clientName}</TaskSub>
-                          </div>
-                          <MobileDueText>{formatShortDate(project.dueDate)}</MobileDueText>
-                        </MobileProjectHeader>
-                        <MobileProjectFooter>
-                          <MobileMetaText>{formatProjectStage(project.stage)}</MobileMetaText>
-                          <ProjectStageProgress stage={project.stage} size="sm" />
-                        </MobileProjectFooter>
-                      </ProjectBody>
-                    </MobileProjectRow>
-                  );
-                })
-              ) : (
-                <EmptyBlock>
-                  <strong>
-                    {isDesigner
-                      ? "No assigned projects yet"
-                      : isClient
-                        ? "No active projects yet"
-                        : "No projects awaiting review"}
-                  </strong>
-                  <p>
-                    {isDesigner
-                      ? "Projects assigned to you will appear here."
-                      : isClient
-                        ? "Projects shared with your organization will appear here."
-                        : "Projects with tasks submitted for internal review will appear here."}
-                  </p>
-                </EmptyBlock>
-              )}
-            </ProjectList>
+              <PanelContentArea $minHeight={218} $desktopMinHeight={208}>
+                <ProjectList>
+                  {mobileProjects.length ? (
+                    mobileProjects.map((project) => {
+                      return (
+                        <MobileProjectRow key={project.id} href={scopedHref(`/projects/${project.id}`)}>
+                          <ProjectMark organization={getProjectOrganization(project, state.clientOrganizations)} />
+                          <ProjectBody>
+                            <MobileProjectHeader>
+                              <div>
+                                <ProjectTitle>{project.name}</ProjectTitle>
+                                <TaskSub>{project.clientName}</TaskSub>
+                              </div>
+                              <MobileDueText>{formatShortDate(project.dueDate)}</MobileDueText>
+                            </MobileProjectHeader>
+                            <MobileProjectFooter>
+                              <MobileMetaText>{formatProjectStage(project.stage)}</MobileMetaText>
+                              <ProjectStageProgress stage={project.stage} size="sm" />
+                            </MobileProjectFooter>
+                          </ProjectBody>
+                        </MobileProjectRow>
+                      );
+                    })
+                  ) : (
+                    <EmptyBlock $mobileMinHeight={218}>
+                      <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                      <strong>
+                        {isDesigner
+                          ? "No assigned projects yet"
+                          : isClient
+                            ? "No active projects yet"
+                            : "No projects awaiting review"}
+                      </strong>
+                      <p>
+                        {isDesigner
+                          ? "Projects assigned to you will appear here."
+                          : isClient
+                            ? "Projects shared with your organization will appear here."
+                            : "Projects with tasks submitted for internal review will appear here."}
+                      </p>
+                    </EmptyBlock>
+                  )}
+                </ProjectList>
+              </PanelContentArea>
           </Panel>
 
           <Panel>
             <PanelHeader>
               <PanelTitle>Tasks</PanelTitle>
-              <PanelLink href="/tasks">View all</PanelLink>
+              {openTasks.length > 3 ? <PanelLink href="/tasks">View all</PanelLink> : null}
             </PanelHeader>
-            <TaskList>
-              {openTasks.slice(0, 3).length ? (
-                openTasks.slice(0, 3).map((task) => (
-                  <TaskRow key={task.id} href={scopedHref(`/projects/${task.projectId}`)}>
-                    <TaskCircle
-                      $urgent={task.status === "todo"}
-                      $done={task.status === "done" || task.status === "review" || task.status === "approved"}
-                    >
-                      {task.status === "done" || task.status === "review" || task.status === "approved" ? (
-                        <IconCheckTiny />
-                      ) : null}
-                    </TaskCircle>
-                    <TaskCopy>
-                      <TaskTitle>{task.title}</TaskTitle>
-                      <TaskSub>{task.projectName}</TaskSub>
-                    </TaskCopy>
-                    <TaskDate>{formatShortDate(task.dueDate)}</TaskDate>
-                  </TaskRow>
-                ))
-              ) : (
-                <EmptyBlock>
-                  <strong>No tasks due</strong>
-                  <p>Open tasks will appear here once project work is assigned.</p>
-                </EmptyBlock>
-              )}
-            </TaskList>
+            <PanelContentArea $minHeight={168} $desktopMinHeight={200}>
+              <TaskList>
+                {openTasks.slice(0, 3).length ? (
+                  openTasks.slice(0, 3).map((task) => (
+                    <TaskRow key={task.id} href={scopedHref(`/projects/${task.projectId}`)}>
+                      <TaskCircle
+                        $urgent={task.status === "todo"}
+                        $done={task.status === "done" || task.status === "review" || task.status === "approved"}
+                      >
+                        {task.status === "done" || task.status === "review" || task.status === "approved" ? (
+                          <IconCheckTiny />
+                        ) : null}
+                      </TaskCircle>
+                      <TaskCopy>
+                        <TaskTitle>{task.title}</TaskTitle>
+                        <TaskSub>{task.projectName}</TaskSub>
+                      </TaskCopy>
+                      <TaskDate>{formatShortDate(task.dueDate)}</TaskDate>
+                    </TaskRow>
+                  ))
+                ) : (
+                  <EmptyBlock $mobileMinHeight={168}>
+                    <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                    <strong>No tasks due</strong>
+                    <p>Open tasks will appear here once project work is assigned.</p>
+                  </EmptyBlock>
+                )}
+              </TaskList>
+            </PanelContentArea>
           </Panel>
 
           {isDesigner ? (
             <Panel>
               <PanelHeader>
                 <PanelTitle>Feedback</PanelTitle>
-                <PanelLink href="/tasks">View all</PanelLink>
+                {designerFeedbackRows.length > 3 ? <PanelLink href="/tasks">View all</PanelLink> : null}
               </PanelHeader>
-              <FeedbackList>
-                {designerFeedbackRows.length ? (
-                  designerFeedbackRows.slice(0, 3).map((feedback) => (
-                    <FeedbackRowCard key={feedback.id}>
-                      <FeedbackAvatar>{feedback.author.slice(0, 2).toUpperCase()}</FeedbackAvatar>
-                      <FeedbackCopy>
-                        <FeedbackBody>{feedback.body}</FeedbackBody>
-                        <FeedbackProject>{feedback.taskTitle} · {feedback.projectName}</FeedbackProject>
-                      </FeedbackCopy>
-                      <StatusPill
-                        style={{
-                          background: feedback.source === "client" ? "var(--color-warning-soft)" : "var(--color-info-soft)",
-                          color: feedback.source === "client" ? "var(--color-warning)" : "var(--color-info)",
-                        }}
-                      >
-                        {feedback.source === "client" ? "Client" : "Internal"}
-                      </StatusPill>
-                    </FeedbackRowCard>
-                  ))
-                ) : (
-                  <EmptyBlock>
-                    <strong>No feedback yet</strong>
-                    <p>Manager and client feedback on your tasks will appear here.</p>
-                  </EmptyBlock>
-                )}
-              </FeedbackList>
+              <PanelContentArea $minHeight={206} $desktopMinHeight={206}>
+                <FeedbackList>
+                  {designerFeedbackRows.length ? (
+                    designerFeedbackRows.slice(0, 3).map((feedback) => (
+                      <FeedbackRowCard key={feedback.id}>
+                        <FeedbackAvatar>{feedback.author.slice(0, 2).toUpperCase()}</FeedbackAvatar>
+                        <FeedbackCopy>
+                          <FeedbackBody>{feedback.body}</FeedbackBody>
+                          <FeedbackProject>{feedback.taskTitle} · {feedback.projectName}</FeedbackProject>
+                        </FeedbackCopy>
+                        <StatusPill
+                          style={{
+                            background: feedback.source === "client" ? "var(--color-warning-soft)" : "var(--color-info-soft)",
+                            color: feedback.source === "client" ? "var(--color-warning)" : "var(--color-info)",
+                          }}
+                        >
+                          {feedback.source === "client" ? "Client" : "Internal"}
+                        </StatusPill>
+                      </FeedbackRowCard>
+                    ))
+                  ) : (
+                    <EmptyBlock $mobileMinHeight={206}>
+                      <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                      <strong>No feedback yet</strong>
+                      <p>Manager and client feedback on your tasks will appear here.</p>
+                    </EmptyBlock>
+                  )}
+                </FeedbackList>
+              </PanelContentArea>
             </Panel>
           ) : null}
 
@@ -1195,32 +1203,37 @@ export function DashboardScreen() {
             <Panel>
               <PanelHeader>
                 <PanelTitle>Recent Feedback</PanelTitle>
-                <PanelActionButton type="button" onClick={() => setShowRecentFeedbackModal(true)}>
-                  View all
-                </PanelActionButton>
+                {recentFeedback.length > 1 ? (
+                  <PanelActionButton type="button" onClick={() => setShowRecentFeedbackModal(true)}>
+                    View all
+                  </PanelActionButton>
+                ) : null}
               </PanelHeader>
-              <FeedbackList>
-                {recentFeedback.length ? (
-                  recentFeedback.slice(0, 1).map((feedback) => {
-                    const tone = getFeedbackTone(feedback.action);
-                    return (
-                      <FeedbackRowCard key={feedback.id}>
-                        <FeedbackLogo organization={feedback.organization ?? null} />
-                        <FeedbackCopy>
-                          <FeedbackBody>{feedback.body}</FeedbackBody>
-                          <FeedbackProject>{feedback.projectName}</FeedbackProject>
-                        </FeedbackCopy>
-                        <StatusPill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</StatusPill>
-                      </FeedbackRowCard>
-                    );
-                  })
-                ) : (
-                  <EmptyBlock>
-                    <strong>No feedback yet</strong>
-                    <p>Client comments will appear here once reviews start coming in.</p>
-                  </EmptyBlock>
-                )}
-              </FeedbackList>
+              <PanelContentArea $minHeight={150} $desktopMinHeight={184}>
+                <FeedbackList>
+                  {recentFeedback.length ? (
+                    recentFeedback.slice(0, 1).map((feedback) => {
+                      const tone = getFeedbackTone(feedback.action);
+                      return (
+                        <FeedbackRowCard key={feedback.id}>
+                          <FeedbackLogo organization={feedback.organization ?? null} />
+                          <FeedbackCopy>
+                            <FeedbackBody>{feedback.body}</FeedbackBody>
+                            <FeedbackProject>{feedback.projectName}</FeedbackProject>
+                          </FeedbackCopy>
+                          <StatusPill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</StatusPill>
+                        </FeedbackRowCard>
+                      );
+                    })
+                  ) : (
+                    <EmptyBlock $mobileMinHeight={150} $desktopMinHeight={236}>
+                      <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                      <strong>No feedback yet</strong>
+                      <p>Client comments will appear here once reviews start coming in.</p>
+                    </EmptyBlock>
+                  )}
+                </FeedbackList>
+              </PanelContentArea>
             </Panel>
           ) : null}
 
@@ -1267,37 +1280,42 @@ export function DashboardScreen() {
             <Panel>
               <PanelHeader>
                 <PanelTitle>Team Activity</PanelTitle>
-                <PanelActionButton type="button" onClick={() => setShowTeamActivityModal(true)}>
-                  View all
-                </PanelActionButton>
+                {recentActivity.length > 3 ? (
+                  <PanelActionButton type="button" onClick={() => setShowTeamActivityModal(true)}>
+                    View all
+                  </PanelActionButton>
+                ) : null}
               </PanelHeader>
-              <ActivityList>
-                {recentActivity.length ? (
-                  recentActivity.slice(0, 3).map((item) => (
-                    <ActivityRowCard key={item.id}>
-                      {item.actorId ? (
-                        <ActivityUserAvatar
-                          user={state.users.find((candidate) => candidate.id === item.actorId) ?? { name: item.actor, avatarPath: null }}
-                        />
-                      ) : (
-                        <SystemAvatar>S</SystemAvatar>
-                      )}
-                      <FeedbackCopy>
-                        <FeedbackBody>
-                          {item.actor} {item.detail}
-                        </FeedbackBody>
-                        <FeedbackProject>{item.projectName}</FeedbackProject>
-                      </FeedbackCopy>
-                      <ActivityTime>{timeAgo(item.createdAt)}</ActivityTime>
-                    </ActivityRowCard>
-                  ))
-                ) : (
-                  <EmptyBlock>
-                    <strong>No recent activity</strong>
-                    <p>File uploads, comments, and feedback updates will appear here.</p>
-                  </EmptyBlock>
-                )}
-              </ActivityList>
+              <PanelContentArea $minHeight={192} $desktopMinHeight={236}>
+                <ActivityList>
+                  {recentActivity.length ? (
+                    recentActivity.slice(0, 3).map((item) => (
+                      <ActivityRowCard key={item.id}>
+                        {item.actorId ? (
+                          <ActivityUserAvatar
+                            user={state.users.find((candidate) => candidate.id === item.actorId) ?? { name: item.actor, avatarPath: null }}
+                          />
+                        ) : (
+                          <SystemAvatar>S</SystemAvatar>
+                        )}
+                        <FeedbackCopy>
+                          <FeedbackBody>
+                            {item.actor} {item.detail}
+                          </FeedbackBody>
+                          <FeedbackProject>{item.projectName}</FeedbackProject>
+                        </FeedbackCopy>
+                        <ActivityTime>{timeAgo(item.createdAt)}</ActivityTime>
+                      </ActivityRowCard>
+                    ))
+                  ) : (
+                    <EmptyBlock $mobileMinHeight={192} $desktopMinHeight={236}>
+                      <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                      <strong>No recent activity</strong>
+                      <p>File uploads, comments, and feedback updates will appear here.</p>
+                    </EmptyBlock>
+                  )}
+                </ActivityList>
+              </PanelContentArea>
             </Panel>
           ) : null}
 
@@ -1350,53 +1368,56 @@ export function DashboardScreen() {
             <Panel>
               <PanelHeader>
                 <PanelTitle>{isDesigner ? "Projects" : "Priority Projects"}</PanelTitle>
-                {isDesigner ? null : <PanelLink href={scopedHref("/projects")}>View all</PanelLink>}
+                {isDesigner ? null : managerReviewProjects.length > PRIORITY_PROJECTS_PAGE_SIZE ? <PanelLink href={scopedHref("/projects")}>View all</PanelLink> : null}
               </PanelHeader>
 
-              <ProjectList>
-                {priorityProjects.length ? (
-                  priorityProjects.map((project) => {
-                    const tone = getStatusTone(project.status);
-                    return (
-                      <ProjectRow key={project.id} href={scopedHref(`/projects/${project.id}`)}>
-                        <ProjectMark organization={getProjectOrganization(project, state.clientOrganizations)} />
-                        <ProjectBody>
-                          <ProjectTop>
-                            <ProjectTitle>{project.name}</ProjectTitle>
-                            <MetaGroup>
-                              <MetaLabel>Due date</MetaLabel>
-                              <MetaValue>{formatDueDate(project.dueDate)}</MetaValue>
-                            </MetaGroup>
-                            <MetaGroup>
-                              <MetaLabel>Stage</MetaLabel>
-                              <MetaValue>{formatProjectStage(project.stage)}</MetaValue>
-                            </MetaGroup>
-                            <MetaGroup>
-                              <MetaLabel>Progress</MetaLabel>
-                              <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
-                            </MetaGroup>
-                          </ProjectTop>
+              <PanelContentArea $minHeight={208} $desktopMinHeight={208}>
+                <ProjectList>
+                  {priorityProjects.length ? (
+                    priorityProjects.map((project) => {
+                      const tone = getStatusTone(project.status);
+                      return (
+                        <ProjectRow key={project.id} href={scopedHref(`/projects/${project.id}`)}>
+                          <ProjectMark organization={getProjectOrganization(project, state.clientOrganizations)} />
+                          <ProjectBody>
+                            <ProjectTop>
+                              <ProjectTitle>{project.name}</ProjectTitle>
+                              <MetaGroup>
+                                <MetaLabel>Due date</MetaLabel>
+                                <MetaValue>{formatDueDate(project.dueDate)}</MetaValue>
+                              </MetaGroup>
+                              <MetaGroup>
+                                <MetaLabel>Stage</MetaLabel>
+                                <MetaValue>{formatProjectStage(project.stage)}</MetaValue>
+                              </MetaGroup>
+                              <MetaGroup>
+                                <MetaLabel>Progress</MetaLabel>
+                                <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
+                              </MetaGroup>
+                            </ProjectTop>
 
-                          <ProjectStatusRow>
-                            <StatusPill style={{ background: tone.bg, color: tone.fg }}>
-                              {getProjectStatusLabel(project.status)}
-                            </StatusPill>
-                          </ProjectStatusRow>
-                        </ProjectBody>
-                      </ProjectRow>
-                    );
-                  })
-                ) : (
-                  <EmptyBlock>
-                    <strong>{isDesigner ? "No assigned projects yet" : "No projects awaiting review"}</strong>
-                    <p>
-                      {isDesigner
-                        ? "Projects assigned to you will appear here."
-                        : "Projects with tasks submitted for internal review will appear here."}
-                    </p>
-                  </EmptyBlock>
-                )}
-              </ProjectList>
+                            <ProjectStatusRow>
+                              <StatusPill style={{ background: tone.bg, color: tone.fg }}>
+                                {getProjectStatusLabel(project.status)}
+                              </StatusPill>
+                            </ProjectStatusRow>
+                          </ProjectBody>
+                        </ProjectRow>
+                      );
+                    })
+                  ) : (
+                    <EmptyBlock $mobileMinHeight={208}>
+                      <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                      <strong>{isDesigner ? "No assigned projects yet" : "No projects awaiting review"}</strong>
+                      <p>
+                        {isDesigner
+                          ? "Projects assigned to you will appear here."
+                          : "Projects with tasks submitted for internal review will appear here."}
+                      </p>
+                    </EmptyBlock>
+                  )}
+                </ProjectList>
+              </PanelContentArea>
               {managerReviewProjects.length > PRIORITY_PROJECTS_PAGE_SIZE ? (
                 <PanelPagination>
                   <PageButton
@@ -1425,7 +1446,7 @@ export function DashboardScreen() {
             <Panel>
               <PanelHeader>
                 <PanelTitle>Tasks</PanelTitle>
-                <PanelLink href="/tasks">View all</PanelLink>
+                {openTasks.length > TASKS_PAGE_SIZE ? <PanelLink href="/tasks">View all</PanelLink> : null}
               </PanelHeader>
 
               <TaskList>
@@ -1448,7 +1469,7 @@ export function DashboardScreen() {
                     </TaskRow>
                   ))
                 ) : (
-                  <EmptyBlock>
+                  <EmptyBlock $mobileMinHeight={200}>
                     <strong>No tasks due</strong>
                     <p>Open tasks will appear here once project work is assigned.</p>
                   </EmptyBlock>
@@ -1481,34 +1502,37 @@ export function DashboardScreen() {
               <Panel>
                 <PanelHeader>
                   <PanelTitle>Feedback</PanelTitle>
-                  <PanelLink href="/tasks">View all</PanelLink>
+                  {designerFeedbackRows.length > 3 ? <PanelLink href="/tasks">View all</PanelLink> : null}
                 </PanelHeader>
-                <FeedbackList>
-                  {designerFeedbackRows.length ? (
-                    designerFeedbackRows.slice(0, 3).map((feedback) => (
-                      <FeedbackRowCard key={feedback.id}>
-                        <FeedbackAvatar>{feedback.author.slice(0, 2).toUpperCase()}</FeedbackAvatar>
-                        <FeedbackCopy>
-                          <FeedbackBody>{feedback.body}</FeedbackBody>
-                          <FeedbackProject>{feedback.taskTitle} · {feedback.projectName}</FeedbackProject>
-                        </FeedbackCopy>
-                        <StatusPill
-                          style={{
-                            background: feedback.source === "client" ? "var(--color-warning-soft)" : "var(--color-info-soft)",
-                            color: feedback.source === "client" ? "var(--color-warning)" : "var(--color-info)",
-                          }}
-                        >
-                          {feedback.source === "client" ? "Client" : "Internal"}
-                        </StatusPill>
-                      </FeedbackRowCard>
-                    ))
-                  ) : (
-                    <EmptyBlock>
-                      <strong>No feedback yet</strong>
-                      <p>Manager and client feedback on your tasks will appear here.</p>
-                    </EmptyBlock>
-                  )}
-                </FeedbackList>
+                <PanelContentArea $minHeight={206} $desktopMinHeight={206}>
+                  <FeedbackList>
+                    {designerFeedbackRows.length ? (
+                      designerFeedbackRows.slice(0, 3).map((feedback) => (
+                        <FeedbackRowCard key={feedback.id}>
+                          <FeedbackAvatar>{feedback.author.slice(0, 2).toUpperCase()}</FeedbackAvatar>
+                          <FeedbackCopy>
+                            <FeedbackBody>{feedback.body}</FeedbackBody>
+                            <FeedbackProject>{feedback.taskTitle} · {feedback.projectName}</FeedbackProject>
+                          </FeedbackCopy>
+                          <StatusPill
+                            style={{
+                              background: feedback.source === "client" ? "var(--color-warning-soft)" : "var(--color-info-soft)",
+                              color: feedback.source === "client" ? "var(--color-warning)" : "var(--color-info)",
+                            }}
+                          >
+                            {feedback.source === "client" ? "Client" : "Internal"}
+                          </StatusPill>
+                        </FeedbackRowCard>
+                      ))
+                    ) : (
+                      <EmptyBlock $mobileMinHeight={206}>
+                        <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                        <strong>No feedback yet</strong>
+                        <p>Manager and client feedback on your tasks will appear here.</p>
+                      </EmptyBlock>
+                    )}
+                  </FeedbackList>
+                </PanelContentArea>
               </Panel>
             ) : null}
           </TopGrid>
@@ -1519,7 +1543,7 @@ export function DashboardScreen() {
 
                 <PanelHeader>
                   <PanelTitle>Recent Feedback</PanelTitle>
-                  <PanelLink href={scopedHref("/projects")}>View all</PanelLink>
+                  {recentFeedback.length > 1 ? <PanelLink href={scopedHref("/projects")}>View all</PanelLink> : null}
                 </PanelHeader>
                 <FeedbackList>
                   {recentFeedback.length ? (
@@ -1537,7 +1561,7 @@ export function DashboardScreen() {
                       );
                     })
                   ) : (
-                    <EmptyBlock>
+                    <EmptyBlock $mobileMinHeight={160}>
                       <strong>No feedback yet</strong>
                       <p>Client comments will appear here once reviews start coming in.</p>
                     </EmptyBlock>
@@ -1586,68 +1610,78 @@ export function DashboardScreen() {
                 <DesktopOnlyPanel>
                   <PanelHeader>
                     <PanelTitle>Recent Client Feedback</PanelTitle>
-                    <PanelActionButton type="button" onClick={() => setShowRecentFeedbackModal(true)}>
-                      View all
-                    </PanelActionButton>
+                    {recentFeedback.length > 3 ? (
+                      <PanelActionButton type="button" onClick={() => setShowRecentFeedbackModal(true)}>
+                        View all
+                      </PanelActionButton>
+                    ) : null}
                   </PanelHeader>
-                  <FeedbackList>
-                    {recentFeedback.length ? (
-                      recentFeedback.map((feedback) => {
-                        const tone = getFeedbackTone(feedback.action);
-                        return (
-                          <FeedbackRowCard key={feedback.id}>
-                            <FeedbackLogo organization={feedback.organization ?? null} />
-                            <FeedbackCopy>
-                              <FeedbackBody>{feedback.body}</FeedbackBody>
-                              <FeedbackProject>{feedback.projectName}</FeedbackProject>
-                            </FeedbackCopy>
-                            <StatusPill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</StatusPill>
-                          </FeedbackRowCard>
-                        );
-                      })
-                    ) : (
-                      <EmptyBlock>
-                        <strong>No feedback yet</strong>
-                        <p>Client feedback will appear here once comments start coming in.</p>
-                      </EmptyBlock>
-                    )}
-                  </FeedbackList>
+                  <PanelContentArea $minHeight={212} $desktopMinHeight={212}>
+                    <FeedbackList>
+                      {recentFeedback.length ? (
+                        recentFeedback.map((feedback) => {
+                          const tone = getFeedbackTone(feedback.action);
+                          return (
+                            <FeedbackRowCard key={feedback.id}>
+                              <FeedbackLogo organization={feedback.organization ?? null} />
+                              <FeedbackCopy>
+                                <FeedbackBody>{feedback.body}</FeedbackBody>
+                                <FeedbackProject>{feedback.projectName}</FeedbackProject>
+                              </FeedbackCopy>
+                              <StatusPill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</StatusPill>
+                            </FeedbackRowCard>
+                          );
+                        })
+                      ) : (
+                        <EmptyBlock $mobileMinHeight={212}>
+                          <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                          <strong>No feedback yet</strong>
+                          <p>Client feedback will appear here once comments start coming in.</p>
+                        </EmptyBlock>
+                      )}
+                    </FeedbackList>
+                  </PanelContentArea>
                 </DesktopOnlyPanel>
 
                 <Panel>
                   <PanelHeader>
                     <PanelTitle>Team Activity</PanelTitle>
-                    <PanelActionButton type="button" onClick={() => setShowTeamActivityModal(true)}>
-                      View all
-                    </PanelActionButton>
+                    {recentActivity.length > 4 ? (
+                      <PanelActionButton type="button" onClick={() => setShowTeamActivityModal(true)}>
+                        View all
+                      </PanelActionButton>
+                    ) : null}
                   </PanelHeader>
-                  <ActivityList>
-                    {recentActivity.length ? (
-                      recentActivity.map((item) => (
-                        <ActivityRowCard key={item.id}>
-                          {item.actorId ? (
-                            <ActivityUserAvatar
-                              user={state.users.find((candidate) => candidate.id === item.actorId) ?? { name: item.actor, avatarPath: null }}
-                            />
-                          ) : (
-                            <SystemAvatar>S</SystemAvatar>
-                          )}
-                          <FeedbackCopy>
-                            <FeedbackBody>
-                              {item.actor} {item.detail}
-                            </FeedbackBody>
-                            <FeedbackProject>{item.projectName}</FeedbackProject>
-                          </FeedbackCopy>
-                          <ActivityTime>{timeAgo(item.createdAt)}</ActivityTime>
-                        </ActivityRowCard>
-                      ))
-                    ) : (
-                      <EmptyBlock>
-                        <strong>No recent activity</strong>
-                        <p>File uploads, comments, and feedback updates will appear here.</p>
-                      </EmptyBlock>
-                    )}
-                  </ActivityList>
+                  <PanelContentArea $minHeight={236} $desktopMinHeight={236}>
+                    <ActivityList>
+                      {recentActivity.length ? (
+                        recentActivity.map((item) => (
+                          <ActivityRowCard key={item.id}>
+                            {item.actorId ? (
+                              <ActivityUserAvatar
+                                user={state.users.find((candidate) => candidate.id === item.actorId) ?? { name: item.actor, avatarPath: null }}
+                              />
+                            ) : (
+                              <SystemAvatar>S</SystemAvatar>
+                            )}
+                            <FeedbackCopy>
+                              <FeedbackBody>
+                                {item.actor} {item.detail}
+                              </FeedbackBody>
+                              <FeedbackProject>{item.projectName}</FeedbackProject>
+                            </FeedbackCopy>
+                            <ActivityTime>{timeAgo(item.createdAt)}</ActivityTime>
+                          </ActivityRowCard>
+                        ))
+                      ) : (
+                        <EmptyBlock $mobileMinHeight={236}>
+                          <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                          <strong>No recent activity</strong>
+                          <p>File uploads, comments, and feedback updates will appear here.</p>
+                        </EmptyBlock>
+                      )}
+                    </ActivityList>
+                  </PanelContentArea>
                 </Panel>
 
                 {canManage ? (
@@ -1898,75 +1932,6 @@ const Subtitle = styled.p`
   }
 `;
 
-const MobileProfileLink = styled(Link)`
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-
-  ${desktop} {
-    display: none;
-  }
-`;
-
-const HeaderUser = styled(Link)`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.9);
-  text-decoration: none;
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    background-color 0.18s ease,
-    border-color 0.18s ease;
-
-  display: none;
-
-  ${desktop} {
-    display: flex;
-
-    &:hover {
-      transform: translateY(-2px);
-      background: rgba(255, 250, 243, 0.96);
-      border-color: rgba(220, 208, 194, 0.95);
-      box-shadow: 0 14px 28px rgba(31, 31, 31, 0.08);
-    }
-  }
-`;
-
-const HeaderAvatar = styled.div`
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: #ded6c8;
-  color: #fff;
-  font-size: 0.85rem;
-  font-weight: 700;
-`;
-
-const HeaderUserName = styled.strong`
-  display: block;
-  font-size: 0.82rem;
-  line-height: 1.2;
-
-  @media (max-width: 420px) {
-    font-size: 0.78rem;
-  }
-`;
-
-
 const StatsGrid = styled.section`
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2183,6 +2148,15 @@ const Panel = styled.section`
   ${desktop} {
     padding: 14px 16px 16px;
     border-radius: 20px;
+  }
+`;
+
+const PanelContentArea = styled.div<{ $minHeight: number; $desktopMinHeight?: number }>`
+  display: flex;
+  flex-direction: column;
+
+  ${desktop} {
+    min-height: ${({ $desktopMinHeight, $minHeight }) => `${$desktopMinHeight ?? $minHeight}px`};
   }
 `;
 
@@ -2616,13 +2590,14 @@ const ActivityRowCard = styled.article`
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) auto;
   gap: 10px;
-  align-items: start;
+  align-items: center;
 `;
 
 const ActivityTime = styled.span`
   color: var(--color-text-muted);
   font-size: 0.72rem;
   font-weight: 600;
+  align-self: center;
 `;
 
 const ActivityUserAvatar = styled(UserAvatar)`
@@ -2659,7 +2634,8 @@ const DesktopSidebarSlot = styled.div`
 
   ${desktop} {
     display: block;
-    flex: 0 0 auto;
+    width: 260px;
+    flex: 0 0 260px;
   }
 `;
 
@@ -3145,7 +3121,15 @@ const ActionIcon = styled.span`
   }
 `;
 
-const EmptyBlock = styled.div`
+const EmptyBlock = styled.div<{ $mobileMinHeight?: number; $desktopMinHeight?: number }>`
+  flex: 1;
+  min-height: ${({ $mobileMinHeight }) => ($mobileMinHeight ? `${$mobileMinHeight}px` : "inherit")};
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
   color: var(--color-text-muted);
 
   strong {
@@ -3155,9 +3139,27 @@ const EmptyBlock = styled.div`
   }
 
   p {
-    margin: 6px 0 0;
+    margin: 0;
+    max-width: 28ch;
     font-size: 0.76rem;
     line-height: 1.5;
+  }
+
+  ${desktop} {
+    min-height: ${({ $desktopMinHeight, $mobileMinHeight }) =>
+      $desktopMinHeight ? `${$desktopMinHeight}px` : $mobileMinHeight ? `${$mobileMinHeight}px` : "inherit"};
+  }
+`;
+
+const EmptyImage = styled.img`
+  width: 70px;
+  height: 70px;
+  object-fit: contain;
+  opacity: 0.92;
+
+  ${desktop} {
+    width: 82px;
+    height: 82px;
   }
 `;
 

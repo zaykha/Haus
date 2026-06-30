@@ -50,6 +50,7 @@ import {
 interface AppStateContextValue {
   mode: "mock" | "supabase";
   ready: boolean;
+  workspaceReady: boolean;
   state: DemoState;
   user: User | null;
   login: (email: string, password?: string) => Promise<void>;
@@ -481,17 +482,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DemoState>(initialAppState);
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  const [workspaceReady, setWorkspaceReady] = useState(appMode !== "supabase");
   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (appMode !== "supabase") {
       setReady(true);
+      setWorkspaceReady(true);
       return;
     }
 
     const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       setReady(true);
+      setWorkspaceReady(true);
       return;
     }
 
@@ -503,8 +507,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           setUser(null);
           setState(initialAppState);
           setReady(true);
+          setWorkspaceReady(true);
         }
         return;
+      }
+
+      if (!cancelled) {
+        setWorkspaceReady(false);
       }
 
       try {
@@ -547,12 +556,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     if (!currentUserId) {
       setState(initialAppState);
+      setWorkspaceReady(true);
       return;
     }
 
     let cancelled = false;
 
     async function loadWorkspace() {
+      if (!cancelled) {
+        setWorkspaceReady(false);
+      }
+
       try {
         const nextState = await fetchWorkspaceState();
         if (!cancelled) {
@@ -561,11 +575,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           if (hydratedUser) {
             setUser((current) => (areUsersEqual(current, hydratedUser) ? current : hydratedUser));
           }
+          setWorkspaceReady(true);
         }
       } catch (error) {
         console.error("Failed to load workspace state", error);
         if (!cancelled) {
           setState(initialAppState);
+          setWorkspaceReady(true);
         }
       }
     }
@@ -1378,6 +1394,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       value={{
         mode: appMode,
         ready,
+        workspaceReady,
         state,
         user,
         login,

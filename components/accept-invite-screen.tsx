@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { useAppState } from "@/components/app-state";
-import { profileAvatarOptions } from "@/lib/profile-avatars";
+import { defaultProfileAvatarPath } from "@/lib/profile-avatars";
 import { formatLabel, formatRole } from "@/lib/display";
 
 interface RemoteInvitationPreview {
@@ -30,7 +30,7 @@ export function AcceptInviteScreen() {
   const [phone, setPhone] = useState("");
   const [jobTitle, setJobTitle] = useState("");
   const [department, setDepartment] = useState("");
-  const [avatarPath, setAvatarPath] = useState<string>(profileAvatarOptions[0] ?? "");
+  const [avatarPath, setAvatarPath] = useState<string>(defaultProfileAvatarPath);
   const [departmentOpen, setDepartmentOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");

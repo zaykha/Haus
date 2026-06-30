@@ -8,12 +8,12 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { BrandColorPicker } from "@/components/brand-color-picker";
 import { ClientTitleLogo } from "@/components/client-title-logo";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
+import { HeaderProfileAvatarLink } from "@/components/header-profile-avatar-link";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { useActiveClientOrganization } from "@/components/use-active-client-organization";
-import { UserAvatar } from "@/components/user-avatar";
 import { getClientBrandStyle, normalizeHexColor } from "@/lib/client-branding";
 import {
   buildLiaisonRows,
@@ -127,6 +127,28 @@ function getRelativeActivityLabel(value: string) {
   return `${days}d ago`;
 }
 
+function getOrganizationStatusMeta(status: "active" | "inactive" | null | undefined) {
+  if (status === "active") {
+    return {
+      label: "Active",
+      bg: "#5ca16d",
+      fg: "#ffffff",
+      icon: "✓",
+    };
+  }
+
+  if (status === "inactive") {
+    return {
+      label: "Inactive",
+      bg: "#8d857b",
+      fg: "#ffffff",
+      icon: "−",
+    };
+  }
+
+  return null;
+}
+
 function getTaskTone(status: string) {
   switch (status) {
     case "in_progress":
@@ -208,6 +230,8 @@ export function ClientOrganizationDetailScreen({
   const [showManageOrganizations, setShowManageOrganizations] = useState(false);
   const [showPendingLiaisonsOnly, setShowPendingLiaisonsOnly] = useState(false);
   const [showOrganizationSwitcher, setShowOrganizationSwitcher] = useState(false);
+  const [showAllReviewsModal, setShowAllReviewsModal] = useState(false);
+  const [showAllActivityModal, setShowAllActivityModal] = useState(false);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   const rows = useMemo(() => buildClientOrganizationRows(state), [state]);
@@ -298,6 +322,7 @@ export function ClientOrganizationDetailScreen({
   const canSwitchClientHomeOrganization =
     homeMode && user?.role === "client" && clientHomeOrganizations.length > 1;
   const isClientViewer = user?.role === "client";
+  const organizationStatusMeta = getOrganizationStatusMeta(organization?.status ?? null);
   const canEditOrganization =
     Boolean(user) &&
     (canManage ||
@@ -341,7 +366,9 @@ export function ClientOrganizationDetailScreen({
   if (!organization) {
     return (
       <Shell>
-        <AppSidebar user={user} activeLabel={activeLabel} />
+        <ClientSidebarSlot>
+          <AppSidebar user={user} activeLabel={activeLabel} pinToViewport />
+        </ClientSidebarSlot>
         <Content>
           {!homeMode && viewerRole !== "client" ? <BackLink href="/clients">← Back to clients</BackLink> : null}
           <EmptyState>
@@ -360,7 +387,9 @@ export function ClientOrganizationDetailScreen({
   ) {
     return (
       <Shell>
-        <AppSidebar user={user} activeLabel={activeLabel} />
+        <ClientSidebarSlot>
+          <AppSidebar user={user} activeLabel={activeLabel} pinToViewport />
+        </ClientSidebarSlot>
         <Content>
           {!homeMode && viewerRole !== "client" ? <BackLink href="/clients">← Back to clients</BackLink> : null}
           <EmptyState>
@@ -503,6 +532,94 @@ export function ClientOrganizationDetailScreen({
   if (homeMode && user.role === "client") {
     return (
       <Shell style={brandStyle}>
+        {showAllReviewsModal ? (
+          <Overlay onClick={() => setShowAllReviewsModal(false)}>
+            <ScrollableModalCard onClick={(event) => event.stopPropagation()}>
+              <ModalHeader>
+                <div>
+                  <ModalTitle>Pending Your Review</ModalTitle>
+                  <ModalDescription>Browse every task currently waiting for client review.</ModalDescription>
+                </div>
+                <IconButton type="button" onClick={() => setShowAllReviewsModal(false)} aria-label="Close reviews">
+                  <IconClose />
+                </IconButton>
+              </ModalHeader>
+              <ScrollableModalBody>
+                {organization.openTasks.length ? (
+                  <ClientHomeList>
+                    {organization.openTasks.map((task) => (
+                      <ClientReviewCard key={task.id} href={scopedHref(`/projects/${task.projectId}`)}>
+                        <ClientReviewIcon>
+                          <IconFolderMini />
+                        </ClientReviewIcon>
+                        <ClientReviewBody>
+                          <ClientProjectTitle>{task.projectName}</ClientProjectTitle>
+                          <ClientMeta>{task.title}</ClientMeta>
+                          <ClientMeta>
+                            Submitted by {task.assigneeName} · {formatDate(task.dueDate)}
+                          </ClientMeta>
+                        </ClientReviewBody>
+                        <ClientReviewPill>Review</ClientReviewPill>
+                        <ClientProjectArrow>
+                          <IconChevronRight />
+                        </ClientProjectArrow>
+                      </ClientReviewCard>
+                    ))}
+                  </ClientHomeList>
+                ) : (
+                  <ClientEmptyState $mobileMinHeight={252}>
+                    <ClientEmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                    <strong>No pending reviews right now.</strong>
+                    <p>Tasks waiting for your feedback will appear here.</p>
+                  </ClientEmptyState>
+                )}
+              </ScrollableModalBody>
+            </ScrollableModalCard>
+          </Overlay>
+        ) : null}
+
+        {showAllActivityModal ? (
+          <Overlay onClick={() => setShowAllActivityModal(false)}>
+            <ScrollableModalCard onClick={(event) => event.stopPropagation()}>
+              <ModalHeader>
+                <div>
+                  <ModalTitle>Recent Activity</ModalTitle>
+                  <ModalDescription>Browse the full activity history for this organization.</ModalDescription>
+                </div>
+                <IconButton type="button" onClick={() => setShowAllActivityModal(false)} aria-label="Close activity">
+                  <IconClose />
+                </IconButton>
+              </ModalHeader>
+              <ScrollableModalBody>
+                {organizationActivities.length ? (
+                  <ActivityList>
+                    {organizationActivities.map((activity) => (
+                      <ActivityRowCard key={activity.id}>
+                        <ActivityIcon>
+                          <IconSparkMini />
+                        </ActivityIcon>
+                        <ActivityBody>
+                          <ActivityTitle>{activity.message}</ActivityTitle>
+                          <ClientMeta>
+                            by {activity.actorName} · {formatDate(activity.createdAt)}
+                          </ClientMeta>
+                        </ActivityBody>
+                        <ActivityTime>{getRelativeActivityLabel(activity.createdAt)}</ActivityTime>
+                      </ActivityRowCard>
+                    ))}
+                  </ActivityList>
+                ) : (
+                  <ClientEmptyState $mobileMinHeight={206}>
+                    <ClientEmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                    <strong>No recent activity yet.</strong>
+                    <p>Project updates, uploads, and feedback history will appear here.</p>
+                  </ClientEmptyState>
+                )}
+              </ScrollableModalBody>
+            </ScrollableModalCard>
+          </Overlay>
+        ) : null}
+
         {showOrganizationSwitcher ? (
           <Overlay onClick={() => setShowOrganizationSwitcher(false)}>
             <ModalCard onClick={(event) => event.stopPropagation()}>
@@ -547,7 +664,9 @@ export function ClientOrganizationDetailScreen({
             </ModalCard>
           </Overlay>
         ) : null}
-        <AppSidebar user={user} activeLabel="Home" />
+        <ClientSidebarSlot>
+          <AppSidebar user={user} activeLabel="Home" pinToViewport />
+        </ClientSidebarSlot>
         <Content>
           <Header>
             <div>
@@ -561,23 +680,36 @@ export function ClientOrganizationDetailScreen({
                       onClick={() => setShowOrganizationSwitcher(true)}
                       aria-label="Switch organization"
                     >
-                      <ClientHeaderTitle>{organization.name}</ClientHeaderTitle>
+                      <ClientHeaderTitleRow>
+                        <ClientHeaderTitle>{organization.name}</ClientHeaderTitle>
+                        {organizationStatusMeta ? (
+                          <HeaderStatusIndicator>
+                            <HeaderStatusIcon $bg={organizationStatusMeta.bg} $fg={organizationStatusMeta.fg}>
+                              {organizationStatusMeta.icon}
+                            </HeaderStatusIcon>
+                          </HeaderStatusIndicator>
+                        ) : null}
+                      </ClientHeaderTitleRow>
                       <HeaderSwitchIcon aria-hidden="true">
                         <IconChevronDown />
                       </HeaderSwitchIcon>
                     </ClientHeaderSwitchButton>
                   ) : (
-                    <ClientHeaderTitle>{organization.name}</ClientHeaderTitle>
+                    <ClientHeaderTitleRow>
+                      <ClientHeaderTitle>{organization.name}</ClientHeaderTitle>
+                      {organizationStatusMeta ? (
+                        <HeaderStatusIndicator>
+                          <HeaderStatusIcon $bg={organizationStatusMeta.bg} $fg={organizationStatusMeta.fg}>
+                            {organizationStatusMeta.icon}
+                          </HeaderStatusIcon>
+                        </HeaderStatusIndicator>
+                      ) : null}
+                    </ClientHeaderTitleRow>
                   )}
                   <InlinePills>
                     <TypePill $type={organization.type}>
                       {organization.type === "internal" ? "Internal" : "External"}
                     </TypePill>
-                    {getClientOrganizationStatusLabel(organization) ? (
-                      <PendingPill $active={organization.status === "active"}>
-                        {getClientOrganizationStatusLabel(organization)}
-                      </PendingPill>
-                    ) : null}
                   {canEditOrganization ? (
                       <BrandConfigButton
                         type="button"
@@ -596,9 +728,7 @@ export function ClientOrganizationDetailScreen({
               </ClientHomeWelcome>
             </div>
             <HeaderActions>
-              <HeaderAvatarLink href="/profile" aria-label="Open profile">
-                <UserAvatar user={user} />
-              </HeaderAvatarLink>
+              <HeaderProfileAvatarLink user={user} />
             </HeaderActions>
           </Header>
 
@@ -647,57 +777,65 @@ export function ClientOrganizationDetailScreen({
             <ClientHomePanel>
               <SectionHeader>
                 <PanelTitle>Active Projects</PanelTitle>
-                <SectionLink href={scopedHref("/projects")}>View all projects</SectionLink>
+                {organizationProjects.length > PROJECT_LIST_CAP ? (
+                  <SectionLink href={scopedHref("/projects")}>View all projects</SectionLink>
+                ) : null}
               </SectionHeader>
-              {clientPriorityProjects.length ? (
-                <ClientHomeList>
-                  {clientPriorityProjects.map((project) => {
-                    const tone = getClientProjectTone(project.status, project.stage);
-                    const needsClientReview = isPendingReviewProject(project.status, project.stage);
-                    return (
-                      <ClientProjectCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
-                        <ClientProjectGlyph
-                          organization={
-                            project.clientOrganizationId
-                              ? state.clientOrganizations.find(
-                                  (clientOrganization) => clientOrganization.id === project.clientOrganizationId,
-                                ) ?? rawOrganization
-                              : rawOrganization
-                          }
-                        />
-                        <ClientProjectBody>
-                          <ClientHomeProjectHeader>
-                            <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
-                            <ClientHomeProjectDue>{formatShortDate(project.finalDeliverableDate ?? project.dueDate)}</ClientHomeProjectDue>
-                          </ClientHomeProjectHeader>
-                          <ClientProjectTop>
-                            <ClientProjectMetaGroup>
-                              <ClientProjectMetaLabel>Due date</ClientProjectMetaLabel>
-                              <ClientProjectMetaValue>{formatDate(project.finalDeliverableDate ?? project.dueDate)}</ClientProjectMetaValue>
-                            </ClientProjectMetaGroup>
-                            <ClientProjectMetaGroup>
-                              <ClientProjectMetaLabel>Stage</ClientProjectMetaLabel>
-                              <ClientProjectMetaValue>{formatProjectStage(project.stage)}</ClientProjectMetaValue>
-                            </ClientProjectMetaGroup>
-                            <ClientProjectMetaGroup>
-                              <ClientProjectMetaLabel>Progress</ClientProjectMetaLabel>
-                              <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
-                            </ClientProjectMetaGroup>
-                          </ClientProjectTop>
-                          <ClientProjectStatusRow>
-                            {needsClientReview ? <ClientAttentionPill>Needs Review</ClientAttentionPill> : null}
-                            <ClientProjectStatusPill style={{ background: tone.bg, color: tone.fg }}>
-                              {getClientProjectStatusLabel(project.status, project.stage)}
-                            </ClientProjectStatusPill>
-                          </ClientProjectStatusRow>
-                        </ClientProjectBody>
-                      </ClientProjectCard>
-                    );
-                  })}
-                </ClientHomeList>
-              ) : (
-                <ClientMeta>No active projects for this organization yet.</ClientMeta>
-              )}
+              <ClientHomeContentArea $minHeight={252} $desktopMinHeight={256}>
+                {clientPriorityProjects.length ? (
+                  <ClientHomeList>
+                    {clientPriorityProjects.map((project) => {
+                      const tone = getClientProjectTone(project.status, project.stage);
+                      const needsClientReview = isPendingReviewProject(project.status, project.stage);
+                      return (
+                        <ClientProjectCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
+                          <ClientProjectGlyph
+                            organization={
+                              project.clientOrganizationId
+                                ? state.clientOrganizations.find(
+                                    (clientOrganization) => clientOrganization.id === project.clientOrganizationId,
+                                  ) ?? rawOrganization
+                                : rawOrganization
+                            }
+                          />
+                          <ClientProjectBody>
+                            <ClientHomeProjectHeader>
+                              <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
+                              <ClientHomeProjectDue>{formatShortDate(project.finalDeliverableDate ?? project.dueDate)}</ClientHomeProjectDue>
+                            </ClientHomeProjectHeader>
+                            <ClientProjectTop>
+                              <ClientProjectMetaGroup>
+                                <ClientProjectMetaLabel>Due date</ClientProjectMetaLabel>
+                                <ClientProjectMetaValue>{formatDate(project.finalDeliverableDate ?? project.dueDate)}</ClientProjectMetaValue>
+                              </ClientProjectMetaGroup>
+                              <ClientProjectMetaGroup>
+                                <ClientProjectMetaLabel>Stage</ClientProjectMetaLabel>
+                                <ClientProjectMetaValue>{formatProjectStage(project.stage)}</ClientProjectMetaValue>
+                              </ClientProjectMetaGroup>
+                              <ClientProjectMetaGroup>
+                                <ClientProjectMetaLabel>Progress</ClientProjectMetaLabel>
+                                <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
+                              </ClientProjectMetaGroup>
+                            </ClientProjectTop>
+                            <ClientProjectStatusRow>
+                              {needsClientReview ? <ClientAttentionPill>Needs Review</ClientAttentionPill> : null}
+                              <ClientProjectStatusPill style={{ background: tone.bg, color: tone.fg }}>
+                                {getClientProjectStatusLabel(project.status, project.stage)}
+                              </ClientProjectStatusPill>
+                            </ClientProjectStatusRow>
+                          </ClientProjectBody>
+                        </ClientProjectCard>
+                      );
+                    })}
+                  </ClientHomeList>
+                ) : (
+                  <ClientEmptyState $mobileMinHeight={188}>
+                    <ClientEmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                    <strong>No active projects for this organization yet.</strong>
+                    <p>Projects shared with this organization will appear here.</p>
+                  </ClientEmptyState>
+                )}
+              </ClientHomeContentArea>
             </ClientHomePanel>
 
             <ClientHomePanel>
@@ -740,93 +878,121 @@ export function ClientOrganizationDetailScreen({
             <ClientHomePanel>
               <SectionHeader>
                 <PanelTitle>Pending Your Review</PanelTitle>
-                <SectionLink href={scopedHref("/projects")}>View all reviews</SectionLink>
+                {organization.openTasks.length > 3 ? (
+                  <SectionActionButton type="button" onClick={() => setShowAllReviewsModal(true)}>
+                    View all reviews
+                  </SectionActionButton>
+                ) : null}
               </SectionHeader>
-              {pendingReviewItems.length ? (
-                <ClientHomeList>
-                  {pendingReviewItems.map((task) => (
-                    <ClientReviewCard key={task.id} href={scopedHref(`/projects/${task.projectId}`)}>
-                      <ClientReviewIcon>
-                        <IconFolderMini />
-                      </ClientReviewIcon>
-                      <ClientReviewBody>
-                        <ClientProjectTitle>{task.projectName}</ClientProjectTitle>
-                        <ClientMeta>{task.title}</ClientMeta>
-                        <ClientMeta>
-                          Submitted by {task.assigneeName} · {formatDate(task.dueDate)}
-                        </ClientMeta>
-                      </ClientReviewBody>
-                      <ClientReviewPill>Review</ClientReviewPill>
-                      <ClientProjectArrow>
-                        <IconChevronRight />
-                      </ClientProjectArrow>
-                    </ClientReviewCard>
-                  ))}
-                </ClientHomeList>
-              ) : (
-                <ClientMeta>No pending reviews right now.</ClientMeta>
-              )}
+              <ClientHomeContentArea $minHeight={206} $desktopMinHeight={206}>
+                {pendingReviewItems.length ? (
+                  <ClientHomeList>
+                    {pendingReviewItems.map((task) => (
+                      <ClientReviewCard key={task.id} href={scopedHref(`/projects/${task.projectId}`)}>
+                        <ClientReviewIcon>
+                          <IconFolderMini />
+                        </ClientReviewIcon>
+                        <ClientReviewBody>
+                          <ClientProjectTitle>{task.projectName}</ClientProjectTitle>
+                          <ClientMeta>{task.title}</ClientMeta>
+                          <ClientMeta>
+                            Submitted by {task.assigneeName} · {formatDate(task.dueDate)}
+                          </ClientMeta>
+                        </ClientReviewBody>
+                        <ClientReviewPill>Review</ClientReviewPill>
+                        <ClientProjectArrow>
+                          <IconChevronRight />
+                        </ClientProjectArrow>
+                      </ClientReviewCard>
+                    ))}
+                  </ClientHomeList>
+                ) : (
+                  <ClientEmptyState $mobileMinHeight={236}>
+                    <ClientEmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                    <strong>No pending reviews right now.</strong>
+                    <p>Tasks waiting for your feedback will appear here.</p>
+                  </ClientEmptyState>
+                )}
+              </ClientHomeContentArea>
             </ClientHomePanel>
 
             <ClientHomePanel>
               <SectionHeader>
                 <PanelTitle>Upcoming Deliveries</PanelTitle>
-                <SectionLink href={scopedHref("/projects")}>View all projects</SectionLink>
+                {activeProjects.length > 3 ? (
+                  <SectionLink href={scopedHref("/projects")}>View all projects</SectionLink>
+                ) : null}
               </SectionHeader>
-              {upcomingDeliveries.length ? (
-                <ClientHomeList>
-                  {upcomingDeliveries.map((project) => {
-                    const tone = getClientProjectTone(project.status, project.stage);
-                    return (
-                      <CompactDeliveryCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
-                        <CompactDeliveryIcon>
-                          <IconCalendarMini />
-                        </CompactDeliveryIcon>
-                        <CompactDeliveryBody>
-                          <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
-                          <CompactDeliveryMeta>{formatProjectStage(project.stage)}</CompactDeliveryMeta>
-                          <CompactDeliveryMeta>Due {formatDate(project.finalDeliverableDate ?? project.dueDate)}</CompactDeliveryMeta>
-                        </CompactDeliveryBody>
-                        <CompactDeliveryStatusPill style={{ background: tone.bg, color: tone.fg }}>
-                          {getClientProjectStatusLabel(project.status, project.stage)}
-                        </CompactDeliveryStatusPill>
-                        <CompactDeliveryArrow>
-                          <IconChevronRight />
-                        </CompactDeliveryArrow>
-                      </CompactDeliveryCard>
-                    );
-                  })}
-                </ClientHomeList>
-              ) : (
-                <ClientMeta>No upcoming deliveries scheduled yet.</ClientMeta>
-              )}
+              <ClientHomeContentArea $minHeight={188} $desktopMinHeight={188}>
+                {upcomingDeliveries.length ? (
+                  <ClientHomeList>
+                    {upcomingDeliveries.map((project) => {
+                      const tone = getClientProjectTone(project.status, project.stage);
+                      return (
+                        <CompactDeliveryCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
+                          <CompactDeliveryIcon>
+                            <IconCalendarMini />
+                          </CompactDeliveryIcon>
+                          <CompactDeliveryBody>
+                            <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
+                            <CompactDeliveryMeta>{formatProjectStage(project.stage)}</CompactDeliveryMeta>
+                            <CompactDeliveryMeta>Due {formatDate(project.finalDeliverableDate ?? project.dueDate)}</CompactDeliveryMeta>
+                          </CompactDeliveryBody>
+                          <CompactDeliveryStatusPill style={{ background: tone.bg, color: tone.fg }}>
+                            {getClientProjectStatusLabel(project.status, project.stage)}
+                          </CompactDeliveryStatusPill>
+                          <CompactDeliveryArrow>
+                            <IconChevronRight />
+                          </CompactDeliveryArrow>
+                        </CompactDeliveryCard>
+                      );
+                    })}
+                  </ClientHomeList>
+                ) : (
+                  <ClientEmptyState>
+                    <ClientEmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                    <strong>No upcoming deliveries scheduled yet.</strong>
+                    <p>Upcoming due dates will appear here once projects are in motion.</p>
+                  </ClientEmptyState>
+                )}
+              </ClientHomeContentArea>
             </ClientHomePanel>
 
             <ClientHomePanel>
               <SectionHeader>
                 <PanelTitle>Recent Activity</PanelTitle>
-                <SectionLink href={scopedHref("/projects")}>View all activity</SectionLink>
+                {organizationActivities.length > 4 ? (
+                  <SectionActionButton type="button" onClick={() => setShowAllActivityModal(true)}>
+                    View all activity
+                  </SectionActionButton>
+                ) : null}
               </SectionHeader>
-              {organizationActivities.length ? (
-                <ActivityList>
-                  {organizationActivities.slice(0, 4).map((activity) => (
-                    <ActivityRowCard key={activity.id}>
-                      <ActivityIcon>
-                        <IconSparkMini />
-                      </ActivityIcon>
-                      <ActivityBody>
-                        <ActivityTitle>{activity.message}</ActivityTitle>
-                        <ClientMeta>
-                          by {activity.actorName} · {formatDate(activity.createdAt)}
-                        </ClientMeta>
-                      </ActivityBody>
-                      <ActivityTime>{getRelativeActivityLabel(activity.createdAt)}</ActivityTime>
-                    </ActivityRowCard>
-                  ))}
-                </ActivityList>
-              ) : (
-                <ClientMeta>No recent activity yet.</ClientMeta>
-              )}
+              <ClientHomeContentArea $minHeight={236} $desktopMinHeight={236}>
+                {organizationActivities.length ? (
+                  <ActivityList>
+                    {organizationActivities.slice(0, 4).map((activity) => (
+                      <ActivityRowCard key={activity.id}>
+                        <ActivityIcon>
+                          <IconSparkMini />
+                        </ActivityIcon>
+                        <ActivityBody>
+                          <ActivityTitle>{activity.message}</ActivityTitle>
+                          <ClientMeta>
+                            by {activity.actorName} · {formatDate(activity.createdAt)}
+                          </ClientMeta>
+                        </ActivityBody>
+                        <ActivityTime>{getRelativeActivityLabel(activity.createdAt)}</ActivityTime>
+                      </ActivityRowCard>
+                    ))}
+                  </ActivityList>
+                ) : (
+                  <ClientEmptyState>
+                    <ClientEmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                    <strong>No recent activity yet.</strong>
+                    <p>Project updates, uploads, and feedback history will appear here.</p>
+                  </ClientEmptyState>
+                )}
+              </ClientHomeContentArea>
             </ClientHomePanel>
           </ClientHomeGrid>
         </Content>
@@ -1542,7 +1708,9 @@ export function ClientOrganizationDetailScreen({
           </ModalCard>
         </Overlay>
       ) : null}
-      <AppSidebar user={user} activeLabel={activeLabel} />
+      <ClientSidebarSlot>
+        <AppSidebar user={user} activeLabel={activeLabel} pinToViewport />
+      </ClientSidebarSlot>
       <Content>
         <Header>
           <div>
@@ -1550,31 +1718,61 @@ export function ClientOrganizationDetailScreen({
             {!homeMode && viewerRole !== "client" ? <BackLink href="/clients">← Back to clients</BackLink> : null}
             <TitleRow>
               <HeaderClientLogo organization={{ logoUrl: headerLogoUrl, name: organization.name }} />
-              <Title>{organization.name}</Title>
+              <HeaderTitleStatusRow>
+                <Title>{organization.name}</Title>
+                {organizationStatusMeta ? (
+                  <HeaderStatusIndicator>
+                    <HeaderStatusIcon $bg={organizationStatusMeta.bg} $fg={organizationStatusMeta.fg}>
+                      {organizationStatusMeta.icon}
+                    </HeaderStatusIcon>
+                  </HeaderStatusIndicator>
+                ) : null}
+              </HeaderTitleStatusRow>
               <HeaderInlinePills>
                 <TypePill $type={organization.type}>
                   {organization.type === "internal" ? "Internal" : "External"}
                 </TypePill>
-                {getClientOrganizationStatusLabel(organization) ? (
-                  <PendingPill $active={organization.status === "active"}>
-                    {getClientOrganizationStatusLabel(organization)}
-                  </PendingPill>
-                ) : null}
               </HeaderInlinePills>
             </TitleRow>
             <MobileHeaderIdentity>
               <HeaderClientLogo organization={{ logoUrl: headerLogoUrl, name: organization.name }} />
               <div>
-                <MobileHeaderTitle>{organization.name}</MobileHeaderTitle>
+                {homeMode && canSwitchClientHomeOrganization ? (
+                  <ClientHeaderSwitchButton
+                    type="button"
+                    onClick={() => setShowOrganizationSwitcher(true)}
+                    aria-label="Switch organization"
+                  >
+                    <HeaderTitleStatusRow>
+                      <MobileHeaderTitle>{organization.name}</MobileHeaderTitle>
+                      {organizationStatusMeta ? (
+                        <HeaderStatusIndicator>
+                          <HeaderStatusIcon $bg={organizationStatusMeta.bg} $fg={organizationStatusMeta.fg}>
+                            {organizationStatusMeta.icon}
+                          </HeaderStatusIcon>
+                        </HeaderStatusIndicator>
+                      ) : null}
+                    </HeaderTitleStatusRow>
+                    <HeaderSwitchIcon aria-hidden="true">
+                      <IconChevronDown />
+                    </HeaderSwitchIcon>
+                  </ClientHeaderSwitchButton>
+                ) : (
+                  <HeaderTitleStatusRow>
+                    <MobileHeaderTitle>{organization.name}</MobileHeaderTitle>
+                    {organizationStatusMeta ? (
+                      <HeaderStatusIndicator>
+                        <HeaderStatusIcon $bg={organizationStatusMeta.bg} $fg={organizationStatusMeta.fg}>
+                          {organizationStatusMeta.icon}
+                        </HeaderStatusIcon>
+                      </HeaderStatusIndicator>
+                    ) : null}
+                  </HeaderTitleStatusRow>
+                )}
                 <HeaderInlinePills>
                   <TypePill $type={organization.type}>
                     {organization.type === "internal" ? "Internal" : "External"}
                   </TypePill>
-                  {getClientOrganizationStatusLabel(organization) ? (
-                    <PendingPill $active={organization.status === "active"}>
-                      {getClientOrganizationStatusLabel(organization)}
-                    </PendingPill>
-                  ) : null}
                 </HeaderInlinePills>
               </div>
             </MobileHeaderIdentity>
@@ -1621,9 +1819,7 @@ export function ClientOrganizationDetailScreen({
                 ) : null}
               </>
             ) : null}
-            <HeaderAvatarLink href="/profile" aria-label="Open profile">
-              <UserAvatar user={user} />
-            </HeaderAvatarLink>
+            <HeaderProfileAvatarLink user={user} />
           </HeaderActions>
         </Header>
 
@@ -1956,6 +2152,16 @@ const Shell = styled.main`
   }
 `;
 
+const ClientSidebarSlot = styled.div`
+  display: none;
+
+  ${desktop} {
+    display: block;
+    width: 260px;
+    flex: 0 0 260px;
+  }
+`;
+
 const Content = styled.section`
   display: flex;
   flex-direction: column;
@@ -1979,9 +2185,14 @@ const Header = styled.header`
   gap: 12px;
 
   @media (max-width: 767px) {
-    display: block;
-    align-items: center;
-    gap: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+
+    > :first-child {
+      flex: 1;
+      min-width: 0;
+    }
   }
 `;
 
@@ -1991,9 +2202,11 @@ const HeaderActions = styled.div`
   gap: 10px;
 
   @media (max-width: 767px) {
-    width: 100%;
+    width: auto;
+    flex: 0 0 auto;
+    justify-content: flex-end;
     gap: 6px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
   }
 `;
 
@@ -2123,6 +2336,18 @@ const ClientHeaderTitle = styled.h1`
   letter-spacing: -0.04em;
 `;
 
+const HeaderTitleStatusRow = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+`;
+
+const ClientHeaderTitleRow = styled(HeaderTitleStatusRow)`
+  min-width: 0;
+`;
+
 const ClientHeaderSwitchButton = styled.button`
   display: inline-flex;
   align-items: center;
@@ -2133,6 +2358,7 @@ const ClientHeaderSwitchButton = styled.button`
   color: inherit;
   text-align: left;
   cursor: pointer;
+  min-width: 0;
 `;
 
 const HeaderSwitchIcon = styled.span`
@@ -2146,25 +2372,6 @@ const HeaderSwitchIcon = styled.span`
   svg {
     width: 100%;
     height: 100%;
-  }
-`;
-
-const HeaderAvatarLink = styled(Link)`
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(230, 224, 215, 0.95);
-  border-radius: 999px;
-  background: #ded6c8;
-  color: #fff;
-  font-weight: 700;
-  text-decoration: none;
-
-  @media (max-width: 767px) {
-    display: none;
   }
 `;
 
@@ -2220,15 +2427,32 @@ const Pill = styled.span`
   white-space: nowrap;
 `;
 
-const PendingPill = styled(Pill)<{ $active?: boolean }>`
-  background: ${({ $active }) => ($active ? "#e5f4e8" : "#f4f1ed")};
-  color: ${({ $active }) => ($active ? "#5ca16d" : "#8d857b")};
-`;
-
 const TypePill = styled(Pill)<{ $type: "internal" | "external" }>`
   background: ${({ $type }) => ($type === "internal" ? "#e6efff" : "#f4f1ed")};
   color: ${({ $type }) => ($type === "internal" ? "#4770d8" : "#7f7468")};
 `;
+
+const HeaderStatusIndicator = styled.span`
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+`;
+
+const HeaderStatusIcon = styled.span<{ $bg: string; $fg: string }>`
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: ${({ $bg }) => $bg};
+  color: ${({ $fg }) => $fg};
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+`;
+
 
 const ClientHomeHero = styled.section`
   ${cardSurface}
@@ -2703,9 +2927,55 @@ const ClientHomePanel = styled.section`
   }
 `;
 
+const ClientHomeContentArea = styled.div<{ $minHeight: number; $desktopMinHeight?: number }>`
+  display: flex;
+  flex-direction: column;
+
+  ${desktop} {
+    min-height: ${({ $desktopMinHeight, $minHeight }) => `${$desktopMinHeight ?? $minHeight}px`};
+  }
+`;
+
 const ClientHomeList = styled.div`
   display: grid;
   gap: 6px;
+`;
+
+const ClientEmptyState = styled.div<{ $mobileMinHeight?: number }>`
+  flex: 1;
+  min-height: ${({ $mobileMinHeight }) => ($mobileMinHeight ? `${$mobileMinHeight}px` : "inherit")};
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  color: var(--color-text-muted);
+
+  strong {
+    color: #1f1f1f;
+    font-size: 0.86rem;
+    line-height: 1.3;
+  }
+
+  p {
+    margin: 0;
+    max-width: 30ch;
+    font-size: 0.76rem;
+    line-height: 1.45;
+  }
+`;
+
+const ClientEmptyImage = styled.img`
+  width: 70px;
+  height: 70px;
+  object-fit: contain;
+  opacity: 0.92;
+
+  ${desktop} {
+    width: 82px;
+    height: 82px;
+  }
 `;
 
 const SectionLink = styled(Link)`
@@ -2713,6 +2983,16 @@ const SectionLink = styled(Link)`
   font-size: 0.76rem;
   font-weight: 700;
   text-decoration: none;
+`;
+
+const SectionActionButton = styled.button`
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--client-brand-primary, #1f4339);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
 `;
 
 const PanelTag = styled.span`
@@ -3272,12 +3552,43 @@ const ModalCard = styled.div`
     }
 `;
 
+const ScrollableModalCard = styled(ModalCard)`
+  width: min(720px, calc(100vw - 32px));
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+
+  @media (max-width: 767px) {
+    height: 80vh;
+  }
+`;
+
 const ModalHeader = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
+`;
+
+const ModalTitle = styled.h2`
+  margin: 0;
+  color: #1f1f1f;
+  font-size: 1.04rem;
+  line-height: 1.2;
+`;
+
+const ModalDescription = styled.p`
+  margin: 6px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+`;
+
+const ScrollableModalBody = styled.div`
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 `;
 
 const ModalForm = styled.form`

@@ -8,10 +8,10 @@ import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ClientTitleLogo } from "@/components/client-title-logo";
 import { FilterModal } from "@/components/filter-modal";
+import { HeaderProfileAvatarLink } from "@/components/header-profile-avatar-link";
 import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { useActiveClientOrganization } from "@/components/use-active-client-organization";
-import { UserAvatar } from "@/components/user-avatar";
 import { getClientBrandStyle } from "@/lib/client-branding";
 import { canCreateProject as canCreateProjectPermission, canCreateProjectForOrganization, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import {
@@ -664,9 +664,7 @@ export function ProjectsScreen() {
                 Choose a project workspace to manage deliverables, staff, clients, and tasks.
               </Subtitle>
             </DesktopHeaderCopy>
-            <HeaderAvatarLink href="/profile" aria-label="Open profile">
-              {user ? <UserAvatar user={user} /> : null}
-            </HeaderAvatarLink>
+            {user ? <HeaderProfileAvatarLink user={user} /> : null}
           </DesktopHeaderTop>
         </DesktopHeader>
 
@@ -678,9 +676,7 @@ export function ProjectsScreen() {
               <Title>Select a project</Title>
             </TitleRow>
           </MobileHeaderCopy>
-          <HeaderAvatarLink href="/profile" aria-label="Open profile">
-            {user ? <UserAvatar user={user} /> : null}
-          </HeaderAvatarLink>
+          {user ? <HeaderProfileAvatarLink user={user} /> : null}
         </MobileHeader>
 
         <Toolbar>
@@ -1312,34 +1308,6 @@ const Subtitle = styled.p`
   ${desktop} {
     max-width: 720px;
     font-size: 0.92rem;
-  }
-`;
-
-const HeaderAvatarLink = styled(Link)`
-  width: 40px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: #ded6c8;
-  color: #fff;
-  font-weight: 700;
-  text-decoration: none;
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    background-color 0.18s ease,
-    border-color 0.18s ease;
-
-  ${desktop} {
-    &:hover {
-      transform: translateY(-2px);
-      background: #e7ded0;
-      border-color: rgba(220, 208, 194, 0.95);
-      box-shadow: 0 14px 28px rgba(31, 31, 31, 0.08);
-    }
   }
 `;
 

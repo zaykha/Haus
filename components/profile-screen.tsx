@@ -9,18 +9,19 @@ import { useAppState } from "@/components/app-state";
 import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { UserAvatar } from "@/components/user-avatar";
 import { formatRole } from "@/lib/display";
+import { defaultProfileAvatarPath } from "@/lib/profile-avatars";
 
 export function ProfileScreen() {
   const router = useRouter();
   const { user, state, logout, updateProfileAvatar } = useAppState();
   const { scopedHref } = useActiveClientOrganization(user, state.clientOrganizations);
-  const [selectedAvatarPath, setSelectedAvatarPath] = useState(user?.avatarPath ?? "");
+  const [selectedAvatarPath, setSelectedAvatarPath] = useState(user?.avatarPath ?? defaultProfileAvatarPath);
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState("");
   const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   useEffect(() => {
-    setSelectedAvatarPath(user?.avatarPath ?? "");
+    setSelectedAvatarPath(user?.avatarPath ?? defaultProfileAvatarPath);
   }, [user?.avatarPath]);
 
   if (!user) {
@@ -56,7 +57,7 @@ export function ProfileScreen() {
       return;
     }
 
-    setSelectedAvatarPath(user.avatarPath ?? "");
+    setSelectedAvatarPath(user.avatarPath ?? defaultProfileAvatarPath);
     setAvatarError("");
     setShowAvatarModal(false);
   };
