@@ -210,8 +210,9 @@ function normalizeProjectStage(stage: string | null | undefined): ProjectStage {
     case "WIP":
     case "Pending Review":
     case "Complete":
+    case "Completed":
     case "On Hold":
-      return stage;
+      return stage === "Completed" ? "Complete" : stage;
     case "intake":
       return "Waiting List";
     case "concept":
@@ -262,12 +263,12 @@ function deriveProjectStageFromTasks(
   }
 
   if (tasks.length === 0) {
-    return "Waiting List";
+    return normalizedCurrentStage;
   }
 
   const allTodo = tasks.every((task) => task.status === "todo");
   if (allTodo) {
-    return "Waiting List";
+    return normalizedCurrentStage;
   }
 
   const allComplete = tasks.every((task) => task.status === "approved");

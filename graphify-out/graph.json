@@ -2104,7 +2104,7 @@
       "label": "normalizeProjectStatus()",
       "file_type": "code",
       "source_file": "app/api/workspace/state/route.ts",
-      "source_location": "L229",
+      "source_location": "L230",
       "id": "state_route_normalizeprojectstatus",
       "community": 12,
       "norm_label": "normalizeprojectstatus()"
@@ -2113,7 +2113,7 @@
       "label": "deriveProjectStageFromTasks()",
       "file_type": "code",
       "source_file": "app/api/workspace/state/route.ts",
-      "source_location": "L254",
+      "source_location": "L255",
       "id": "state_route_deriveprojectstagefromtasks",
       "community": 12,
       "norm_label": "deriveprojectstagefromtasks()"
@@ -2122,7 +2122,7 @@
       "label": "isMissingRelationError()",
       "file_type": "code",
       "source_file": "app/api/workspace/state/route.ts",
-      "source_location": "L290",
+      "source_location": "L291",
       "id": "state_route_ismissingrelationerror",
       "community": 12,
       "norm_label": "ismissingrelationerror()"
@@ -2131,7 +2131,7 @@
       "label": "isMissingTaskIdColumnError()",
       "file_type": "code",
       "source_file": "app/api/workspace/state/route.ts",
-      "source_location": "L294",
+      "source_location": "L295",
       "id": "state_route_ismissingtaskidcolumnerror",
       "community": 12,
       "norm_label": "ismissingtaskidcolumnerror()"
@@ -2140,7 +2140,7 @@
       "label": "isMissingDepartmentsTableError()",
       "file_type": "code",
       "source_file": "app/api/workspace/state/route.ts",
-      "source_location": "L303",
+      "source_location": "L304",
       "id": "state_route_ismissingdepartmentstableerror",
       "community": 12,
       "norm_label": "ismissingdepartmentstableerror()"
@@ -2149,7 +2149,7 @@
       "label": "isMissingClientOrganizationLiaisonsTableError()",
       "file_type": "code",
       "source_file": "app/api/workspace/state/route.ts",
-      "source_location": "L307",
+      "source_location": "L308",
       "id": "state_route_ismissingclientorganizationliaisonstableerror",
       "community": 12,
       "norm_label": "ismissingclientorganizationliaisonstableerror()"
@@ -2158,7 +2158,7 @@
       "label": "getClientOrganizationName()",
       "file_type": "code",
       "source_file": "app/api/workspace/state/route.ts",
-      "source_location": "L311",
+      "source_location": "L312",
       "id": "state_route_getclientorganizationname",
       "community": 12,
       "norm_label": "getclientorganizationname()"
@@ -2167,7 +2167,7 @@
       "label": "toCurrentUser()",
       "file_type": "code",
       "source_file": "app/api/workspace/state/route.ts",
-      "source_location": "L321",
+      "source_location": "L322",
       "id": "state_route_tocurrentuser",
       "community": 12,
       "norm_label": "tocurrentuser()"
@@ -2176,7 +2176,7 @@
       "label": "GET()",
       "file_type": "code",
       "source_file": "app/api/workspace/state/route.ts",
-      "source_location": "L325",
+      "source_location": "L326",
       "id": "state_route_get",
       "community": 12,
       "norm_label": "get()"
@@ -13705,7 +13705,7 @@
       "label": "ModalHeader",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L779",
+      "source_location": "L782",
       "id": "components_designer_task_modal_modalheader",
       "community": 9,
       "norm_label": "modalheader"
@@ -13714,7 +13714,7 @@
       "label": "ModalTitle",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L786",
+      "source_location": "L789",
       "id": "components_designer_task_modal_modaltitle",
       "community": 9,
       "norm_label": "modaltitle"
@@ -13723,7 +13723,7 @@
       "label": "ModalDescription",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L791",
+      "source_location": "L794",
       "id": "components_designer_task_modal_modaldescription",
       "community": 9,
       "norm_label": "modaldescription"
@@ -13732,7 +13732,7 @@
       "label": "ModalClose",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L802",
+      "source_location": "L805",
       "id": "components_designer_task_modal_modalclose",
       "community": 9,
       "norm_label": "modalclose"
@@ -13741,7 +13741,7 @@
       "label": "InlineForm",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L820",
+      "source_location": "L823",
       "id": "components_designer_task_modal_inlineform",
       "community": 9,
       "norm_label": "inlineform"
@@ -13750,7 +13750,7 @@
       "label": "TaskModalGrid",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L826",
+      "source_location": "L829",
       "id": "components_designer_task_modal_taskmodalgrid",
       "community": 9,
       "norm_label": "taskmodalgrid"
@@ -13759,7 +13759,7 @@
       "label": "TaskModalField",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L835",
+      "source_location": "L838",
       "id": "components_designer_task_modal_taskmodalfield",
       "community": 9,
       "norm_label": "taskmodalfield"
@@ -13768,7 +13768,7 @@
       "label": "TaskFloatingField",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L850",
+      "source_location": "L853",
       "id": "components_designer_task_modal_taskfloatingfield",
       "community": 9,
       "norm_label": "taskfloatingfield"
@@ -13777,7 +13777,7 @@
       "label": "TaskTextInput",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L858",
+      "source_location": "L861",
       "id": "components_designer_task_modal_tasktextinput",
       "community": 9,
       "norm_label": "tasktextinput"
@@ -13786,7 +13786,7 @@
       "label": "TaskFloatingSelect",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L871",
+      "source_location": "L874",
       "id": "components_designer_task_modal_taskfloatingselect",
       "community": 9,
       "norm_label": "taskfloatingselect"
@@ -13795,7 +13795,7 @@
       "label": "TaskSelectTrigger",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L878",
+      "source_location": "L881",
       "id": "components_designer_task_modal_taskselecttrigger",
       "community": 9,
       "norm_label": "taskselecttrigger"
@@ -13804,7 +13804,7 @@
       "label": "TaskFloatingLabel",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L894",
+      "source_location": "L897",
       "id": "components_designer_task_modal_taskfloatinglabel",
       "community": 9,
       "norm_label": "taskfloatinglabel"
@@ -13813,7 +13813,7 @@
       "label": "TaskSelectValue",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L908",
+      "source_location": "L911",
       "id": "components_designer_task_modal_taskselectvalue",
       "community": 9,
       "norm_label": "taskselectvalue"
@@ -13822,7 +13822,7 @@
       "label": "TaskSelectChevron",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L914",
+      "source_location": "L917",
       "id": "components_designer_task_modal_taskselectchevron",
       "community": 9,
       "norm_label": "taskselectchevron"
@@ -13831,7 +13831,7 @@
       "label": "TaskSelectMenu",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L928",
+      "source_location": "L931",
       "id": "components_designer_task_modal_taskselectmenu",
       "community": 9,
       "norm_label": "taskselectmenu"
@@ -13840,7 +13840,7 @@
       "label": "TaskSelectOption",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L943",
+      "source_location": "L946",
       "id": "components_designer_task_modal_taskselectoption",
       "community": 9,
       "norm_label": "taskselectoption"
@@ -13849,7 +13849,7 @@
       "label": "InlineError",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L956",
+      "source_location": "L959",
       "id": "components_designer_task_modal_inlineerror",
       "community": 9,
       "norm_label": "inlineerror"
@@ -13858,7 +13858,7 @@
       "label": "TaskSummaryCard",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L963",
+      "source_location": "L966",
       "id": "components_designer_task_modal_tasksummarycard",
       "community": 9,
       "norm_label": "tasksummarycard"
@@ -13867,7 +13867,7 @@
       "label": "TaskSummaryHeader",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L976",
+      "source_location": "L979",
       "id": "components_designer_task_modal_tasksummaryheader",
       "community": 9,
       "norm_label": "tasksummaryheader"
@@ -13876,7 +13876,7 @@
       "label": "TaskSummaryEyebrow",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L981",
+      "source_location": "L984",
       "id": "components_designer_task_modal_tasksummaryeyebrow",
       "community": 9,
       "norm_label": "tasksummaryeyebrow"
@@ -13885,7 +13885,7 @@
       "label": "TaskSummaryTitle",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L989",
+      "source_location": "L992",
       "id": "components_designer_task_modal_tasksummarytitle",
       "community": 9,
       "norm_label": "tasksummarytitle"
@@ -13894,7 +13894,7 @@
       "label": "TaskSummaryGrid",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L997",
+      "source_location": "L1000",
       "id": "components_designer_task_modal_tasksummarygrid",
       "community": 9,
       "norm_label": "tasksummarygrid"
@@ -13903,7 +13903,7 @@
       "label": "TaskSummaryItem",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1006",
+      "source_location": "L1009",
       "id": "components_designer_task_modal_tasksummaryitem",
       "community": 9,
       "norm_label": "tasksummaryitem"
@@ -13912,7 +13912,7 @@
       "label": "TaskSummaryLabel",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1011",
+      "source_location": "L1014",
       "id": "components_designer_task_modal_tasksummarylabel",
       "community": 9,
       "norm_label": "tasksummarylabel"
@@ -13921,7 +13921,7 @@
       "label": "TaskSummaryValue",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1019",
+      "source_location": "L1022",
       "id": "components_designer_task_modal_tasksummaryvalue",
       "community": 9,
       "norm_label": "tasksummaryvalue"
@@ -13930,7 +13930,7 @@
       "label": "UploadCompactArea",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1026",
+      "source_location": "L1029",
       "id": "components_designer_task_modal_uploadcompactarea",
       "community": 9,
       "norm_label": "uploadcompactarea"
@@ -13939,7 +13939,7 @@
       "label": "SubmittedAssetsPanel",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1036",
+      "source_location": "L1039",
       "id": "components_designer_task_modal_submittedassetspanel",
       "community": 9,
       "norm_label": "submittedassetspanel"
@@ -13948,7 +13948,7 @@
       "label": "SubmittedAssetsScroller",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1045",
+      "source_location": "L1048",
       "id": "components_designer_task_modal_submittedassetsscroller",
       "community": 9,
       "norm_label": "submittedassetsscroller"
@@ -13957,7 +13957,7 @@
       "label": "UploadLabel",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1053",
+      "source_location": "L1056",
       "id": "components_designer_task_modal_uploadlabel",
       "community": 9,
       "norm_label": "uploadlabel"
@@ -13966,7 +13966,7 @@
       "label": "UploadEmptyState",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1061",
+      "source_location": "L1064",
       "id": "components_designer_task_modal_uploademptystate",
       "community": 9,
       "norm_label": "uploademptystate"
@@ -13975,7 +13975,7 @@
       "label": "UploadHeader",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1068",
+      "source_location": "L1071",
       "id": "components_designer_task_modal_uploadheader",
       "community": 9,
       "norm_label": "uploadheader"
@@ -13984,7 +13984,7 @@
       "label": "UploadCount",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1075",
+      "source_location": "L1078",
       "id": "components_designer_task_modal_uploadcount",
       "community": 9,
       "norm_label": "uploadcount"
@@ -13993,7 +13993,7 @@
       "label": "UploadTileGrid",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1081",
+      "source_location": "L1084",
       "id": "components_designer_task_modal_uploadtilegrid",
       "community": 9,
       "norm_label": "uploadtilegrid"
@@ -14002,7 +14002,7 @@
       "label": "UploadAssetTile",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1103",
+      "source_location": "L1106",
       "id": "components_designer_task_modal_uploadassettile",
       "community": 9,
       "norm_label": "uploadassettile"
@@ -14011,7 +14011,7 @@
       "label": "SubmittedAssetCard",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1116",
+      "source_location": "L1119",
       "id": "components_designer_task_modal_submittedassetcard",
       "community": 9,
       "norm_label": "submittedassetcard"
@@ -14020,7 +14020,7 @@
       "label": "UploadDropTile",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1127",
+      "source_location": "L1130",
       "id": "components_designer_task_modal_uploaddroptile",
       "community": 9,
       "norm_label": "uploaddroptile"
@@ -14029,7 +14029,7 @@
       "label": "UploadDropInner",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1139",
+      "source_location": "L1142",
       "id": "components_designer_task_modal_uploaddropinner",
       "community": 9,
       "norm_label": "uploaddropinner"
@@ -14038,7 +14038,7 @@
       "label": "UploadAssetPreview",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1154",
+      "source_location": "L1157",
       "id": "components_designer_task_modal_uploadassetpreview",
       "community": 9,
       "norm_label": "uploadassetpreview"
@@ -14047,7 +14047,7 @@
       "label": "UploadAssetFile",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1162",
+      "source_location": "L1165",
       "id": "components_designer_task_modal_uploadassetfile",
       "community": 9,
       "norm_label": "uploadassetfile"
@@ -14056,7 +14056,7 @@
       "label": "UploadAssetMeta",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1178",
+      "source_location": "L1181",
       "id": "components_designer_task_modal_uploadassetmeta",
       "community": 9,
       "norm_label": "uploadassetmeta"
@@ -14065,7 +14065,7 @@
       "label": "UploadAssetName",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1183",
+      "source_location": "L1186",
       "id": "components_designer_task_modal_uploadassetname",
       "community": 9,
       "norm_label": "uploadassetname"
@@ -14074,7 +14074,7 @@
       "label": "UploadAssetType",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1191",
+      "source_location": "L1194",
       "id": "components_designer_task_modal_uploadassettype",
       "community": 9,
       "norm_label": "uploadassettype"
@@ -14083,7 +14083,7 @@
       "label": "UploadAssetRemove",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1197",
+      "source_location": "L1200",
       "id": "components_designer_task_modal_uploadassetremove",
       "community": 9,
       "norm_label": "uploadassetremove"
@@ -14092,7 +14092,7 @@
       "label": "LinkInputRow",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1217",
+      "source_location": "L1220",
       "id": "components_designer_task_modal_linkinputrow",
       "community": 9,
       "norm_label": "linkinputrow"
@@ -14101,7 +14101,7 @@
       "label": "LinkAddButton",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1227",
+      "source_location": "L1230",
       "id": "components_designer_task_modal_linkaddbutton",
       "community": 9,
       "norm_label": "linkaddbutton"
@@ -14110,7 +14110,7 @@
       "label": "FeedbackPanel",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1239",
+      "source_location": "L1242",
       "id": "components_designer_task_modal_feedbackpanel",
       "community": 9,
       "norm_label": "feedbackpanel"
@@ -14119,7 +14119,7 @@
       "label": "FeedbackList",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1248",
+      "source_location": "L1251",
       "id": "components_designer_task_modal_feedbacklist",
       "community": 9,
       "norm_label": "feedbacklist"
@@ -14128,7 +14128,7 @@
       "label": "FeedbackItem",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1253",
+      "source_location": "L1256",
       "id": "components_designer_task_modal_feedbackitem",
       "community": 9,
       "norm_label": "feedbackitem"
@@ -14137,7 +14137,7 @@
       "label": "FeedbackRow",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1265",
+      "source_location": "L1268",
       "id": "components_designer_task_modal_feedbackrow",
       "community": 9,
       "norm_label": "feedbackrow"
@@ -14146,7 +14146,7 @@
       "label": "FeedbackMeta",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1289",
+      "source_location": "L1292",
       "id": "components_designer_task_modal_feedbackmeta",
       "community": 9,
       "norm_label": "feedbackmeta"
@@ -14155,7 +14155,7 @@
       "label": "FeedbackStars",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1294",
+      "source_location": "L1297",
       "id": "components_designer_task_modal_feedbackstars",
       "community": 9,
       "norm_label": "feedbackstars"
@@ -14164,7 +14164,7 @@
       "label": "FeedbackStar",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1300",
+      "source_location": "L1303",
       "id": "components_designer_task_modal_feedbackstar",
       "community": 9,
       "norm_label": "feedbackstar"
@@ -14173,7 +14173,7 @@
       "label": "FeedbackBody",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1306",
+      "source_location": "L1309",
       "id": "components_designer_task_modal_feedbackbody",
       "community": 9,
       "norm_label": "feedbackbody"
@@ -14182,7 +14182,7 @@
       "label": "IconChevronDown()",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1313",
+      "source_location": "L1316",
       "id": "components_designer_task_modal_iconchevrondown",
       "community": 9,
       "norm_label": "iconchevrondown()"
@@ -14191,7 +14191,7 @@
       "label": "IconClose()",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1321",
+      "source_location": "L1324",
       "id": "components_designer_task_modal_iconclose",
       "community": 9,
       "norm_label": "iconclose()"
@@ -14200,7 +14200,7 @@
       "label": "IconUpload()",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1329",
+      "source_location": "L1332",
       "id": "components_designer_task_modal_iconupload",
       "community": 9,
       "norm_label": "iconupload()"
@@ -14209,7 +14209,7 @@
       "label": "IconFile()",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1339",
+      "source_location": "L1342",
       "id": "components_designer_task_modal_iconfile",
       "community": 9,
       "norm_label": "iconfile()"
@@ -14218,7 +14218,7 @@
       "label": "IconLink()",
       "file_type": "code",
       "source_file": "components/designer-task-modal.tsx",
-      "source_location": "L1348",
+      "source_location": "L1351",
       "id": "components_designer_task_modal_iconlink",
       "community": 9,
       "norm_label": "iconlink()"
@@ -21906,7 +21906,7 @@
       "source_file": "design.md",
       "source_location": "L692",
       "id": "haus_design_21_feedback_cards",
-      "community": 77,
+      "community": 66,
       "norm_label": "21. feedback cards"
     },
     {
@@ -21915,7 +21915,7 @@
       "source_file": "design.md",
       "source_location": "L698",
       "id": "haus_design_codeblock_36",
-      "community": 77,
+      "community": 66,
       "norm_label": "code:css (.feedback-card {)"
     },
     {
@@ -21924,7 +21924,7 @@
       "source_file": "design.md",
       "source_location": "L709",
       "id": "haus_design_codeblock_37",
-      "community": 77,
+      "community": 66,
       "norm_label": "code:css (.feedback-card-important {)"
     },
     {
@@ -65743,5 +65743,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "0c988f0be83dea3b699adecd5f21a85f3a1fec19"
+  "built_at_commit": "2b29eaa29845859021b7a0a5db2a50af832b48a7"
 }

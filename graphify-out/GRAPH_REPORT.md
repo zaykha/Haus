@@ -1,7 +1,7 @@
 # Graph Report - Haus  (2026-06-30)
 
 ## Corpus Check
-- 156 files · ~177,966 words
+- 156 files · ~177,978 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0c988f0b`
+- Built from commit: `2b29eaa2`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -78,6 +78,7 @@
 - [[_COMMUNITY_Community 62|Community 62]]
 - [[_COMMUNITY_Community 63|Community 63]]
 - [[_COMMUNITY_Community 65|Community 65]]
+- [[_COMMUNITY_Community 66|Community 66]]
 - [[_COMMUNITY_Community 67|Community 67]]
 - [[_COMMUNITY_Community 68|Community 68]]
 - [[_COMMUNITY_Community 70|Community 70]]
@@ -85,7 +86,6 @@
 - [[_COMMUNITY_Community 72|Community 72]]
 - [[_COMMUNITY_Community 73|Community 73]]
 - [[_COMMUNITY_Community 75|Community 75]]
-- [[_COMMUNITY_Community 77|Community 77]]
 - [[_COMMUNITY_Community 78|Community 78]]
 - [[_COMMUNITY_Community 79|Community 79]]
 - [[_COMMUNITY_Community 80|Community 80]]
@@ -369,13 +369,13 @@ Nodes (38): BackButton, BackIcon, DeleteButton, EntityPill, ErrorText, Eyebrow, 
 Cohesion: 0.25
 Nodes (13): isIgnorableProjectActivityError(), POST(), canManageProjects(), getVisibleTasksForUser(), getAttentionCountForProject(), getAttentionTaskCount(), getAttentionTasksForProject(), getProjectAttentionCount() (+5 more)
 
+### Community 66 - "Community 66"
+Cohesion: 0.67
+Nodes (3): 21. Feedback Cards, code:css (.feedback-card {), code:css (.feedback-card-important {)
+
 ### Community 72 - "Community 72"
 Cohesion: 0.18
 Nodes (15): getRoleTone(), TeamScreen(), DELETE(), INTERNAL_ROLES, PATCH(), appConfig, isSupabaseConfigured, canDeleteClient() (+7 more)
-
-### Community 77 - "Community 77"
-Cohesion: 0.67
-Nodes (3): 21. Feedback Cards, code:css (.feedback-card {), code:css (.feedback-card-important {)
 
 ### Community 78 - "Community 78"
 Cohesion: 0.08

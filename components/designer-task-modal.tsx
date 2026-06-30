@@ -764,6 +764,8 @@ const LoadingOverlay = styled.div`
 const ModalCard = styled.section`
   ${cardSurface}
   width: min(100%, 620px);
+  height: 80vh;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -772,7 +774,8 @@ const ModalCard = styled.section`
   border-radius: 26px;
 
   @media (max-width: 767px) {
-    max-height: 70vh;
+    height: 80vh;
+    max-height: 80vh;
   }
 `;
 
