@@ -12,6 +12,7 @@ export type ClientOrganizationRow = {
     id: string;
     name: string;
     email: string;
+    avatarPath?: string | null;
     company?: string;
     clientOrganizationId?: string | null;
     clientOrganizationIds?: string[];
@@ -252,6 +253,7 @@ export function buildClientOrganizationRows(state: DemoState): ClientOrganizatio
         id: member.id,
         name: member.name,
         email: member.email,
+        avatarPath: "avatarPath" in member ? member.avatarPath ?? null : null,
         company: member.company ?? undefined,
         clientOrganizationId: member.clientOrganizationId ?? null,
         clientOrganizationIds: getMembershipIds(member),
@@ -277,6 +279,7 @@ export function buildClientOrganizationRows(state: DemoState): ClientOrganizatio
       id: member.id,
       name: member.name,
       email: member.email,
+      avatarPath: "avatarPath" in member ? member.avatarPath ?? null : null,
       company: member.company ?? undefined,
       clientOrganizationId: member.clientOrganizationId ?? null,
       clientOrganizationIds: getMembershipIds(member),

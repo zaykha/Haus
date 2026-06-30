@@ -28,6 +28,24 @@ import { TaskPriority, TaskStatus } from "@/lib/types";
 
 const desktop = "@media (min-width: 1100px)";
 
+function formatFeedbackDate(value: string | null) {
+  if (!value) {
+    return "No date";
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "No date";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(parsed);
+}
+
 type TaskDetailScreenProps = {
   projectId: string;
   taskId: string;
@@ -966,7 +984,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
                         {entry.source === "client" ? "Client" : "Manager"}
                       </FeedbackSourcePill>
                     </FeedbackEntryHeader>
-                    <FeedbackEntryMeta>{formatDueDate(entry.createdAt)}</FeedbackEntryMeta>
+                    <FeedbackEntryMeta>{formatFeedbackDate(entry.createdAt)}</FeedbackEntryMeta>
                     {entry.rating ? <FeedbackEntryMeta>Rating {entry.rating}/5</FeedbackEntryMeta> : null}
                     <FeedbackEntryBody>{entry.body}</FeedbackEntryBody>
                   </FeedbackEntryCard>

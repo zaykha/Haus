@@ -43,23 +43,6 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function getClusterMark(label: string) {
-  const words = label
-    .split(/[\s&()/-]+/)
-    .map((word) => word.trim())
-    .filter(Boolean);
-
-  if (words.length === 0) {
-    return "?";
-  }
-
-  if (words.length === 1) {
-    return words[0].slice(0, 1).toUpperCase();
-  }
-
-  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
-}
-
 function getClusterItems(labels: string[]) {
   const visibleLabels = labels.slice(0, 4);
   const overflowCount = Math.max(0, labels.length - visibleLabels.length);
@@ -633,6 +616,7 @@ export function ClientsScreen() {
             {paginatedClients.length ? (
               paginatedClients.map((client) => {
                 const liaisonCluster = getClusterItems(client.members.map((member) => member.name));
+                const visibleLiaisons = client.members.slice(0, liaisonCluster.visibleLabels.length);
 
                 return (
                   <DesktopRow key={client.id} href={`/clients/${client.id}`}>
@@ -656,13 +640,10 @@ export function ClientsScreen() {
                       {client.memberCount ? (
                         <ClientCopy>
                           <ClusterWrap aria-label={`${client.memberCount} liaisons`}>
-                            {liaisonCluster.visibleLabels.map((memberName, index) => (
-                              <ClusterBubble
-                                key={`${client.id}:${memberName}:${index}`}
-                                $index={index}
-                                title={memberName}
-                              >
-                                {getClusterMark(memberName)}
+                            {visibleLiaisons.map((member, index) => (
+                              <ClusterBubble key={`${client.id}:${member.id}:${index}`} $index={index}>
+                                <ClusterAvatar user={{ name: member.name, avatarPath: member.avatarPath ?? null }} />
+                                <ClusterTooltip>{member.name}</ClusterTooltip>
                               </ClusterBubble>
                             ))}
                             {liaisonCluster.overflowCount > 0 ? (
@@ -1474,6 +1455,48 @@ const ClusterBubble = styled.span<{ $index: number; $tone?: "default" | "accent"
     z-index: 30;
     transform: translateY(-7px);
     box-shadow: 0 12px 22px rgba(104, 84, 54, 0.2);
+  }
+
+  &:hover > span:last-child {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    pointer-events: auto;
+  }
+`;
+
+const ClusterAvatar = styled(UserAvatar)`
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+`;
+
+const ClusterTooltip = styled.span`
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translate(-50%, 6px);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(31, 36, 42, 0.94);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.18);
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    width: 8px;
+    height: 8px;
+    background: inherit;
+    transform: translate(-50%, -50%) rotate(45deg);
   }
 `;
 

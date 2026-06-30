@@ -470,8 +470,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/task-detail-screen.tsx": {
-    "mtime": 1782805486.5568361,
-    "ast_hash": "36a945f40432c7671a32cb9986cbff94",
+    "mtime": 1782805684.6872945,
+    "ast_hash": "54d48a62766013c1e42040fe41a29d07",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/trash-screen.tsx": {
@@ -555,8 +555,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/clients-screen.tsx": {
-    "mtime": 1782540634.6423738,
-    "ast_hash": "41712ea77a42267794fa4b8cd31bdd30",
+    "mtime": 1782805862.1175005,
+    "ast_hash": "49b9d8746a674306fff6f5c326169d51",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/settings-screen.tsx": {
@@ -615,8 +615,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/client-organizations.ts": {
-    "mtime": 1782795553.0703313,
-    "ast_hash": "1bcaba64540e7fa9a1168e00518382a3",
+    "mtime": 1782805843.6207745,
+    "ast_hash": "c88f2c42a3e5bdc3dc7aad3b77d3890d",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/csv.ts": {
