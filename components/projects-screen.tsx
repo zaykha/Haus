@@ -59,6 +59,28 @@ const stageFilterOptions: { key: StageFilterKey; label: string }[] = [
   { key: "Complete", label: "Complete" },
 ];
 
+const PROJECT_EXPORT_HEADERS = [
+  "Project ID",
+  "Requested Date",
+  "Status",
+  "Company Name",
+  "Department Name",
+  "Project Request Name",
+  "Contact Person",
+  "Contact Number",
+  "Project Type",
+  "Priority Level",
+  "First Draft Date",
+  "Final Deliverable Date",
+  "Project Objective",
+  "Project Brief",
+  "Creative Advice",
+  "Description",
+  "Reference",
+] as const;
+
+type ProjectExportRow = Record<(typeof PROJECT_EXPORT_HEADERS)[number], string>;
+
 function formatDueDate(value: string) {
   if (!value) {
     return "TBD";
@@ -80,6 +102,51 @@ function formatShortDate(value: string) {
     month: "short",
     day: "numeric",
   }).format(new Date(value));
+}
+
+function escapeCsvValue(value: string) {
+  if (/[",\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+
+  return value;
+}
+
+function buildProjectExportRows(
+  projects: Project[],
+  organizationNames: Map<string, string>,
+  userNames: Map<string, string>,
+): ProjectExportRow[] {
+  return projects.map((project) => ({
+    "Project ID": project.projectCode?.trim() ?? "",
+    "Requested Date": project.requestedDate?.trim() ?? "",
+    Status: project.stage?.trim() ?? "",
+    "Company Name": getClientOrganizationName(project, organizationNames, userNames),
+    "Department Name": project.departmentName?.trim() ?? "",
+    "Project Request Name": project.projectRequestName?.trim() || project.name,
+    "Contact Person": project.contactPerson?.trim() ?? "",
+    "Contact Number": project.contactNumber?.trim() ?? "",
+    "Project Type": project.projectType?.trim() ?? "",
+    "Priority Level": project.priorityLevel?.trim() ?? "",
+    "First Draft Date": project.firstDraftDate?.trim() ?? "",
+    "Final Deliverable Date": project.finalDeliverableDate?.trim() ?? "",
+    "Project Objective": project.projectObjective?.trim() ?? "",
+    "Project Brief": project.projectBrief?.trim() ?? "",
+    "Creative Advice": project.creativeAdvice?.trim() ?? "",
+    Description: project.description?.trim() ?? "",
+    Reference: project.referenceAttachmentUrl?.trim() ?? "",
+  }));
+}
+
+function downloadBlobFile(blob: Blob, fileName: string) {
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 
 function getProjectStageTone(stage: ProjectWorkflowStage) {
@@ -245,6 +312,7 @@ export function ProjectsScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [showSort, setShowSort] = useState(false);
   const [desktopView, setDesktopView] = useState<"cards" | "table">("table");
+  const [exportingFormat, setExportingFormat] = useState<"csv" | "xlsx" | null>(null);
   const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const desktopTableWrapRef = useRef<HTMLElement | null>(null);
   const desktopTableLoadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -447,6 +515,10 @@ export function ProjectsScreen() {
   const mobileProjects = filteredProjects.slice(0, mobileVisibleCount);
   const rangeStart = totalProjects ? (activePage - 1) * pageSize + 1 : 0;
   const rangeEnd = totalProjects ? Math.min(activePage * pageSize, totalProjects) : 0;
+  const projectExportRows = useMemo(
+    () => buildProjectExportRows(filteredProjects, organizationNames, userNames),
+    [filteredProjects, organizationNames, userNames],
+  );
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -469,6 +541,45 @@ export function ProjectsScreen() {
   const getSortDirection = (field: SortField) => {
     const parsed = parseSortValue(sort);
     return parsed.field === field ? parsed.direction : null;
+  };
+
+  const handleProjectTableExport = async (format: "csv" | "xlsx") => {
+    if (exportingFormat) {
+      return;
+    }
+
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const fileName = `projects-table-${dateStamp}.${format}`;
+    setExportingFormat(format);
+
+    try {
+      if (format === "csv") {
+        const csvLines = [
+          PROJECT_EXPORT_HEADERS.join(","),
+          ...projectExportRows.map((row) =>
+            PROJECT_EXPORT_HEADERS.map((header) => escapeCsvValue(row[header] ?? "")).join(","),
+          ),
+        ];
+        downloadBlobFile(new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" }), fileName);
+        return;
+      }
+
+      const XLSX = await import("xlsx");
+      const worksheet = XLSX.utils.json_to_sheet(projectExportRows, {
+        header: [...PROJECT_EXPORT_HEADERS],
+      });
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Projects");
+      const workbookArray = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+      downloadBlobFile(
+        new Blob([workbookArray], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        fileName,
+      );
+    } finally {
+      setExportingFormat(null);
+    }
   };
 
   useEffect(() => {
@@ -800,145 +911,167 @@ export function ProjectsScreen() {
             )}
           </DesktopList>
         ) : (
-          <DesktopTableWrap ref={desktopTableWrapRef}>
-            {tableProjects.length ? (
-              <>
-                <DesktopTable>
-                  <thead>
-                    <tr>
-                      <th>
-                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("project")}>
-                          <span>Project</span>
-                          <SortGlyph $direction={getSortDirection("project")}>↕</SortGlyph>
-                        </SortableHeaderButton>
-                      </th>
-                      <th>
-                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("organization")}>
-                          <span>Organization</span>
-                          <SortGlyph $direction={getSortDirection("organization")}>↕</SortGlyph>
-                        </SortableHeaderButton>
-                      </th>
-                      <th>
-                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("first_draft_date")}>
-                          <span>First draft date</span>
-                          <SortGlyph $direction={getSortDirection("first_draft_date")}>↕</SortGlyph>
-                        </SortableHeaderButton>
-                      </th>
-                      <th>
-                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("final_deliverable_date")}>
-                          <span>Final deliverable</span>
-                          <SortGlyph $direction={getSortDirection("final_deliverable_date")}>↕</SortGlyph>
-                        </SortableHeaderButton>
-                      </th>
-                      <th>
-                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("stage")}>
-                          <span>Stage</span>
-                          <SortGlyph $direction={getSortDirection("stage")}>↕</SortGlyph>
-                        </SortableHeaderButton>
-                      </th>
-                      <th>
-                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("project_type")}>
-                          <span>Project type</span>
-                          <SortGlyph $direction={getSortDirection("project_type")}>↕</SortGlyph>
-                        </SortableHeaderButton>
-                      </th>
-                      <th>
-                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("priority_level")}>
-                          <span>Priority level</span>
-                          <SortGlyph $direction={getSortDirection("priority_level")}>↕</SortGlyph>
-                        </SortableHeaderButton>
-                      </th>
-                      <th>Primary contact</th>
-                      {!isClient ? <th>Contact number</th> : null}
-                      <th>
-                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("open_tasks")}>
-                          <span>Open tasks</span>
-                          <SortGlyph $direction={getSortDirection("open_tasks")}>↕</SortGlyph>
-                        </SortableHeaderButton>
-                      </th>
-                      <th>
-                        <SortableHeaderButton type="button" onClick={() => toggleColumnSort("requested_date")}>
-                          <span>Requested date</span>
-                          <SortGlyph $direction={getSortDirection("requested_date")}>↕</SortGlyph>
-                        </SortableHeaderButton>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tableProjects.map((project) => {
-                      const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
-                      const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
-                      const attentionCount = user ? getAttentionCountForProject(user, state.users, project) : 0;
-                      const attentionKind =
-                        user && user.role !== "client"
-                          ? getProjectManagerAttentionKind(user, state.users, project)
+          <>
+            <DesktopTableWrap ref={desktopTableWrapRef}>
+              {tableProjects.length ? (
+                <>
+                  <DesktopTable>
+                    <thead>
+                      <tr>
+                        <th>
+                          <SortableHeaderButton type="button" onClick={() => toggleColumnSort("project")}>
+                            <span>Project</span>
+                            <SortGlyph $direction={getSortDirection("project")}>↕</SortGlyph>
+                          </SortableHeaderButton>
+                        </th>
+                        <th>
+                          <SortableHeaderButton type="button" onClick={() => toggleColumnSort("organization")}>
+                            <span>Organization</span>
+                            <SortGlyph $direction={getSortDirection("organization")}>↕</SortGlyph>
+                          </SortableHeaderButton>
+                        </th>
+                        <th>
+                          <SortableHeaderButton type="button" onClick={() => toggleColumnSort("first_draft_date")}>
+                            <span>First draft date</span>
+                            <SortGlyph $direction={getSortDirection("first_draft_date")}>↕</SortGlyph>
+                          </SortableHeaderButton>
+                        </th>
+                        <th>
+                          <SortableHeaderButton type="button" onClick={() => toggleColumnSort("final_deliverable_date")}>
+                            <span>Final deliverable</span>
+                            <SortGlyph $direction={getSortDirection("final_deliverable_date")}>↕</SortGlyph>
+                          </SortableHeaderButton>
+                        </th>
+                        <th>
+                          <SortableHeaderButton type="button" onClick={() => toggleColumnSort("stage")}>
+                            <span>Stage</span>
+                            <SortGlyph $direction={getSortDirection("stage")}>↕</SortGlyph>
+                          </SortableHeaderButton>
+                        </th>
+                        <th>
+                          <SortableHeaderButton type="button" onClick={() => toggleColumnSort("project_type")}>
+                            <span>Project type</span>
+                            <SortGlyph $direction={getSortDirection("project_type")}>↕</SortGlyph>
+                          </SortableHeaderButton>
+                        </th>
+                        <th>
+                          <SortableHeaderButton type="button" onClick={() => toggleColumnSort("priority_level")}>
+                            <span>Priority level</span>
+                            <SortGlyph $direction={getSortDirection("priority_level")}>↕</SortGlyph>
+                          </SortableHeaderButton>
+                        </th>
+                        <th>Primary contact</th>
+                        {!isClient ? <th>Contact number</th> : null}
+                        <th>
+                          <SortableHeaderButton type="button" onClick={() => toggleColumnSort("open_tasks")}>
+                            <span>Open tasks</span>
+                            <SortGlyph $direction={getSortDirection("open_tasks")}>↕</SortGlyph>
+                          </SortableHeaderButton>
+                        </th>
+                        <th>
+                          <SortableHeaderButton type="button" onClick={() => toggleColumnSort("requested_date")}>
+                            <span>Requested date</span>
+                            <SortGlyph $direction={getSortDirection("requested_date")}>↕</SortGlyph>
+                          </SortableHeaderButton>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tableProjects.map((project) => {
+                        const clientOrganizationName = getClientOrganizationName(project, organizationNames, userNames);
+                        const primaryContactLabel = project.contactPerson?.trim() || "No primary contact";
+                        const attentionCount = user ? getAttentionCountForProject(user, state.users, project) : 0;
+                        const attentionKind =
+                          user && user.role !== "client"
+                            ? getProjectManagerAttentionKind(user, state.users, project)
+                            : null;
+                        const isNewProject = attentionKind === "new_request";
+                        const clientOrganization = project.clientOrganizationId
+                          ? organizationsById.get(project.clientOrganizationId) ?? null
                           : null;
-                      const isNewProject = attentionKind === "new_request";
-                      const clientOrganization = project.clientOrganizationId
-                        ? organizationsById.get(project.clientOrganizationId) ?? null
-                        : null;
-                      const stageTone = getProjectStageTone(project.stage as ProjectWorkflowStage);
-                      const priorityTone = getPriorityTone(project.priorityLevel);
+                        const stageTone = getProjectStageTone(project.stage as ProjectWorkflowStage);
+                        const priorityTone = getPriorityTone(project.priorityLevel);
 
-                      return (
-                        <DesktopTableRow
-                          key={project.id}
-                          $attention={attentionCount > 0}
-                          $new={isNewProject}
-                          $clientBranded={isClient}
-                          onClick={() => {
-                            void router.push(scopedHref(`/projects/${project.id}`));
-                          }}
-                        >
-                          <StickyProjectCell $attention={attentionCount > 0} $new={isNewProject} $clientBranded={isClient}>
-                            <TableProjectCell>
-                              <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
-                              <TableProjectTitleRow>
-                                <strong>{project.name}</strong>
-                                {attentionKind === "new_request" ? <NewProjectPill>New</NewProjectPill> : null}
-                                {attentionKind === "feedback" ? <FeedbackNotifiedPill>Feedback</FeedbackNotifiedPill> : null}
-                              </TableProjectTitleRow>
-                            </TableProjectCell>
-                          </StickyProjectCell>
-                          <StickyOrganizationCell $attention={attentionCount > 0} $new={isNewProject} $clientBranded={isClient}>
-                            <TableOrganizationCell>
-                              <TableOrganizationLogo organization={clientOrganization} />
-                              <TableOrganizationName>{clientOrganizationName}</TableOrganizationName>
-                            </TableOrganizationCell>
-                          </StickyOrganizationCell>
-                          <td>{formatDueDate(project.firstDraftDate ?? "")}</td>
-                          <td>{formatDueDate(project.finalDeliverableDate ?? project.dueDate)}</td>
-                          <td>
-                            <StagePill $bg={stageTone.bg} $fg={stageTone.fg}>
-                              {formatProjectStage(project.stage)}
-                            </StagePill>
-                          </td>
-                          <td>{project.projectType?.trim() || "Not set"}</td>
-                          <td>
-                            <PriorityPill $bg={priorityTone.bg} $fg={priorityTone.fg}>
-                              {project.priorityLevel?.trim() || "Not set"}
-                            </PriorityPill>
-                          </td>
-                          <td>{primaryContactLabel}</td>
-                          {!isClient ? <td>{project.contactNumber?.trim() || "No contact number"}</td> : null}
-                          <td>{user ? getVisibleTasksForUser(user, project).filter((task) => task.status !== "approved").length : 0}</td>
-                          <td>{formatDueDate(project.requestedDate ?? "")}</td>
-                        </DesktopTableRow>
-                      );
-                    })}
-                  </tbody>
-                </DesktopTable>
-                {desktopTableVisibleCount < filteredProjects.length ? (
-                  <DesktopTableLoadMoreSentinel ref={desktopTableLoadMoreRef} />
-                ) : null}
-              </>
-            ) : (
-              <EmptyCard>
-                <EmptyTitle>No projects found</EmptyTitle>
-                <EmptyCopy>Try another search term or create a new project workspace.</EmptyCopy>
-              </EmptyCard>
-            )}
-          </DesktopTableWrap>
+                        return (
+                          <DesktopTableRow
+                            key={project.id}
+                            $attention={attentionCount > 0}
+                            $new={isNewProject}
+                            $clientBranded={isClient}
+                            onClick={() => {
+                              void router.push(scopedHref(`/projects/${project.id}`));
+                            }}
+                          >
+                            <StickyProjectCell $attention={attentionCount > 0} $new={isNewProject} $clientBranded={isClient}>
+                              <TableProjectCell>
+                                <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
+                                <TableProjectTitleRow>
+                                  <strong>{project.name}</strong>
+                                  {attentionKind === "new_request" ? <NewProjectPill>New</NewProjectPill> : null}
+                                  {attentionKind === "feedback" ? <FeedbackNotifiedPill>Feedback</FeedbackNotifiedPill> : null}
+                                </TableProjectTitleRow>
+                              </TableProjectCell>
+                            </StickyProjectCell>
+                            <StickyOrganizationCell $attention={attentionCount > 0} $new={isNewProject} $clientBranded={isClient}>
+                              <TableOrganizationCell>
+                                <TableOrganizationLogo organization={clientOrganization} />
+                                <TableOrganizationName>{clientOrganizationName}</TableOrganizationName>
+                              </TableOrganizationCell>
+                            </StickyOrganizationCell>
+                            <td>{formatDueDate(project.firstDraftDate ?? "")}</td>
+                            <td>{formatDueDate(project.finalDeliverableDate ?? project.dueDate)}</td>
+                            <td>
+                              <StagePill $bg={stageTone.bg} $fg={stageTone.fg}>
+                                {formatProjectStage(project.stage)}
+                              </StagePill>
+                            </td>
+                            <td>{project.projectType?.trim() || "Not set"}</td>
+                            <td>
+                              <PriorityPill $bg={priorityTone.bg} $fg={priorityTone.fg}>
+                                {project.priorityLevel?.trim() || "Not set"}
+                              </PriorityPill>
+                            </td>
+                            <td>{primaryContactLabel}</td>
+                            {!isClient ? <td>{project.contactNumber?.trim() || "No contact number"}</td> : null}
+                            <td>{user ? getVisibleTasksForUser(user, project).filter((task) => task.status !== "approved").length : 0}</td>
+                            <td>{formatDueDate(project.requestedDate ?? "")}</td>
+                          </DesktopTableRow>
+                        );
+                      })}
+                    </tbody>
+                  </DesktopTable>
+                  {desktopTableVisibleCount < filteredProjects.length ? (
+                    <DesktopTableLoadMoreSentinel ref={desktopTableLoadMoreRef} />
+                  ) : null}
+                </>
+              ) : (
+                <EmptyCard>
+                  <EmptyTitle>No projects found</EmptyTitle>
+                  <EmptyCopy>Try another search term or create a new project workspace.</EmptyCopy>
+                </EmptyCard>
+              )}
+            </DesktopTableWrap>
+            {canManage && tableProjects.length ? (
+              <TableExportRow>
+                <span>Download this project table:</span>
+                <TableExportLink
+                  type="button"
+                  onClick={() => void handleProjectTableExport("csv")}
+                  disabled={exportingFormat !== null}
+                >
+                  {exportingFormat === "csv" ? "Preparing CSV..." : "CSV"}
+                </TableExportLink>
+                <span>/</span>
+                <TableExportLink
+                  type="button"
+                  onClick={() => void handleProjectTableExport("xlsx")}
+                  disabled={exportingFormat !== null}
+                >
+                  {exportingFormat === "xlsx" ? "Preparing XLSX..." : "XLSX"}
+                </TableExportLink>
+              </TableExportRow>
+            ) : null}
+          </>
         )}
 
         <MobileList>
@@ -1485,6 +1618,37 @@ const DesktopTableWrap = styled.section`
 
 const DesktopTableLoadMoreSentinel = styled.div`
   height: 1px;
+`;
+
+const TableExportRow = styled.div`
+  display: none;
+
+  ${desktop} {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 0 6px;
+    color: rgba(104, 94, 80, 0.86);
+    font-size: 0.7rem;
+    line-height: 1.2;
+  }
+`;
+
+const TableExportLink = styled.button`
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #8a402f;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.62;
+  }
 `;
 
 const DesktopTable = styled.table`

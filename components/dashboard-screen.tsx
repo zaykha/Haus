@@ -136,6 +136,18 @@ function isOnHoldProject(project: Pick<Project, "status" | "stage">) {
   return project.status === "On Hold" || project.stage === "On Hold";
 }
 
+function isCompletedProject(project: Pick<Project, "status" | "stage">) {
+  return project.status === "done" || project.status === "Complete" || project.stage === "Complete";
+}
+
+function isReviewProject(project: Pick<Project, "status" | "stage">) {
+  return (
+    project.status === "review" ||
+    project.status === "Pending Review" ||
+    project.stage === "Pending Review"
+  );
+}
+
 function getStatusTone(status: ProjectStatus) {
   switch (status) {
     case "active":
@@ -473,21 +485,19 @@ export function DashboardScreen() {
   const recentFeedback = feedbackRows.slice(0, 3);
   const recentActivity = activityRows.slice(0, 4);
 
-  const completedProjects = projectRows.filter((project) => project.status === "done").length;
+  const completedProjects = projectRows.filter((project) => isCompletedProject(project)).length;
+  const reviewProjects = projectRows.filter((project) => isReviewProject(project)).length;
+  const holdProjects = projectRows.filter((project) => isOnHoldProject(project)).length;
   const inProgressProjects = projectRows.filter(
-    (project) => project.status === "active" || project.status === "revision",
+    (project) =>
+      !isCompletedProject(project) && !isReviewProject(project) && !isOnHoldProject(project),
   ).length;
-  const reviewProjects = projectRows.filter((project) => project.status === "review").length;
-  const holdProjects = Math.max(
-    0,
-    projectRows.length - completedProjects - inProgressProjects - reviewProjects,
-  );
 
   const totalProjects = Math.max(projectRows.length, 1);
   const completedPct = Math.round((completedProjects / totalProjects) * 100);
   const inProgressPct = Math.round((inProgressProjects / totalProjects) * 100);
   const reviewPct = Math.round((reviewProjects / totalProjects) * 100);
-  const holdPct = Math.max(0, 100 - completedPct - inProgressPct - reviewPct);
+  const holdPct = Math.round((holdProjects / totalProjects) * 100);
 
   const donut = `conic-gradient(
     #5ca16d 0 ${completedPct}%,
