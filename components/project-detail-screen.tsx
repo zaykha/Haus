@@ -44,7 +44,11 @@ import {
   formatProjectStage,
   getTaskStatusLabel,
 } from "@/lib/display";
-import { projectHasUnacknowledgedClientRequest, taskNeedsAttention } from "@/lib/task-attention";
+import {
+  projectHasUnacknowledgedClientRequest,
+  taskHasClientReviewableDeliverable,
+  taskNeedsAttention,
+} from "@/lib/task-attention";
 
 const desktop = "@media (min-width: 1100px)";
 
@@ -344,6 +348,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
   const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus>("todo");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
+  const [createTaskSubmitAttempted, setCreateTaskSubmitAttempted] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [activeDesignerTaskId, setActiveDesignerTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState("");
@@ -893,6 +898,11 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
       return;
     }
 
+    if (parseTaskCompletionAssets(editingTask.completionScreenshotUrl).length === 0) {
+      setEditingTaskError("Feedback is locked until a client-ready deliverable is uploaded.");
+      return;
+    }
+
     // Ensure client can only submit while the task is in review.
     if (!editingTask || user?.role !== "client" || editingTask.status !== "review") {
       return;
@@ -977,6 +987,24 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setCreateTaskSubmitAttempted(true);
+    setEditingTaskError("");
+
+    if (!newTaskTitle.trim()) {
+      setEditingTaskError("Task title is required.");
+      return;
+    }
+
+    if (!newTaskOpenForAll && !newTaskAssigneeId) {
+      setEditingTaskError("Assignee is required.");
+      return;
+    }
+
+    if (!newTaskDueDate) {
+      setEditingTaskError("Due date is required.");
+      return;
+    }
+
     setIsCreatingTask(true);
     try {
       await createTask(project.id, {
@@ -992,6 +1020,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
       setNewTaskStatus("todo");
       setNewTaskDueDate(project.dueDate);
       setNewTaskPriority("medium");
+      setCreateTaskSubmitAttempted(false);
       setShowCreateTaskPanel(false);
     } finally {
       setIsCreatingTask(false);
@@ -1686,8 +1715,9 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
             <InlineForm onSubmit={handleCreateTask}>
               <TaskModalGrid>
                 <TaskModalField $wide>
-                  <TaskFloatingField className={newTaskTitle ? "auth-field is-filled" : "auth-field"}>
+                  <TaskFloatingField className={newTaskTitle ? "auth-field is-filled" : "auth-field"} $invalid={createTaskSubmitAttempted && !newTaskTitle.trim()}>
                     <TaskTextInput
+                      $invalid={createTaskSubmitAttempted && !newTaskTitle.trim()}
                       value={newTaskTitle}
                       onChange={(event) => setNewTaskTitle(event.target.value)}
                       placeholder=" "
@@ -1719,8 +1749,9 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
                 {newTaskOpenForAll ? null : (
                   <TaskModalField>
-                    <TaskFloatingSelect $filled={Boolean(newTaskAssigneeId)} $open={createTaskSelect === "assignee"}>
+                    <TaskFloatingSelect $filled={Boolean(newTaskAssigneeId)} $open={createTaskSelect === "assignee"} $invalid={createTaskSubmitAttempted && !newTaskAssigneeId}>
                       <TaskSelectTrigger
+                        $invalid={createTaskSubmitAttempted && !newTaskAssigneeId}
                         type="button"
                         aria-haspopup="listbox"
                         aria-expanded={createTaskSelect === "assignee"}
@@ -1735,7 +1766,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                           <IconChevronDown />
                         </TaskSelectChevron>
                       </TaskSelectTrigger>
-                      <TaskFloatingLabel>Assignee</TaskFloatingLabel>
+                      <TaskFloatingLabel $invalid={createTaskSubmitAttempted && !newTaskAssigneeId}>Assignee</TaskFloatingLabel>
                       {createTaskSelect === "assignee" ? (
                         <TaskSelectMenu role="listbox" aria-label="Assignee">
                           {availableStaff.map((member) => (
@@ -1802,6 +1833,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                     label="Due date"
                     value={newTaskDueDate}
                     onChange={setNewTaskDueDate}
+                    invalid={createTaskSubmitAttempted && !newTaskDueDate}
                   />
                 </TaskModalField>
               </TaskModalGrid>
@@ -1821,7 +1853,8 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
                   ))}
                 </PriorityChips>
               </PriorityField>
-              <button className="primary-button" type="submit" disabled={!newTaskOpenForAll && !newTaskAssigneeId}>
+              {editingTaskError ? <TaskInlineError>{editingTaskError}</TaskInlineError> : null}
+              <button className="primary-button" type="submit">
                 Add task
               </button>
             </InlineForm>
@@ -2203,7 +2236,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
       {editingTask &&
         user &&
         user.role === "client" &&
-        (editingTask.status === "approved" || (editingTask.status === "review" && editingTask.clientVisible)) ? (
+        (editingTask.status === "approved" || taskHasClientReviewableDeliverable(editingTask)) ? (
         <ModalBackdrop onClick={() => setEditingTaskId(null)}>
 
           <ModalCard onClick={(event) => event.stopPropagation()}>
@@ -4076,12 +4109,17 @@ const TaskModalField = styled.div<{ $wide?: boolean }>`
       : ""}
 `;
 
-const TaskFloatingField = styled.label`
+const TaskFloatingField = styled.label<{ $invalid?: boolean }>`
   min-width: 0;
   width: 100%;
+
+  > span {
+    color: ${({ $invalid }) => ($invalid ? "#c2544a" : "#29463e")};
+  }
 `;
 
-const TaskTextInput = styled.input`
+const TaskTextInput = styled.input<{ $invalid?: boolean }>`
+
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -4118,14 +4156,16 @@ const TaskTextInput = styled.input`
   }
 `;
 
-const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean }>`
+const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean; $invalid?: boolean }>`
   position: relative;
   display: block;
   width: 100%;
   z-index: ${({ $open }) => ($open ? 8 : 2)};
 `;
 
-const TaskFloatingLabel = styled.span`
+const TaskFloatingLabel = styled.span<{ $invalid?: boolean }>`
+  color: ${({ $invalid }) => ($invalid ? "#c2544a" : "#29463e")};
+
   position: absolute;
   left: 16px;
   top: 1px;
@@ -4139,8 +4179,9 @@ const TaskFloatingLabel = styled.span`
   pointer-events: none;
 `;
 
-const TaskSelectTrigger = styled.button`
+const TaskSelectTrigger = styled.button<{ $invalid?: boolean }>`
   width: 100%;
+
   min-height: 58px;
   padding: 18px 16px 12px;
   border: 1.5px solid rgba(27, 63, 53, 0.3);

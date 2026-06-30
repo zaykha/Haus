@@ -317,6 +317,20 @@ textarea:focus {
   font-weight: 500;
 }
 
+.auth-field.is-invalid > span,
+.auth-field.is-invalid .auth-inline-label,
+.password-field.is-invalid .auth-inline-label,
+.onboarding-department-field.is-invalid .auth-inline-label {
+  color: #c04f42;
+}
+
+.auth-field.is-invalid input,
+.password-field.is-invalid,
+.onboarding-department-field.is-invalid .onboarding-department-trigger {
+  border-color: #c04f42;
+  box-shadow: 0 0 0 1px rgba(192, 79, 66, 0.12);
+}
+
 .password-field {
   position: relative;
   display: grid;

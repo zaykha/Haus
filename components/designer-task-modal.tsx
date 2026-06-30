@@ -85,6 +85,9 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
   const [completionLinks, setCompletionLinks] = useState<string[]>([]);
   const [linkValue, setLinkValue] = useState("");
   const [error, setError] = useState("");
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [linkSubmitAttempted, setLinkSubmitAttempted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const pendingUploadsRef = useRef<PendingCompletionUpload[]>([]);
   const completionState = useMemo(
@@ -226,6 +229,9 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
     setCompletionLinks([]);
     setLinkValue("");
     setError("");
+    setShowErrorPopup(false);
+    setSubmitAttempted(false);
+    setLinkSubmitAttempted(false);
   }, [open, task]);
 
   useEffect(() => {
@@ -290,12 +296,14 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
 
     if (nextUploads.length === 0) {
       setError("No new files to add (duplicates were skipped).");
+      setShowErrorPopup(true);
       event.target.value = "";
       return;
     }
 
     setPendingUploads((current) => [...current, ...nextUploads]);
     setError("");
+    setShowErrorPopup(false);
     event.target.value = "";
   };
 
@@ -305,8 +313,11 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
       return;
     }
 
+    setLinkSubmitAttempted(true);
+
     if (!isTaskCompletionLink(nextLink)) {
       setError("Enter a valid https:// link.");
+      setShowErrorPopup(true);
       return;
     }
 
@@ -317,12 +328,15 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
       pendingUploads.some((u) => u.previewUrl === nextLink)
     ) {
       setError("This link is already added.");
+      setShowErrorPopup(true);
       return;
     }
 
     setCompletionLinks((current) => [...current, nextLink]);
     setLinkValue("");
     setError("");
+    setShowErrorPopup(false);
+    setLinkSubmitAttempted(false);
   };
 
   const handleRemoveAsset = (asset: string) => {
@@ -343,6 +357,8 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setSubmitAttempted(true);
+
     if (isLocked) {
       onClose();
       return;
@@ -353,11 +369,13 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
 
     if (nextStatus === "done" && allAssets.length === 0) {
       setError("Upload completion screenshots, files, or links before submitting this task for internal review.");
+      setShowErrorPopup(true);
       return;
     }
 
     setIsSubmitting(true);
     setError("");
+    setShowErrorPopup(false);
 
     try {
       const uploadedUrls: string[] = [];
@@ -394,13 +412,34 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
       onClose();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to update task.");
+      setShowErrorPopup(true);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const linkIsInvalid =
+    linkSubmitAttempted &&
+    Boolean(linkValue.trim()) &&
+    (!isTaskCompletionLink(linkValue.trim()) ||
+      completionLinks.includes(linkValue.trim()) ||
+      editableCurrentAssets.includes(linkValue.trim()) ||
+      pendingUploads.some((upload) => upload.previewUrl === linkValue.trim()));
+  const missingCompletionAssets = submitAttempted && status === "done" && allAssets.length === 0;
+
   return (
     <>
+      {showErrorPopup && error ? (
+        <div className="auth-popup-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="designer-task-form-error-title">
+          <div className="auth-popup-card">
+            <h2 id="designer-task-form-error-title">Task form error</h2>
+            <p>{error}</p>
+            <button className="primary-button mobile-full-button" type="button" onClick={() => setShowErrorPopup(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
       {isSubmitting ? (
         <LoadingOverlay role="status" aria-live="polite">
           <div className="auth-loading-card">
@@ -425,7 +464,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
             </ModalClose>
           </ModalHeader>
 
-          <InlineForm onSubmit={handleSubmit}>
+          <InlineForm onSubmit={handleSubmit} noValidate>
             <TaskModalGrid>
              <TaskSummaryCard>
               <TaskSummaryHeader>
@@ -598,12 +637,12 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
             ) : null}
 
             {!isLocked && isViewingCurrentVersion ? (
-              <UploadCompactArea>
+              <UploadCompactArea $invalid={missingCompletionAssets}>
                 <UploadHeader>
                   <UploadLabel>Completion assets</UploadLabel>
                   <UploadCount>{allAssets.length} item{allAssets.length === 1 ? "" : "s"}</UploadCount>
                 </UploadHeader>
-                <UploadEmptyState>
+                <UploadEmptyState $invalid={missingCompletionAssets}>
                   Add screenshots, files, or links for {getCurrentTaskCompletionLabel(completionState)}. Previous versions are read-only.
                 </UploadEmptyState>
                 <UploadTileGrid $horizontal={allAssets.length > 2}>
@@ -653,12 +692,13 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
                 </UploadTileGrid>
 
                 <LinkInputRow>
-                  <TaskFloatingField className={linkValue ? "auth-field is-filled" : "auth-field"}>
+                  <TaskFloatingField className={linkValue ? "auth-field is-filled" : "auth-field"} $invalid={linkIsInvalid}>
                     <TaskTextInput
                       value={linkValue}
                       onChange={(event) => {
                         setLinkValue(event.target.value);
                         setError("");
+                        setShowErrorPopup(false);
                       }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
@@ -667,6 +707,7 @@ export function DesignerTaskModal({ open, task, onClose, onSubmit }: Props) {
                         }
                       }}
                       placeholder=" "
+                      $invalid={linkIsInvalid}
                     />
                     <span>Attachment link</span>
                   </TaskFloatingField>
@@ -806,11 +847,15 @@ const TaskModalField = styled.div<{ $wide?: boolean }>`
       : ""}
 `;
 
-const TaskFloatingField = styled.label`
+const TaskFloatingField = styled.label<{ $invalid?: boolean }>`
   width: 100%;
+
+  span {
+    color: ${({ $invalid }) => ($invalid ? "#c04f42" : "inherit")};
+  }
 `;
 
-const TaskTextInput = styled.input`
+const TaskTextInput = styled.input<{ $invalid?: boolean }>`
   width: 100%;
   min-height: 58px;
   padding: 0 16px;
@@ -818,7 +863,8 @@ const TaskTextInput = styled.input`
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--color-text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(192, 79, 66, 0.12)" : "var(--shadow-sm)")};
+  border-color: ${({ $invalid }) => ($invalid ? "#c04f42" : "rgba(230, 224, 215, 0.95)")};
   font-size: 16px;
 `;
 
@@ -977,12 +1023,13 @@ const TaskSummaryValue = styled.strong`
   overflow-wrap: anywhere;
 `;
 
-const UploadCompactArea = styled.div`
+const UploadCompactArea = styled.div<{ $invalid?: boolean }>`
   display: grid;
   gap: 10px;
   border-radius: 18px;
-  border: 1px dashed rgba(47, 93, 80, 0.22);
+  border: 1px dashed ${({ $invalid }) => ($invalid ? "#c04f42" : "rgba(47, 93, 80, 0.22)")};
   background: rgba(251, 250, 247, 0.8);
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(192, 79, 66, 0.12)" : "none")};
   padding: 12px;
 `;
 
@@ -1011,9 +1058,9 @@ const UploadLabel = styled.span`
   text-transform: uppercase;
 `;
 
-const UploadEmptyState = styled.p`
+const UploadEmptyState = styled.p<{ $invalid?: boolean }>`
   margin: 0;
-  color: #8b8277;
+  color: ${({ $invalid }) => ($invalid ? "#c04f42" : "#8b8277")};
   font-size: 0.86rem;
   line-height: 1.45;
 `;

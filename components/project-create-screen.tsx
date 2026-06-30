@@ -18,13 +18,13 @@ const initialRequestedDate = `${today.getFullYear()}-${`${today.getMonth() + 1}`
 
 const initialValues: ProjectFormValues = {
   requestedDate: initialRequestedDate,
-  requestStatus: "Waiting List",
+  requestStatus: "",
   departmentName: "",
   projectRequestName: "",
   contactPerson: "",
   contactNumber: "",
-  projectType: "Brand Identity",
-  priorityLevel: "Medium",
+  projectType: "",
+  priorityLevel: "",
   firstDraftDate: "",
   finalDeliverableDate: "",
   projectObjective: "",
@@ -42,6 +42,7 @@ export function ProjectCreateScreen() {
   const [routingMessage, setRoutingMessage] = useState("");
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [autoCreateTask, setAutoCreateTask] = useState(true);
+  const [bulkAutoCreateTask, setBulkAutoCreateTask] = useState(true);
   const [showBulkDropOverlay, setShowBulkDropOverlay] = useState(false);
   const [bulkFileName, setBulkFileName] = useState("");
   const [bulkRows, setBulkRows] = useState<Array<{
@@ -343,7 +344,10 @@ export function ProjectCreateScreen() {
     setBulkSummary("");
 
     try {
-      const result = await bulkCreateProjects(bulkRows);
+      const result = await bulkCreateProjects({
+        rows: bulkRows,
+        autoCreateTask: bulkAutoCreateTask,
+      });
       setBulkSummary(`${result.createdCount} projects created successfully.`);
       setBulkRows([]);
       setBulkFileName("");
@@ -390,7 +394,7 @@ export function ProjectCreateScreen() {
       ) : null}
 
       <SidebarRail>
-        <AppSidebar user={safeUser} activeLabel="Projects" />
+        <AppSidebar user={safeUser} activeLabel="Projects" pinToViewport />
       </SidebarRail>
 
       <Content>
@@ -483,6 +487,23 @@ export function ProjectCreateScreen() {
                 </BulkImportMeta>
               </BulkUploadGrid>
 
+              <BulkToggleCardButton
+                type="button"
+                onClick={() => setBulkAutoCreateTask((current) => !current)}
+                aria-pressed={bulkAutoCreateTask}
+              >
+                <BulkToggleCopy>
+                  <strong>Auto create task</strong>
+                  <span>
+                    Add the same open task used in the create-project flow for imported WIP and
+                    Pending Review projects.
+                  </span>
+                </BulkToggleCopy>
+                <BulkToggleTrack $active={bulkAutoCreateTask}>
+                  <BulkToggleThumb $active={bulkAutoCreateTask} />
+                </BulkToggleTrack>
+              </BulkToggleCardButton>
+
               {bulkError ? <BulkError>{bulkError}</BulkError> : null}
 
               <BulkActions>
@@ -524,11 +545,9 @@ const Shell = styled.main`
 
 const SidebarRail = styled.div`
   ${desktop} {
-    position: sticky;
-    top: 8px;
-    height: calc(100vh - 16px);
-    flex: 0 0 auto;
-    align-self: flex-start;
+    width: 260px;
+    min-width: 260px;
+    flex: 0 0 260px;
   }
 `;
 
@@ -726,6 +745,56 @@ const BulkImportMeta = styled.div`
     font-size: 0.85rem;
     line-height: 1.5;
   }
+`;
+
+const BulkToggleCardButton = styled.button`
+  ${cardSurface}
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 20px;
+  text-align: left;
+  cursor: pointer;
+`;
+
+const BulkToggleCopy = styled.div`
+  display: grid;
+  gap: 4px;
+
+  strong {
+    font-size: 0.92rem;
+  }
+
+  span {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+`;
+
+const BulkToggleTrack = styled.span<{ $active: boolean }>`
+  position: relative;
+  display: inline-flex;
+  width: 52px;
+  height: 30px;
+  padding: 3px;
+  border-radius: 999px;
+  background: ${({ $active }) => ($active ? "rgba(36, 112, 117, 0.9)" : "rgba(214, 205, 192, 0.95)")};
+  flex: 0 0 auto;
+  transition: background 0.2s ease;
+`;
+
+const BulkToggleThumb = styled.span<{ $active: boolean }>`
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #fffdf9;
+  box-shadow: 0 8px 18px rgba(66, 45, 21, 0.18);
+  transform: translateX(${({ $active }) => ($active ? "22px" : "0")});
+  transition: transform 0.2s ease;
 `;
 
 const BulkError = styled.p`

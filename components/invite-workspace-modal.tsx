@@ -39,6 +39,8 @@ export function InviteWorkspaceModal({
   const [clientOrganizationId, setClientOrganizationId] = useState(initialClientOrganizationId ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [roleOpen, setRoleOpen] = useState(false);
@@ -78,6 +80,9 @@ export function InviteWorkspaceModal({
     if (!open) {
       setRoleOpen(false);
       setOrganizationOpen(false);
+      setShowErrorPopup(false);
+      setSubmitAttempted(false);
+      setError("");
     }
   }, [open]);
 
@@ -163,8 +168,18 @@ export function InviteWorkspaceModal({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setShowErrorPopup(false);
+    setSubmitAttempted(true);
+
+    if (!email.trim()) {
+      setError("Email is required.");
+      setShowErrorPopup(true);
+      return;
+    }
+
     if (resolvedRole === "client" && !clientOrganizationId) {
-      setError("Client organization is required for client invites");
+      setError("Client organization is required for client invites.");
+      setShowErrorPopup(true);
       return;
     }
 
@@ -187,8 +202,10 @@ export function InviteWorkspaceModal({
       setCopyState("idle");
       setRoleOpen(false);
       setOrganizationOpen(false);
+      setSubmitAttempted(false);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to create invite");
+      setShowErrorPopup(true);
     } finally {
       setSubmitting(false);
     }
@@ -206,6 +223,17 @@ export function InviteWorkspaceModal({
   return (
     <Overlay onClick={onClose}>
       <ModalCard onClick={(event) => event.stopPropagation()}>
+        {showErrorPopup && error ? (
+          <div className="auth-popup-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="invite-form-error-title">
+            <div className="auth-popup-card">
+              <h2 id="invite-form-error-title">Invite form error</h2>
+              <p>{error}</p>
+              <button className="primary-button mobile-full-button" type="button" onClick={() => setShowErrorPopup(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        ) : null}
         <Header>
           <HeaderActions>
             {inviteLink ? (
@@ -236,9 +264,10 @@ export function InviteWorkspaceModal({
         </Header>
 
         {!inviteLink ? (
-          <Form onSubmit={handleSubmit}>
-            <FloatingField className={email ? "auth-field is-filled" : "auth-field"}>
+          <Form onSubmit={handleSubmit} noValidate>
+            <FloatingField className={email ? "auth-field is-filled" : "auth-field"} $invalid={submitAttempted && !email.trim()}>
               <TextInput
+                $invalid={submitAttempted && !email.trim()}
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -252,6 +281,7 @@ export function InviteWorkspaceModal({
             {variant === "team" ? (
               <FloatingSelectField ref={roleFieldRef} $filled $open={roleOpen}>
                 <SelectTrigger
+                  $invalid={submitAttempted && resolvedRole === "client" && !clientOrganizationId}
                   type="button"
                   aria-haspopup="listbox"
                   aria-expanded={roleOpen}
@@ -286,7 +316,12 @@ export function InviteWorkspaceModal({
             ) : null}
 
             {resolvedRole === "client" ? (
-              <FloatingSelectField ref={organizationFieldRef} $filled={Boolean(clientOrganizationId)} $open={organizationOpen}>
+              <FloatingSelectField
+                ref={organizationFieldRef}
+                $filled={Boolean(clientOrganizationId)}
+                $open={organizationOpen}
+                $invalid={submitAttempted && resolvedRole === "client" && !clientOrganizationId}
+              >
                 <SelectTrigger
                   type="button"
                   aria-haspopup="listbox"
@@ -307,7 +342,7 @@ export function InviteWorkspaceModal({
                     <IconChevronDown />
                   </SelectChevron>
                 </SelectTrigger>
-                <FieldLabel>Client Organization</FieldLabel>
+                <FieldLabel $invalid={submitAttempted && resolvedRole === "client" && !clientOrganizationId}>Client Organization</FieldLabel>
                 {organizationOpen && !lockClientOrganization ? (
                   <SelectMenu
                     $direction={dropdownDirection}
@@ -469,39 +504,45 @@ const Form = styled.form`
   gap: 16px;
 `;
 
-const FloatingField = styled.label`
+const FloatingField = styled.label<{ $invalid?: boolean }>`
   width: 100%;
+
+  span {
+    color: ${({ $invalid }) => ($invalid ? "#c04f42" : "inherit")};
+  }
 `;
 
-const FloatingSelectField = styled.div<{ $filled?: boolean; $open?: boolean }>`
+const FloatingSelectField = styled.div<{ $filled?: boolean; $open?: boolean; $invalid?: boolean }>`
   position: relative;
   display: block;
   width: 100%;
   z-index: ${({ $open }) => ($open ? 8 : 2)};
 `;
 
-const FieldLabel = styled.span`
+const FieldLabel = styled.span<{ $invalid?: boolean }>`
   position: absolute;
   left: 16px;
   top: 1px;
   transform: translateY(-50%);
   padding: 0 6px;
   background: rgba(255, 255, 255, 0.96);
-  color: #29463e;
+  color: ${({ $invalid }) => ($invalid ? "#c04f42" : "#29463e")};
   font-size: 13px;
   font-weight: 500;
   z-index: 3;
   pointer-events: none;
 `;
 
-const TextInput = styled.input`
+const TextInput = styled.input<{ $invalid?: boolean }>`
   ${controlCss};
   min-height: 58px;
   padding: 0 16px;
   font-size: 16px;
+  border-color: ${({ $invalid }) => ($invalid ? "#c04f42" : "rgba(230, 224, 215, 0.95)")};
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(192, 79, 66, 0.12)" : "var(--shadow-sm)")};
 `;
 
-const SelectTrigger = styled.button`
+const SelectTrigger = styled.button<{ $invalid?: boolean }>`
   ${controlCss};
   display: flex;
   align-items: flex-end;
@@ -511,6 +552,8 @@ const SelectTrigger = styled.button`
   padding: 18px 16px 12px;
   font-size: 16px;
   text-align: left;
+  border-color: ${({ $invalid }) => ($invalid ? "#c04f42" : "rgba(230, 224, 215, 0.95)")};
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(192, 79, 66, 0.12)" : "var(--shadow-sm)")};
 `;
 
 const SelectValue = styled.span`

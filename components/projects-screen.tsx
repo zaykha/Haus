@@ -530,7 +530,11 @@ export function ProjectsScreen() {
 
   return (
     <PageShell style={user?.role === "client" ? clientBrandStyle : undefined}>
-      {user ? <AppSidebar user={user} activeLabel="Projects" /> : null}
+      {user ? (
+        <SidebarRail>
+          <AppSidebar user={user} activeLabel="Projects" />
+        </SidebarRail>
+      ) : null}
 
       <Content>
         <DesktopHeader>
@@ -1037,6 +1041,16 @@ const PageShell = styled.main`
     align-items: flex-start;
     padding: 8px;
     background: var(--client-screen-soft, rgba(255, 255, 255, 0.58));
+  }
+`;
+
+const SidebarRail = styled.div`
+  ${desktop} {
+    position: sticky;
+    top: 8px;
+    height: calc(100vh - 16px);
+    flex: 0 0 auto;
+    align-self: flex-start;
   }
 `;
 

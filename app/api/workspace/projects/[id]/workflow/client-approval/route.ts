@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
 import {
+  parseTaskCompletionAssets,
   parseTaskCompletionState,
   recordTaskCompletionSnapshot,
   serializeTaskCompletionState,
@@ -105,12 +106,19 @@ export async function POST(
     );
     }
 
-    if (!task.client_visible) {
+  if (!task.client_visible) {
     return NextResponse.json(
         { error: "Task is not visible to the client" },
         { status: 403 },
     );
-    }
+  }
+
+  if (parseTaskCompletionAssets(task.completion_screenshot_url).length === 0) {
+    return NextResponse.json(
+      { error: "No client-ready deliverable has been uploaded for this task yet." },
+      { status: 400 },
+    );
+  }
 
   const nextTaskStatus = decision === "approve" ? "approved" : "in_progress";
 

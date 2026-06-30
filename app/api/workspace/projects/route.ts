@@ -14,6 +14,16 @@ function isIgnorableProjectActivityError(message: string | undefined) {
   );
 }
 
+function normalizeTaskCreationError(message: string | undefined) {
+  if (
+    message?.includes('null value in column "assignee_id" of relation "tasks" violates not-null constraint')
+  ) {
+    return "Tasks still require an assignee in the database. Apply the migration that allows unassigned tasks, then try again.";
+  }
+
+  return message ?? "Unable to create task";
+}
+
 export async function POST(request: NextRequest) {
   const auth = await requireWorkspaceUser(request);
   if (auth instanceof Response) {
@@ -193,7 +203,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (taskError) {
-      return NextResponse.json({ error: taskError.message }, { status: 500 });
+      return NextResponse.json({ error: normalizeTaskCreationError(taskError.message) }, { status: 500 });
     }
   }
 

@@ -73,26 +73,29 @@ interface AppStateContextValue {
     clientOrganizationId: string;
     autoCreateTask?: boolean;
   }) => Promise<Project>;
-  bulkCreateProjects: (rows: Array<{
-    projectId: string;
-    requestedDate: string;
-    projectRequestName: string;
-    requestStatus: string;
-    departmentName: string;
-    contactPerson: string;
-    contactNumber: string;
-    projectType: string;
-    priorityLevel: string;
-    firstDraftDate: string;
-    finalDeliverableDate: string;
-    projectObjective: string;
-    projectBrief: string;
-    creativeAdvice: string;
-    description: string;
-    referenceAttachmentUrl: string;
-    clientOrganizationName: string;
-    primaryContactEmail?: string;
-  }>) => Promise<{ createdCount: number }>;
+  bulkCreateProjects: (payload: {
+    rows: Array<{
+      projectId: string;
+      requestedDate: string;
+      projectRequestName: string;
+      requestStatus: string;
+      departmentName: string;
+      contactPerson: string;
+      contactNumber: string;
+      projectType: string;
+      priorityLevel: string;
+      firstDraftDate: string;
+      finalDeliverableDate: string;
+      projectObjective: string;
+      projectBrief: string;
+      creativeAdvice: string;
+      description: string;
+      referenceAttachmentUrl: string;
+      clientOrganizationName: string;
+      primaryContactEmail?: string;
+    }>;
+    autoCreateTask?: boolean;
+  }) => Promise<{ createdCount: number }>;
   updateProject: (
     projectId: string,
     project: {
@@ -762,7 +765,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return createdProject;
   };
 
-  const bulkCreateProjects: AppStateContextValue["bulkCreateProjects"] = async (rows) => {
+  const bulkCreateProjects: AppStateContextValue["bulkCreateProjects"] = async ({
+    rows,
+    autoCreateTask,
+  }) => {
     if (!user) {
       throw new Error("Unauthorized");
     }
@@ -775,7 +781,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const data = await apiRequest<{ ok: true; createdCount: number }>("/api/workspace/projects/bulk", {
       method: "POST",
-      body: JSON.stringify({ rows }),
+      body: JSON.stringify({ rows, autoCreateTask }),
     });
 
     await refreshWorkspace(user);

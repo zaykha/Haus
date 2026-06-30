@@ -10,6 +10,7 @@ type CustomDatePickerProps = {
   value: string;
   onChange: (value: string) => void;
   minDate?: string;
+  invalid?: boolean;
 };
 
 const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -83,7 +84,7 @@ function toDayTimestamp(value: string) {
   return parsed ? new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime() : null;
 }
 
-export function CustomDatePicker({ label, value, onChange, minDate }: CustomDatePickerProps) {
+export function CustomDatePicker({ label, value, onChange, minDate, invalid = false }: CustomDatePickerProps) {
   const [open, setOpen] = useState(false);
   const fieldRef = useRef<HTMLDivElement | null>(null);
   const [visibleMonth, setVisibleMonth] = useState(() => {
@@ -145,7 +146,7 @@ export function CustomDatePicker({ label, value, onChange, minDate }: CustomDate
     [visibleMonth],
   );
   const days = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
-  const displayValue = formatDisplayDate(value) || "Select date";
+  const displayValue = formatDisplayDate(value);
   const minTimestamp = useMemo(() => {
     return toDayTimestamp(minDate ?? "");
   }, [minDate]);
@@ -155,12 +156,16 @@ export function CustomDatePicker({ label, value, onChange, minDate }: CustomDate
       {open ? <MobileScrim type="button" aria-label="Close date picker" onClick={() => setOpen(false)} /> : null}
       <Trigger
         type="button"
+        $invalid={invalid}
         $filled={Boolean(value)}
+        $open={open}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        <Label>{label}</Label>
+        <Label $invalid={invalid} $filled={Boolean(value)} $open={open}>
+          {label}
+        </Label>
         <Value $filled={Boolean(value)}>{displayValue}</Value>
         <CalendarIcon aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -248,23 +253,34 @@ const inputSurface = css`
   }
 `;
 
-const Trigger = styled.button<{ $filled?: boolean }>`
+const Trigger = styled.button<{ $filled?: boolean; $invalid?: boolean; $open?: boolean }>`
   ${inputSurface}
   position: relative;
   display: block;
   text-align: left;
+  border-color: ${({ $invalid }) => ($invalid ? "rgba(194, 84, 74, 0.95)" : "rgba(230, 224, 215, 0.95)")};
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(194, 84, 74, 0.18)" : "var(--shadow-sm)")};
+
+  ${({ $filled, $open }) =>
+    !$filled && !$open
+      ? css`
+          padding-top: 0;
+          padding-bottom: 0;
+        `
+      : ""}
 `;
 
-const Label = styled.span`
+const Label = styled.span<{ $invalid?: boolean; $filled?: boolean; $open?: boolean }>`
   position: absolute;
   left: 16px;
-  top: 1px;
+  top: ${({ $filled, $open }) => (!$filled && !$open ? "50%" : "1px")};
   transform: translateY(-50%);
-  padding: 0 6px;
-  background: rgba(255, 255, 255, 0.96);
-  color: #29463e;
-  font-size: 13px;
-  font-weight: 500;
+  padding: ${({ $filled, $open }) => (!$filled && !$open ? "0" : "0 6px")};
+  background: ${({ $filled, $open }) => (!$filled && !$open ? "transparent" : "rgba(255, 255, 255, 0.96)")};
+  color: ${({ $invalid, $filled, $open }) =>
+    $invalid ? "#c2544a" : !$filled && !$open ? "var(--color-text-muted)" : "#29463e"};
+  font-size: ${({ $filled, $open }) => (!$filled && !$open ? "16px" : "13px")};
+  font-weight: ${({ $filled, $open }) => (!$filled && !$open ? 500 : 500)};
   pointer-events: none;
 
   ${mobile} {

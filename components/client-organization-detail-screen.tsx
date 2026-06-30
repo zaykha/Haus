@@ -183,6 +183,9 @@ export function ClientOrganizationDetailScreen({
   const [isRevokingInvite, setIsRevokingInvite] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [isSavingOrganization, setIsSavingOrganization] = useState(false);
+  const [organizationError, setOrganizationError] = useState("");
+  const [showOrganizationErrorPopup, setShowOrganizationErrorPopup] = useState(false);
+  const [organizationSubmitAttempted, setOrganizationSubmitAttempted] = useState(false);
   const [name, setName] = useState("");
   const [type, setType] = useState<"internal" | "external">("external");
   const [status, setStatus] = useState<"active" | "inactive">("active");
@@ -816,10 +819,19 @@ export function ClientOrganizationDetailScreen({
       return;
     }
 
+    setShowOrganizationErrorPopup(false);
+    setOrganizationSubmitAttempted(true);
+
+    if (!name.trim()) {
+      setOrganizationError("Organization name is required.");
+      setShowOrganizationErrorPopup(true);
+      return;
+    }
+
     setIsSavingOrganization(true);
     try {
       await updateClientOrganization(rawOrganization.id, {
-        name,
+        name: name.trim(),
         type,
         status,
         logoUrl,
@@ -828,6 +840,11 @@ export function ClientOrganizationDetailScreen({
         address: type === "external" ? address : "",
       });
       setShowEditModal(false);
+      setOrganizationError("");
+      setOrganizationSubmitAttempted(false);
+    } catch (nextError) {
+      setOrganizationError(nextError instanceof Error ? nextError.message : "Unable to save organization.");
+      setShowOrganizationErrorPopup(true);
     } finally {
       setIsSavingOrganization(false);
     }
@@ -1294,6 +1311,17 @@ export function ClientOrganizationDetailScreen({
       {showEditModal ? (
         <Overlay onClick={() => !isSavingOrganization && setShowEditModal(false)}>
           <ModalCard onClick={(event) => event.stopPropagation()}>
+            {showOrganizationErrorPopup && organizationError ? (
+              <div className="auth-popup-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="organization-form-error-title">
+                <div className="auth-popup-card">
+                  <h2 id="organization-form-error-title">Organization form error</h2>
+                  <p>{organizationError}</p>
+                  <button className="primary-button mobile-full-button" type="button" onClick={() => setShowOrganizationErrorPopup(false)}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <ModalHeader>
               <div>
                 <PanelTitle>Edit Organization</PanelTitle>
@@ -1307,14 +1335,14 @@ export function ClientOrganizationDetailScreen({
                 <IconClose />
               </IconButton>
             </ModalHeader>
-            <ModalForm onSubmit={handleSaveOrganization}>
+            <ModalForm onSubmit={handleSaveOrganization} noValidate>
               <FieldStack>
                 <FieldLabel>Organization name</FieldLabel>
                 <TextInput
+                  $invalid={organizationSubmitAttempted && !name.trim()}
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   disabled={isSavingOrganization}
-                  required
                 />
               </FieldStack>
               <FieldGrid>
@@ -1485,6 +1513,7 @@ export function ClientOrganizationDetailScreen({
                   </FieldStack>
                 </FieldGrid>
               ) : null}
+              {organizationError ? <InlineError>{organizationError}</InlineError> : null}
               <PrimaryButton type="submit" disabled={isSavingOrganization || isUploadingLogo}>
                 {isUploadingLogo ? "Uploading logo..." : isSavingOrganization ? "Saving..." : "Save Organization"}
               </PrimaryButton>
@@ -3080,8 +3109,8 @@ const ClientProgressWrap = styled.div`
 `;
 
 const ClientProgressDonut = styled.div`
-  width: 148px;
-  height: 148px;
+  width: 150px;
+  height: 150px;
   margin: 0 auto;
   border-radius: 50%;
   display: grid;
@@ -3093,23 +3122,26 @@ const ClientProgressDonut = styled.div`
 `;
 
 const ClientProgressCenter = styled.div`
-  width: 94px;
-  height: 94px;
+  width: 134px;
+  height: 134px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.96);
-  display: grid;
-  place-items: center;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 
   strong {
+    display: block;
     color: #1f1f1f;
-    font-size: 1.1rem;
+    font-size: 2rem;
     line-height: 1;
   }
 
   span {
     color: var(--color-text-muted);
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     font-weight: 600;
   }
 `;
@@ -3519,19 +3551,27 @@ const CompactMetaValue = styled.strong`
   color: var(--color-text);
 `;
 
-const TextInput = styled.input`
+const TextInput = styled.input<{ $invalid?: boolean }>`
   width: 100%;
   min-height: 42px;
   padding: 0 14px;
-  border: 1px solid rgba(230, 224, 215, 0.95);
+  border: 1px solid ${({ $invalid }) => ($invalid ? "#c04f42" : "rgba(230, 224, 215, 0.95)")};
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.96);
   color: var(--color-text);
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(192, 79, 66, 0.12)" : "none")};
 
   &:disabled {
     color: var(--color-text-muted);
     background: rgba(244, 241, 237, 0.92);
   }
+`;
+
+const InlineError = styled.p`
+  margin: 0;
+  color: #c04f42;
+  font-size: 0.82rem;
+  line-height: 1.45;
 `;
 
 const IconButton = styled.button`

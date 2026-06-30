@@ -20,9 +20,11 @@ type SidebarLabel = AppNavLabel;
 export function AppSidebar({
   user,
   activeLabel,
+  pinToViewport = false,
 }: {
   user: User;
   activeLabel: SidebarLabel;
+  pinToViewport?: boolean;
 }) {
   const { state } = useAppState();
   const { scopedHref } = useActiveClientOrganization(user, state.clientOrganizations);
@@ -58,7 +60,7 @@ export function AppSidebar({
   }));
 
   return (
-    <Sidebar>
+    <Sidebar $pinToViewport={pinToViewport}>
       <div>
         <Brand src="/haus_logo.png" alt="Haus" />
         <SidebarNav aria-label="Primary sections">
@@ -85,16 +87,18 @@ export function AppSidebar({
   );
 }
 
-const Sidebar = styled.aside`
+const Sidebar = styled.aside<{ $pinToViewport?: boolean }>`
   display: none;
 
   ${desktop} {
-    position: sticky;
+    position: ${({ $pinToViewport }) => ($pinToViewport ? "fixed" : "sticky")};
     top: 8px;
+    left: ${({ $pinToViewport }) => ($pinToViewport ? "8px" : "auto")};
     width: 260px;
     flex: 0 0 260px;
     align-self: flex-start;
     height: calc(100vh - 16px);
+    z-index: ${({ $pinToViewport }) => ($pinToViewport ? 40 : "auto")};
     display: flex;
     flex-direction: column;
     justify-content: space-between;

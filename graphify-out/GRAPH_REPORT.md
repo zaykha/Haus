@@ -1,16 +1,16 @@
 # Graph Report - Haus  (2026-06-30)
 
 ## Corpus Check
-- 154 files · ~173,393 words
+- 156 files · ~177,585 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2777 nodes · 3860 edges · 103 communities (86 shown, 17 thin omitted)
+- 2814 nodes · 3915 edges · 99 communities (84 shown, 15 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `add23e8a`
+- Built from commit: `36cec6ab`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -82,7 +82,6 @@
 - [[_COMMUNITY_Community 66|Community 66]]
 - [[_COMMUNITY_Community 67|Community 67]]
 - [[_COMMUNITY_Community 68|Community 68]]
-- [[_COMMUNITY_Community 69|Community 69]]
 - [[_COMMUNITY_Community 70|Community 70]]
 - [[_COMMUNITY_Community 71|Community 71]]
 - [[_COMMUNITY_Community 72|Community 72]]
@@ -102,18 +101,15 @@
 - [[_COMMUNITY_Community 90|Community 90]]
 - [[_COMMUNITY_Community 91|Community 91]]
 - [[_COMMUNITY_Community 92|Community 92]]
-- [[_COMMUNITY_Community 93|Community 93]]
 - [[_COMMUNITY_Community 94|Community 94]]
 - [[_COMMUNITY_Community 95|Community 95]]
-- [[_COMMUNITY_Community 96|Community 96]]
-- [[_COMMUNITY_Community 100|Community 100]]
-- [[_COMMUNITY_Community 102|Community 102]]
+- [[_COMMUNITY_Community 103|Community 103]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `useAppState()` - 47 edges
 2. `requireWorkspaceUser()` - 43 edges
 3. `formatRole()` - 32 edges
-4. `ProjectDetailScreen()` - 28 edges
+4. `ProjectDetailScreen()` - 30 edges
 5. `Haus Design System Guide` - 26 edges
 6. `useActiveClientOrganization()` - 25 edges
 7. `getSupabaseAdminClient()` - 23 edges
@@ -130,10 +126,10 @@
   EditProjectModal.tsx → components/app-state.tsx
 - `ProjectDetailScreen()` --calls--> `useAppState()`  [EXTRACTED]
   ProjectDetailScreen.tsx → components/app-state.tsx
-- `ProjectDetailScreen()` --calls--> `canCreateTask()`  [EXTRACTED]
-  ProjectDetailScreen.tsx → lib/permissions.ts
+- `DELETE()` --calls--> `canDeleteProject()`  [EXTRACTED]
+  app/api/workspace/team/[id]/route.ts → lib/permissions.ts
 
-## Communities (103 total, 17 thin omitted)
+## Communities (99 total, 15 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.01
@@ -157,7 +153,7 @@ Nodes (108): ActionIcon, ActivityList, ActivityRow, ArrowWrap, BellBadge, BellBu
 
 ### Community 5 - "Community 5"
 Cohesion: 0.01
-Nodes (136): ArrowWrap, Avatar, AvatarStack, Brand, ButtonIcon, cardSurface, Content, controlSurface (+128 more)
+Nodes (137): ArrowWrap, Avatar, AvatarStack, Brand, ButtonIcon, cardSurface, Content, controlSurface (+129 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.01
@@ -173,23 +169,23 @@ Nodes (74): ActionButton, ActionRow, AssetCard, AssetFileCard, AssetGrid, AssetL
 
 ### Community 9 - "Community 9"
 Cohesion: 0.03
-Nodes (60): cardSurface, DesignerTaskModalTask, FeedbackBody, FeedbackItem, FeedbackList, FeedbackMeta, FeedbackPanel, FeedbackRow (+52 more)
+Nodes (61): cardSurface, DesignerTaskModalTask, FeedbackBody, FeedbackItem, FeedbackList, FeedbackMeta, FeedbackPanel, FeedbackRow (+53 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.03
-Nodes (53): Actions, ContactPlaceholder, controlCss, EmptySelectState, Field, FieldMeta, FloatingField, FloatingLabel (+45 more)
+Nodes (54): Actions, ContactPlaceholder, controlCss, EmptySelectState, Field, FieldMeta, FloatingField, FloatingLabel (+46 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.22
-Nodes (14): POST(), getClientOrganizationName(), POST(), deriveInvitationStatus(), generateSecureInvitationToken(), hashInvitationToken(), InvitationPreview, canInviteUsers() (+6 more)
+Cohesion: 0.1
+Nodes (31): POST(), getClientOrganizationName(), POST(), appConfig, isSupabaseConfigured, deriveInvitationStatus(), generateSecureInvitationToken(), hashInvitationToken() (+23 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.05
-Nodes (48): getProjectStagePercent(), getProjectStageStep(), getStageColor(), ProjectStageProgress(), ProjectStageProgressProps, Segment, Segments, STAGE_COLORS (+40 more)
+Cohesion: 0.07
+Nodes (37): Comment, Department, Feedback, FeedbackAction, FileVersion, FileVisibility, Invitation, InvitationStatus (+29 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.05
-Nodes (34): BulkActions, BulkDropCard, BulkDropOverlay, BulkError, BulkImportMeta, BulkTitle, BulkTriggerButton, BulkUploadGrid (+26 more)
+Nodes (38): BulkActions, BulkDropCard, BulkDropOverlay, BulkError, BulkImportMeta, BulkTitle, BulkToggleCardButton, BulkToggleCopy (+30 more)
 
 ### Community 14 - "Community 14"
 Cohesion: 0.06
@@ -209,27 +205,27 @@ Nodes (15): Brand, navItems, Sidebar, SidebarAvatar, SidebarButton, SidebarIcon,
 
 ### Community 18 - "Community 18"
 Cohesion: 0.09
-Nodes (19): apiRequest(), AppStateContext, AppStateContextValue, areStringArraysEqual(), areUsersEqual(), fetchAuthUserProfile(), fetchWorkspaceState(), getAccessToken() (+11 more)
+Nodes (15): apiRequest(), AppStateContext, AppStateContextValue, areStringArraysEqual(), areUsersEqual(), fetchAuthUserProfile(), fetchWorkspaceState(), getAccessToken() (+7 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.12
-Nodes (19): EditProjectModal(), EditProjectModalProps, modalContentStyle, modalOverlayStyle, Project, Project, ProjectDetailScreen(), ProjectDetailScreenProps (+11 more)
+Cohesion: 0.09
+Nodes (35): EditProjectModal(), EditProjectModalProps, modalContentStyle, modalOverlayStyle, Project, Project, ProjectDetailScreen(), ProjectDetailScreenProps (+27 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.07
 Nodes (24): Backdrop, Body, CloseButton, Description, EmptyState, FilterModal(), FilterOption, FilterSection (+16 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.22
-Nodes (17): ChatScreen(), useAppState(), ClientsScreen(), DashboardScreen(), InviteWorkspaceModal(), LiaisonsScreen(), ProfileScreen(), ProjectCreateScreen() (+9 more)
+Cohesion: 0.23
+Nodes (21): ChatScreen(), AppSidebar(), useAppState(), ClientOrganizationDetailScreen(), formatDate(), ClientsScreen(), DashboardScreen(), InviteWorkspaceModal() (+13 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.05
 Nodes (34): ActionArea, ActionCopy, ActionText, ActionTitle, Avatar, AvatarButton, BackButton, BackIcon (+26 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.08
-Nodes (25): 13. Cards, 14. Status Pills, 16. Tabs, 18. Icons, 19. Project Stage Timeline, 1. Brand Feel, 20. File Cards, 21. Feedback Cards (+17 more)
+Cohesion: 0.09
+Nodes (22): 13. Cards, 14. Status Pills, 16. Tabs, 18. Icons, 19. Project Stage Timeline, 1. Brand Feel, 20. File Cards, 24. Recommended Page Style (+14 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.06
@@ -264,8 +260,8 @@ Cohesion: 0.13
 Nodes (13): Actions, Card, ConfirmActionModal(), ConfirmActionModalProps, controlCss, Copy, Description, Header (+5 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.13
-Nodes (19): allowedPriorityLevels, buildOrganizationPrefixSeed(), buildUniqueOrganizationPrefix(), BulkProjectRow, POST(), POST(), canCreateClient(), canCreateProject() (+11 more)
+Cohesion: 0.12
+Nodes (21): allowedPriorityLevels, buildOrganizationPrefixSeed(), buildUniqueOrganizationPrefix(), BulkProjectRow, normalizeTaskCreationError(), POST(), POST(), canCreateProject() (+13 more)
 
 ### Community 34 - "Community 34"
 Cohesion: 0.14
@@ -304,8 +300,8 @@ Cohesion: 0.29
 Nodes (6): Email invitations, Known Issues (MVP Notes), Payments, RLS / production hardening, Supabase schema/type sync, UI polish
 
 ### Community 44 - "Community 44"
-Cohesion: 0.29
-Nodes (6): Auth, Build, Client, Designer, Manager, Pre-deployment Test Checklist
+Cohesion: 0.1
+Nodes (22): Auth, Build, Build and deployment, Bulk project upload, Client, Create project form, Designer, Dropdown and calendar behavior (+14 more)
 
 ### Community 45 - "Community 45"
 Cohesion: 0.7
@@ -360,8 +356,8 @@ Cohesion: 0.67
 Nodes (3): 15. Bottom Navigation, code:css (.bottom-nav {), code:css (.nav-item {)
 
 ### Community 60 - "Community 60"
-Cohesion: 0.24
-Nodes (7): appConfig, isSupabaseConfigured, allowedMimeTypes, isAllowedImage(), POST(), allowedMimeTypes, POST()
+Cohesion: 0.14
+Nodes (7): useChatUnreadTotal(), RequireAuth(), BottomNav(), PageHeader(), AppNavItem, AppNavLabel, getPrimaryNavItems()
 
 ### Community 61 - "Community 61"
 Cohesion: 0.67
@@ -372,20 +368,16 @@ Cohesion: 0.05
 Nodes (38): BackButton, BackIcon, DeleteButton, EntityPill, ErrorText, Eyebrow, fetchTrashItems(), Grid (+30 more)
 
 ### Community 63 - "Community 63"
-Cohesion: 0.25
-Nodes (13): isIgnorableProjectActivityError(), POST(), canManageProjects(), getVisibleTasksForUser(), getAttentionCountForProject(), getAttentionTaskCount(), getAttentionTasksForProject(), getProjectAttentionCount() (+5 more)
+Cohesion: 0.21
+Nodes (16): isIgnorableProjectActivityError(), POST(), canManageProjects(), getVisibleTasksForUser(), getAttentionCountForProject(), getAttentionTaskCount(), getAttentionTasksForProject(), getProjectAttentionCount() (+8 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.15
-Nodes (22): DELETE(), INTERNAL_ROLES, PATCH(), RouteContext, canDeleteClient(), canDeleteTeamMember(), canEditClient(), canUpdateTeamRole() (+14 more)
-
-### Community 69 - "Community 69"
-Cohesion: 0.22
-Nodes (13): canStartDirectChat(), canStartOrgChat(), findExistingDirectConversation(), getUserOrgIds(), INTERNAL_ROLES, MANAGER_ROLES, POST(), ProfileRow (+5 more)
+Cohesion: 0.29
+Nodes (10): getProjectStagePercent(), getProjectStageStep(), getStageColor(), ProjectStageProgress(), ProjectStageProgressProps, Segment, Segments, STAGE_COLORS (+2 more)
 
 ### Community 77 - "Community 77"
-Cohesion: 0.17
-Nodes (7): useChatUnreadTotal(), AppSidebar(), BottomNav(), PageHeader(), AppNavItem, AppNavLabel, getPrimaryNavItems()
+Cohesion: 0.67
+Nodes (3): 21. Feedback Cards, code:css (.feedback-card {), code:css (.feedback-card-important {)
 
 ### Community 78 - "Community 78"
 Cohesion: 0.08
@@ -396,12 +388,12 @@ Cohesion: 0.13
 Nodes (21): BrandColorPicker(), BrandColorPickerProps, brandSwatches, ColorPreview, FieldHeader, FieldHelper, FieldLabel, HexInput (+13 more)
 
 ### Community 80 - "Community 80"
-Cohesion: 0.53
-Nodes (5): allowedExtensions, allowedMimeTypes, getFileExtension(), isAllowedFile(), POST()
+Cohesion: 0.22
+Nodes (13): canStartDirectChat(), canStartOrgChat(), findExistingDirectConversation(), getUserOrgIds(), INTERNAL_ROLES, MANAGER_ROLES, POST(), ProfileRow (+5 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.16
-Nodes (27): POST(), updateProjectRequestStatusIfAllowed(), canEditTask(), bumpSubmittedVersion(), createDefaultState(), getCurrentTaskCompletionLabel(), getVersionLabel(), parseTaskCompletionAssets() (+19 more)
+Cohesion: 0.29
+Nodes (7): DesignerTaskModal(), formatDueDate(), getCompletionMessage(), getAssetPath(), isPlainExternalLink(), getCurrentTaskCompletionLabel(), isTaskCompletionLink()
 
 ### Community 84 - "Community 84"
 Cohesion: 0.5
@@ -409,52 +401,48 @@ Nodes (3): Chat Image Attachments SQL, code:sql (alter table public.chat_message
 
 ### Community 89 - "Community 89"
 Cohesion: 0.1
-Nodes (18): BackButton, BackIcon, Eyebrow, Grid, Header, MutedNote, Pill, PillRow (+10 more)
+Nodes (17): BackButton, BackIcon, Eyebrow, Grid, Header, MutedNote, Pill, PillRow (+9 more)
 
 ### Community 90 - "Community 90"
-Cohesion: 0.53
-Nodes (5): allowedExtensions, allowedMimeTypes, getFileExtension(), isAllowedFile(), POST()
+Cohesion: 0.14
+Nodes (23): DELETE(), INTERNAL_ROLES, PATCH(), RouteContext, canDeleteClient(), canEditClient(), getUserClientOrganizationIds(), buildRestorePatch() (+15 more)
 
 ### Community 91 - "Community 91"
 Cohesion: 0.22
 Nodes (5): geist, metadata, metadataBase, AppStateProvider(), Shell()
 
 ### Community 92 - "Community 92"
-Cohesion: 0.24
-Nodes (15): ClientOrganizationDetailScreen(), canChangeWorkflow(), canCreateProjectForOrganization(), canCreateTeamMember(), canDeleteTask(), canEditTeamMember(), canInviteClientsForOrganization(), canManageTaskCrud() (+7 more)
-
-### Community 93 - "Community 93"
 Cohesion: 0.67
-Nodes (3): DesignerTaskModal(), formatDueDate(), getCompletionMessage()
+Nodes (3): 3. Color Palette, code:css (:root {), Core Colors
 
 ### Community 94 - "Community 94"
 Cohesion: 0.15
 Nodes (13): ActorRecord, ChildProjectRecord, ChildTaskRecord, DeletedOrganizationRow, DeletedProfileRow, DeletedProjectRow, DeletedTaskRow, formatCount() (+5 more)
 
 ### Community 95 - "Community 95"
-Cohesion: 0.67
-Nodes (3): getAssetPath(), isPlainExternalLink(), isTaskCompletionLink()
+Cohesion: 0.15
+Nodes (29): POST(), updateProjectRequestStatusIfAllowed(), canEditTask(), bumpSubmittedVersion(), createDefaultState(), getTaskCompletionPath(), getVersionLabel(), isTaskCompletionImage() (+21 more)
 
-### Community 96 - "Community 96"
-Cohesion: 0.67
-Nodes (3): 3. Color Palette, code:css (:root {), Core Colors
+### Community 103 - "Community 103"
+Cohesion: 0.29
+Nodes (6): Create project form rules, Current status, Form Validation Rollout, Rollout order, Scope, Target behavior
 
 ## Knowledge Gaps
-- **1974 isolated node(s):** `Task`, `TaskDetailModalProps`, `modalOverlayStyle`, `modalContentStyle`, `Project` (+1969 more)
+- **1996 isolated node(s):** `Task`, `TaskDetailModalProps`, `modalOverlayStyle`, `modalContentStyle`, `Project` (+1991 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **17 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **15 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useAppState()` connect `Community 21` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 13`, `Community 14`, `Community 17`, `Community 18`, `Community 19`, `Community 22`, `Community 27`, `Community 30`, `Community 31`, `Community 62`, `Community 72`, `Community 77`, `Community 82`, `Community 89`, `Community 92`?**
-  _High betweenness centrality (0.045) - this node is a cross-community bridge._
-- **Why does `formatRole()` connect `Community 21` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 72`, `Community 13`, `Community 14`, `Community 77`, `Community 17`, `Community 22`, `Community 89`, `Community 27`, `Community 92`, `Community 62`, `Community 31`?**
-  _High betweenness centrality (0.022) - this node is a cross-community bridge._
-- **Why does `AppSidebar()` connect `Community 77` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 13`, `Community 17`, `Community 21`, `Community 27`?**
+- **Why does `useAppState()` connect `Community 21` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 13`, `Community 14`, `Community 17`, `Community 18`, `Community 19`, `Community 22`, `Community 27`, `Community 30`, `Community 31`, `Community 60`, `Community 62`, `Community 72`, `Community 82`, `Community 89`?**
+  _High betweenness centrality (0.041) - this node is a cross-community bridge._
+- **Why does `formatRole()` connect `Community 21` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 66`, `Community 72`, `Community 13`, `Community 14`, `Community 17`, `Community 22`, `Community 89`, `Community 27`, `Community 62`, `Community 31`?**
+  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+- **Why does `AppSidebar()` connect `Community 21` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 13`, `Community 17`, `Community 27`, `Community 60`?**
   _High betweenness centrality (0.020) - this node is a cross-community bridge._
 - **What connects `Task`, `TaskDetailModalProps`, `modalOverlayStyle` to the rest of the system?**
-  _1974 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _1996 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.01 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**

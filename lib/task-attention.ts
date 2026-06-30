@@ -1,5 +1,14 @@
 import { Project, Task, User } from "@/lib/types";
 import { canManageProjects, getVisibleTasksForUser } from "@/lib/permissions";
+import { parseTaskCompletionAssets } from "@/lib/task-completion-assets";
+
+export function taskHasClientReviewableDeliverable(task: Task) {
+  return (
+    task.status === "review" &&
+    task.clientVisible === true &&
+    parseTaskCompletionAssets(task.completionScreenshotUrl).length > 0
+  );
+}
 
 export function taskNeedsAttention(user: User, _project: Project, task: Task) {
   if (user.role === "designer") {
@@ -7,11 +16,11 @@ export function taskNeedsAttention(user: User, _project: Project, task: Task) {
   }
 
   if (canManageProjects(user.role)) {
-    return task.status === "done" && task.managerReviewStatus === "internal";
+    return false;
   }
 
   if (user.role === "client") {
-    return task.status === "review";
+    return taskHasClientReviewableDeliverable(task);
   }
 
   return false;

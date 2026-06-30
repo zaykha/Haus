@@ -207,6 +207,8 @@ export function DashboardScreen() {
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [createTaskError, setCreateTaskError] = useState("");
+  const [showCreateTaskErrorPopup, setShowCreateTaskErrorPopup] = useState(false);
+  const [createTaskSubmitAttempted, setCreateTaskSubmitAttempted] = useState(false);
   const [taskSelect, setTaskSelect] = useState<"organization" | "project" | "assignee" | "status" | null>(null);
   const [newTaskOrganizationId, setNewTaskOrganizationId] = useState("");
   const [newTaskProjectId, setNewTaskProjectId] = useState("");
@@ -505,21 +507,34 @@ export function DashboardScreen() {
     setNewTaskPriority("medium");
     setTaskSelect(null);
     setCreateTaskError("");
+    setShowCreateTaskErrorPopup(false);
+    setCreateTaskSubmitAttempted(false);
     setShowCreateTaskModal(true);
   };
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedProject) {
+    setCreateTaskSubmitAttempted(true);
+
+    const missingOrganization = !newTaskOrganizationId;
+    const missingProject = !selectedProject;
+    const missingTitle = !newTaskTitle.trim();
+    const missingAssignee = !newTaskOpenForAll && !newTaskAssigneeId;
+    const missingDueDate = !newTaskDueDate;
+
+    if (missingOrganization || missingProject || missingTitle || missingAssignee || missingDueDate) {
+      setCreateTaskError("Fill in every required field.");
+      setShowCreateTaskErrorPopup(true);
       return;
     }
 
     setIsCreatingTask(true);
     setCreateTaskError("");
+    setShowCreateTaskErrorPopup(false);
 
     try {
       await createTask(selectedProject.id, {
-        title: newTaskTitle,
+        title: newTaskTitle.trim(),
         assigneeId: newTaskOpenForAll ? null : newTaskAssigneeId,
         status: newTaskStatus,
         dueDate: newTaskDueDate,
@@ -528,6 +543,7 @@ export function DashboardScreen() {
       setShowCreateTaskModal(false);
     } catch (nextError) {
       setCreateTaskError(nextError instanceof Error ? nextError.message : "Unable to create task.");
+      setShowCreateTaskErrorPopup(true);
     } finally {
       setIsCreatingTask(false);
     }
@@ -550,6 +566,17 @@ export function DashboardScreen() {
 
   return (
     <Shell>
+      {showCreateTaskErrorPopup && createTaskError ? (
+        <div className="auth-popup-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="dashboard-task-form-error-title">
+          <div className="auth-popup-card">
+            <h2 id="dashboard-task-form-error-title">Task form error</h2>
+            <p>{createTaskError}</p>
+            <button className="primary-button mobile-full-button" type="button" onClick={() => setShowCreateTaskErrorPopup(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
       {isCreatingTask ? (
         <div className="auth-loading-overlay" role="status" aria-live="polite">
           <div className="auth-loading-card">
@@ -656,17 +683,19 @@ export function DashboardScreen() {
                 <IconClose />
               </ModalClose>
             </ModalHeader>
-            <InlineForm onSubmit={handleCreateTask}>
+            <InlineForm onSubmit={handleCreateTask} noValidate>
               <TaskModalGrid>
                 <TaskModalField>
                   <TaskFloatingSelect
                     $filled={Boolean(newTaskOrganizationId)}
                     $open={taskSelect === "organization"}
+                    $invalid={createTaskSubmitAttempted && !newTaskOrganizationId}
                   >
                     <TaskSelectTrigger
                       type="button"
                       aria-haspopup="listbox"
                       aria-expanded={taskSelect === "organization"}
+                      $invalid={createTaskSubmitAttempted && !newTaskOrganizationId}
                       onClick={() => setTaskSelect((current) => (current === "organization" ? null : "organization"))}
                     >
                       <TaskSelectValueRow>
@@ -686,7 +715,7 @@ export function DashboardScreen() {
                         <IconChevronDown />
                       </TaskSelectChevron>
                     </TaskSelectTrigger>
-                    <TaskFloatingLabel>Organization</TaskFloatingLabel>
+                    <TaskFloatingLabel $invalid={createTaskSubmitAttempted && !newTaskOrganizationId}>Organization</TaskFloatingLabel>
                     {taskSelect === "organization" ? (
                       <TaskSelectMenu role="listbox" aria-label="Organization">
                         {availableTaskOrganizations.map((organization) => (
@@ -720,11 +749,16 @@ export function DashboardScreen() {
                 {newTaskOrganizationId ? (
                   hasProjectsForSelectedOrganization ? (
                     <TaskModalField>
-                      <TaskFloatingSelect $filled={Boolean(selectedProject)} $open={taskSelect === "project"}>
+                      <TaskFloatingSelect
+                        $filled={Boolean(selectedProject)}
+                        $open={taskSelect === "project"}
+                        $invalid={createTaskSubmitAttempted && !selectedProject}
+                      >
                         <TaskSelectTrigger
                           type="button"
                           aria-haspopup="listbox"
                           aria-expanded={taskSelect === "project"}
+                          $invalid={createTaskSubmitAttempted && !selectedProject}
                           onClick={() => setTaskSelect((current) => (current === "project" ? null : "project"))}
                         >
                           <TaskSelectValue>{selectedProject?.name ?? "Select project"}</TaskSelectValue>
@@ -732,7 +766,7 @@ export function DashboardScreen() {
                             <IconChevronDown />
                           </TaskSelectChevron>
                         </TaskSelectTrigger>
-                        <TaskFloatingLabel>Project</TaskFloatingLabel>
+                        <TaskFloatingLabel $invalid={createTaskSubmitAttempted && !selectedProject}>Project</TaskFloatingLabel>
                         {taskSelect === "project" ? (
                           <TaskSelectMenu role="listbox" aria-label="Project">
                             {filteredTaskProjects.map((project) => (
@@ -775,12 +809,16 @@ export function DashboardScreen() {
                 {selectedProject ? (
                   <>
                     <TaskModalField $wide>
-                      <TaskFloatingField className={newTaskTitle ? "auth-field is-filled" : "auth-field"}>
+                      <TaskFloatingField
+                        className={newTaskTitle ? "auth-field is-filled" : "auth-field"}
+                        $invalid={createTaskSubmitAttempted && !newTaskTitle.trim()}
+                      >
                         <TaskTextInput
                           value={newTaskTitle}
                           onChange={(event) => setNewTaskTitle(event.target.value)}
                           placeholder=" "
                           required
+                          $invalid={createTaskSubmitAttempted && !newTaskTitle.trim()}
                         />
                         <span>Task title</span>
                       </TaskFloatingField>
@@ -808,11 +846,16 @@ export function DashboardScreen() {
 
                     {newTaskOpenForAll ? null : (
                       <TaskModalField>
-                        <TaskFloatingSelect $filled={Boolean(newTaskAssigneeId)} $open={taskSelect === "assignee"}>
+                        <TaskFloatingSelect
+                          $filled={Boolean(newTaskAssigneeId)}
+                          $open={taskSelect === "assignee"}
+                          $invalid={createTaskSubmitAttempted && !newTaskAssigneeId}
+                        >
                           <TaskSelectTrigger
                             type="button"
                             aria-haspopup="listbox"
                             aria-expanded={taskSelect === "assignee"}
+                            $invalid={createTaskSubmitAttempted && !newTaskAssigneeId}
                             onClick={() => setTaskSelect((current) => (current === "assignee" ? null : "assignee"))}
                           >
                             <TaskSelectValue>
@@ -822,7 +865,7 @@ export function DashboardScreen() {
                               <IconChevronDown />
                             </TaskSelectChevron>
                           </TaskSelectTrigger>
-                          <TaskFloatingLabel>Assignee</TaskFloatingLabel>
+                          <TaskFloatingLabel $invalid={createTaskSubmitAttempted && !newTaskAssigneeId}>Assignee</TaskFloatingLabel>
                           {taskSelect === "assignee" ? (
                             <TaskSelectMenu role="listbox" aria-label="Assignee">
                               {availableStaff.map((member) => (
@@ -887,6 +930,7 @@ export function DashboardScreen() {
                         label="Due date"
                         value={newTaskDueDate}
                         onChange={setNewTaskDueDate}
+                        invalid={createTaskSubmitAttempted && !newTaskDueDate}
                       />
                     </TaskModalField>
                   </>
@@ -914,7 +958,7 @@ export function DashboardScreen() {
               <button
                 className="primary-button"
                 type="submit"
-                disabled={isCreatingTask || !selectedProject || (!newTaskOpenForAll && !newTaskAssigneeId)}
+                disabled={isCreatingTask}
               >
                 {isCreatingTask ? "Creating..." : "Add task"}
               </button>
@@ -2447,8 +2491,8 @@ const DonutChart = styled.div`
 `;
 
 const DonutCenter = styled.div`
-  width: 141px;
-  height: 141px;
+  width: 134px;
+  height: 134px;
   border-radius: 999px;
   display: flex;
   flex-direction: column;
@@ -2781,12 +2825,16 @@ const TaskModalField = styled.div<{ $wide?: boolean }>`
       : ""}
 `;
 
-const TaskFloatingField = styled.label`
+const TaskFloatingField = styled.label<{ $invalid?: boolean }>`
   min-width: 0;
   width: 100%;
+
+  span {
+    color: ${({ $invalid }) => ($invalid ? "#c04f42" : "inherit")};
+  }
 `;
 
-const TaskTextInput = styled.input`
+const TaskTextInput = styled.input<{ $invalid?: boolean }>`
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -2797,7 +2845,8 @@ const TaskTextInput = styled.input`
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--color-text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(192, 79, 66, 0.12)" : "var(--shadow-sm)")};
+  border-color: ${({ $invalid }) => ($invalid ? "#c04f42" : "rgba(230, 224, 215, 0.95)")};
   font-size: 16px;
 
   &[type="date"] {
@@ -2818,14 +2867,14 @@ const TaskTextInput = styled.input`
   }
 `;
 
-const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean }>`
+const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean; $invalid?: boolean }>`
   position: relative;
   display: block;
   width: 100%;
   z-index: ${({ $open }) => ($open ? 8 : 2)};
 `;
 
-const TaskSelectTrigger = styled.button`
+const TaskSelectTrigger = styled.button<{ $invalid?: boolean }>`
   width: 100%;
   min-height: 50px;
   padding: 16px 14px 10px;
@@ -2833,7 +2882,8 @@ const TaskSelectTrigger = styled.button`
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--color-text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(192, 79, 66, 0.12)" : "var(--shadow-sm)")};
+  border-color: ${({ $invalid }) => ($invalid ? "#c04f42" : "rgba(230, 224, 215, 0.95)")};
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -2842,14 +2892,14 @@ const TaskSelectTrigger = styled.button`
   text-align: left;
 `;
 
-const TaskFloatingLabel = styled.span`
+const TaskFloatingLabel = styled.span<{ $invalid?: boolean }>`
   position: absolute;
   left: 16px;
   top: 1px;
   transform: translateY(-50%);
   padding: 0 6px;
   background: rgba(255, 255, 255, 0.96);
-  color: #29463e;
+  color: ${({ $invalid }) => ($invalid ? "#c04f42" : "#29463e")};
   font-size: 13px;
   font-weight: 500;
   z-index: 3;

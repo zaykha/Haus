@@ -60,6 +60,19 @@ export type ProjectFormValues = {
   clientOrganizationId: string;
 };
 
+type ProjectFormFieldKey =
+  | "projectRequestName"
+  | "projectType"
+  | "customProjectType"
+  | "priorityLevel"
+  | "firstDraftDate"
+  | "finalDeliverableDate"
+  | "clientOrganizationId"
+  | "requestStatus"
+  | "departmentName"
+  | "contactPerson"
+  | "contactNumber";
+
 type ProjectFormProps = {
   initialValues: ProjectFormValues;
   departments: Department[];
@@ -199,6 +212,98 @@ function formatProjectFormError(error: unknown) {
   return message;
 }
 
+function validateProjectFormRequiredFields({
+  values,
+  customProjectType,
+  clientCreateMode,
+  effectiveRequestStatus,
+  effectiveDepartmentName,
+  effectiveContactPerson,
+  effectiveContactNumber,
+  hasAvailableContacts,
+}: {
+  values: ProjectFormValues;
+  customProjectType: string;
+  clientCreateMode: boolean;
+  effectiveRequestStatus: string;
+  effectiveDepartmentName: string;
+  effectiveContactPerson: string;
+  effectiveContactNumber: string;
+  hasAvailableContacts: boolean;
+}) {
+  const missingFields = new Set<ProjectFormFieldKey>();
+
+  if (!values.projectRequestName.trim()) {
+    missingFields.add("projectRequestName");
+  }
+
+  if (!values.projectType.trim()) {
+    missingFields.add("projectType");
+  }
+
+  if (values.projectType === "Custom" && !customProjectType.trim()) {
+    missingFields.add("customProjectType");
+  }
+
+  if (!values.priorityLevel.trim()) {
+    missingFields.add("priorityLevel");
+  }
+
+  if (!values.firstDraftDate) {
+    missingFields.add("firstDraftDate");
+  }
+
+  if (!values.finalDeliverableDate) {
+    missingFields.add("finalDeliverableDate");
+  }
+
+  if (!values.clientOrganizationId.trim()) {
+    missingFields.add("clientOrganizationId");
+  }
+
+  if (!clientCreateMode && !effectiveRequestStatus.trim()) {
+    missingFields.add("requestStatus");
+  }
+
+  if (!effectiveDepartmentName.trim()) {
+    missingFields.add("departmentName");
+  }
+
+  if (!effectiveContactPerson.trim()) {
+    missingFields.add("contactPerson");
+  }
+
+  if (effectiveContactPerson.trim() && !effectiveContactNumber.trim()) {
+    missingFields.add("contactNumber");
+  }
+
+  if (missingFields.size > 0) {
+    if (!values.clientOrganizationId.trim()) {
+      return {
+        message: "Select a company in Request Intake before submitting.",
+        missingFields,
+      };
+    }
+
+    if (!hasAvailableContacts && !effectiveContactPerson.trim()) {
+      return {
+        message: "Add a primary contact to this organization before creating the project.",
+        missingFields,
+      };
+    }
+
+    return {
+      message: "Complete all required fields in Deliverable, Request Intake, and Contact before submitting.",
+      missingFields,
+    };
+  }
+
+  return {
+    message: "",
+    missingFields,
+  };
+}
+
 export function ProjectForm({
   initialValues,
   departments,
@@ -231,6 +336,8 @@ export function ProjectForm({
   const [submitting, setSubmitting] = useState(false);
   const [uploadingReference, setUploadingReference] = useState(false);
   const [error, setError] = useState("");
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   const availableContacts = clients.filter(
     (client) => getUserClientOrganizationIds(client).includes(values.clientOrganizationId),
@@ -285,6 +392,30 @@ export function ProjectForm({
   const effectiveContactNumber = clientCreateMode
     ? values.contactNumber.trim() || viewer?.phone?.trim() || selectedContact?.phone?.trim() || ""
     : values.contactNumber;
+  const requiredFieldValidation = useMemo(
+    () =>
+      validateProjectFormRequiredFields({
+        values,
+        customProjectType,
+        clientCreateMode,
+        effectiveRequestStatus,
+        effectiveDepartmentName,
+        effectiveContactPerson,
+        effectiveContactNumber,
+        hasAvailableContacts,
+      }),
+    [
+      clientCreateMode,
+      customProjectType,
+      effectiveContactNumber,
+      effectiveContactPerson,
+      effectiveDepartmentName,
+      effectiveRequestStatus,
+      hasAvailableContacts,
+      values,
+    ],
+  );
+  const invalidFields = submitAttempted ? requiredFieldValidation.missingFields : new Set<ProjectFormFieldKey>();
 
   useEffect(() => {
     if (!openSelect) {
@@ -325,21 +456,41 @@ export function ProjectForm({
   }, [openSelect]);
 
   useEffect(() => {
-    const isBuiltInProjectType = projectTypeOptions.includes(
-      initialValues.projectType as (typeof projectTypeOptions)[number],
-    );
+    const hasInitialProjectType = Boolean(initialValues.projectType.trim());
+    const isBuiltInProjectType =
+      hasInitialProjectType &&
+      projectTypeOptions.includes(initialValues.projectType as (typeof projectTypeOptions)[number]);
     const inferredClientOrganizationId = initialValues.clientOrganizationId || "";
     const nextValues = {
       ...initialValues,
       requestedDate: initialValues.requestedDate || getTodayIsoDate(),
       clientOrganizationId: inferredClientOrganizationId,
-      projectType: isBuiltInProjectType ? initialValues.projectType : "Custom",
+      projectType: hasInitialProjectType
+        ? isBuiltInProjectType
+          ? initialValues.projectType
+          : "Custom"
+        : "",
     };
-    const nextCustomProjectType = isBuiltInProjectType ? "" : initialValues.projectType;
+    const nextCustomProjectType = hasInitialProjectType
+      ? isBuiltInProjectType
+        ? ""
+        : initialValues.projectType
+      : "";
 
     setValues((current) => (areProjectFormValuesEqual(current, nextValues) ? current : nextValues));
     setCustomProjectType((current) => (current === nextCustomProjectType ? current : nextCustomProjectType));
   }, [initialValues]);
+
+  useEffect(() => {
+    if (
+      submitLabel === "Create Project" &&
+      !initialValues.projectType.trim() &&
+      values.projectType === "Custom" &&
+      !customProjectType.trim()
+    ) {
+      setValues((current) => ({ ...current, projectType: "" }));
+    }
+  }, [customProjectType, initialValues.projectType, submitLabel, values.projectType]);
 
   useEffect(() => {
     if (openSelect === "organization") {
@@ -390,16 +541,6 @@ export function ProjectForm({
       return;
     }
 
-    if (availableContacts.length === 1) {
-      const contact = availableContacts[0]!;
-      setValues((current) => ({
-        ...current,
-        contactPerson: contact.name,
-        contactNumber: current.contactNumber || contact.phone || "",
-      }));
-      return;
-    }
-
     if (values.contactNumber || values.contactPerson) {
       setValues((current) => ({
         ...current,
@@ -417,15 +558,25 @@ export function ProjectForm({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
+    setShowErrorPopup(false);
+    setSubmitAttempted(true);
+
+    if (requiredFieldValidation.missingFields.size > 0) {
+      setError(requiredFieldValidation.message);
+      setShowErrorPopup(true);
+      return;
+    }
 
     const today = getTodayIsoDate();
     if (!values.firstDraftDate || !values.finalDeliverableDate) {
       setError("First draft date and final deliverable date are required.");
+      setShowErrorPopup(true);
       return;
     }
 
     if (values.firstDraftDate && values.firstDraftDate < today) {
       setError("First draft date cannot be before today.");
+      setShowErrorPopup(true);
       return;
     }
 
@@ -435,6 +586,7 @@ export function ProjectForm({
       values.finalDeliverableDate < values.firstDraftDate
     ) {
       setError("Final deliverable date cannot be before the first draft date.");
+      setShowErrorPopup(true);
       return;
     }
 
@@ -452,6 +604,7 @@ export function ProjectForm({
       });
     } catch (submitError) {
       setError(formatProjectFormError(submitError));
+      setShowErrorPopup(true);
     } finally {
       setSubmitting(false);
     }
@@ -514,7 +667,19 @@ export function ProjectForm({
         </div>
       ) : null}
 
-      <FormSurface onSubmit={handleSubmit} $embedded={embedded}>
+      {showErrorPopup && error ? (
+        <div className="auth-popup-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="project-form-error-title">
+          <div className="auth-popup-card">
+            <h2 id="project-form-error-title">Project form error</h2>
+            <p>{error}</p>
+            <button className="primary-button mobile-full-button" type="button" onClick={() => setShowErrorPopup(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <FormSurface onSubmit={handleSubmit} $embedded={embedded} noValidate>
        <PreviewRow>
         <PreviewBadge>{getProjectInitial(values.projectRequestName)}</PreviewBadge>
         <PreviewCopy>
@@ -529,21 +694,28 @@ export function ProjectForm({
           </SectionHeader>
           <Grid>
             <Field $wide>
-              <FloatingField className={values.projectRequestName ? "auth-field is-filled" : "auth-field"}>
+              <FloatingField
+                className={values.projectRequestName ? "auth-field is-filled" : "auth-field"}
+                $invalid={invalidFields.has("projectRequestName")}
+              >
                 <TextInput
                   value={values.projectRequestName}
                   onChange={(event) =>
                     setValues((current) => ({ ...current, projectRequestName: event.target.value }))
                   }
                   placeholder=" "
-                  required
                 />
                 <span>Project Request Name</span>
               </FloatingField>
             </Field>
 
             <Field>
-              <FloatingSelectField ref={projectTypeFieldRef} $filled $open={openSelect === "projectType"}>
+              <FloatingSelectField
+                ref={projectTypeFieldRef}
+                $filled={Boolean(values.projectType)}
+                $open={openSelect === "projectType"}
+                $invalid={invalidFields.has("projectType")}
+              >
                 <SelectTrigger
                   type="button"
                   aria-haspopup="listbox"
@@ -553,7 +725,7 @@ export function ProjectForm({
                   }
                 >
                   <SelectValue>
-                    {values.projectType === "Custom" ? customProjectType || "Custom" : values.projectType || "Select project type"}
+                    {values.projectType === "Custom" ? customProjectType || "Custom" : values.projectType}
                   </SelectValue>
                   <SelectChevron $open={openSelect === "projectType"}>
                     <IconChevronDown />
@@ -587,12 +759,14 @@ export function ProjectForm({
 
             {values.projectType === "Custom" ? (
               <Field>
-                <FloatingField className={customProjectType ? "auth-field is-filled" : "auth-field"}>
-                  <TextInput
+              <FloatingField
+                className={customProjectType ? "auth-field is-filled" : "auth-field"}
+                $invalid={invalidFields.has("customProjectType")}
+              >
+                <TextInput
                     value={customProjectType}
                     onChange={(event) => setCustomProjectType(event.target.value)}
                     placeholder=" "
-                    required
                   />
                   <span>Custom project type</span>
                 </FloatingField>
@@ -600,7 +774,12 @@ export function ProjectForm({
             ) : null}
 
             <Field>
-              <FloatingSelectField ref={priorityLevelFieldRef} $filled $open={openSelect === "priorityLevel"}>
+              <FloatingSelectField
+                ref={priorityLevelFieldRef}
+                $filled={Boolean(values.priorityLevel)}
+                $open={openSelect === "priorityLevel"}
+                $invalid={invalidFields.has("priorityLevel")}
+              >
                 <SelectTrigger
                   type="button"
                   aria-haspopup="listbox"
@@ -609,7 +788,7 @@ export function ProjectForm({
                     setOpenSelect((current) => (current === "priorityLevel" ? null : "priorityLevel"))
                   }
                 >
-                  <SelectValue>{values.priorityLevel || "Select priority"}</SelectValue>
+                  <SelectValue>{values.priorityLevel}</SelectValue>
                   <SelectChevron $open={openSelect === "priorityLevel"}>
                     <IconChevronDown />
                   </SelectChevron>
@@ -642,6 +821,7 @@ export function ProjectForm({
                 label="First Draft Date"
                 value={values.firstDraftDate}
                 minDate={getTodayIsoDate()}
+                invalid={invalidFields.has("firstDraftDate")}
                 onChange={(nextValue) =>
                   setValues((current) => {
                     const nextValues = { ...current, firstDraftDate: nextValue };
@@ -662,6 +842,7 @@ export function ProjectForm({
                 label="Final Deliverable Date"
                 value={values.finalDeliverableDate}
                 minDate={values.firstDraftDate || getTodayIsoDate()}
+                invalid={invalidFields.has("finalDeliverableDate")}
                 onChange={(nextValue) =>
                   setValues((current) => ({ ...current, finalDeliverableDate: nextValue }))
                 }
@@ -681,7 +862,12 @@ export function ProjectForm({
           </SectionHeader>
           <Grid>
             <Field $wide>
-              <FloatingSelectField ref={organizationFieldRef} $filled={Boolean(organizationQuery)} $open={openSelect === "organization"}>
+              <FloatingSelectField
+                ref={organizationFieldRef}
+                $filled={Boolean(organizationQuery)}
+                $open={openSelect === "organization"}
+                $invalid={invalidFields.has("clientOrganizationId")}
+              >
                 <SearchSelectInput
                   value={organizationQuery}
                   onChange={(event) => {
@@ -745,7 +931,12 @@ export function ProjectForm({
             {clientCreateMode ? null : (
               <>
                 <Field>
-                  <FloatingSelectField ref={requestStatusFieldRef} $filled $open={openSelect === "requestStatus"}>
+                  <FloatingSelectField
+                    ref={requestStatusFieldRef}
+                    $filled={Boolean(values.requestStatus)}
+                    $open={openSelect === "requestStatus"}
+                    $invalid={invalidFields.has("requestStatus")}
+                  >
                     <SelectTrigger
                       type="button"
                       aria-haspopup="listbox"
@@ -754,7 +945,7 @@ export function ProjectForm({
                         setOpenSelect((current) => (current === "requestStatus" ? null : "requestStatus"))
                       }
                     >
-                      <SelectValue>{values.requestStatus || "Select status"}</SelectValue>
+                      <SelectValue>{values.requestStatus}</SelectValue>
                       <SelectChevron $open={openSelect === "requestStatus"}>
                         <IconChevronDown />
                       </SelectChevron>
@@ -783,7 +974,12 @@ export function ProjectForm({
                 </Field>
 
                 <Field>
-                  <FloatingSelectField ref={departmentFieldRef} $filled={Boolean(values.departmentName)} $open={openSelect === "department"}>
+                  <FloatingSelectField
+                    ref={departmentFieldRef}
+                    $filled={Boolean(values.departmentName)}
+                    $open={openSelect === "department"}
+                    $invalid={invalidFields.has("departmentName")}
+                  >
                     <SelectTrigger
                       type="button"
                       aria-haspopup="listbox"
@@ -792,7 +988,7 @@ export function ProjectForm({
                         setOpenSelect((current) => (current === "department" ? null : "department"))
                       }
                     >
-                      <SelectValue>{values.departmentName || "Select department"}</SelectValue>
+                      <SelectValue>{values.departmentName}</SelectValue>
                       <SelectChevron $open={openSelect === "department"}>
                         <IconChevronDown />
                       </SelectChevron>
@@ -839,7 +1035,12 @@ export function ProjectForm({
             <Grid>
               {hasSelectedOrganization && hasAvailableContacts ? (
                 <Field $wide>
-                  <FloatingSelectField ref={contactFieldRef} $filled={Boolean(values.contactPerson)} $open={openSelect === "contact"}>
+                  <FloatingSelectField
+                    ref={contactFieldRef}
+                    $filled={Boolean(values.contactPerson)}
+                    $open={openSelect === "contact"}
+                    $invalid={invalidFields.has("contactPerson")}
+                  >
                     <SelectTrigger
                       type="button"
                       aria-haspopup="listbox"
@@ -849,7 +1050,7 @@ export function ProjectForm({
                       }}
                     >
                       <SelectValue>
-                        {values.contactPerson || "No primary contact"}
+                        {values.contactPerson}
                       </SelectValue>
                       <SelectChevron $open={openSelect === "contact"}>
                         <IconChevronDown />
@@ -858,18 +1059,6 @@ export function ProjectForm({
                     <FloatingLabel>Primary Contact</FloatingLabel>
                     {openSelect === "contact" ? (
                       <SelectMenu role="listbox" aria-label="Primary contact">
-                        <SelectOption
-                          type="button"
-                          role="option"
-                          aria-selected={!values.contactPerson}
-                          $active={!values.contactPerson}
-                          onClick={() => {
-                            setValues((current) => ({ ...current, contactPerson: "", contactNumber: "" }));
-                            setOpenSelect(null);
-                          }}
-                        >
-                          No primary contact
-                        </SelectOption>
                         {availableContacts.map((client) => (
                           <SelectOption
                             key={client.id}
@@ -898,7 +1087,10 @@ export function ProjectForm({
               ) : null}
               {values.contactPerson ? (
                 <Field $wide>
-                  <FloatingField className={values.contactNumber ? "auth-field is-filled" : "auth-field"}>
+                  <FloatingField
+                    className={values.contactNumber ? "auth-field is-filled" : "auth-field"}
+                    $invalid={invalidFields.has("contactNumber")}
+                  >
                     <TextInput
                       value={values.contactNumber}
                       onChange={(event) =>
@@ -1467,20 +1659,96 @@ const FieldMeta = styled.span`
   line-height: 1.2;
 `;
 
-const FloatingField = styled.label`
+const FloatingField = styled.label<{ $invalid?: boolean }>`
   width: 100%;
+
+  input {
+    border-color: ${({ $invalid }) => ($invalid ? "rgba(194, 84, 74, 0.95)" : "rgba(230, 224, 215, 0.95)")};
+    ${({ $invalid }) =>
+      $invalid
+        ? css`
+            box-shadow: 0 0 0 1px rgba(194, 84, 74, 0.18);
+          `
+        : ""}
+  }
+
+  > span {
+    color: ${({ $invalid }) => ($invalid ? "#c2544a" : "#29463e")};
+  }
 `;
 
-const FloatingSelectField = styled.div<{ $filled?: boolean; $open?: boolean }>`
+const FloatingSelectField = styled.div<{ $filled?: boolean; $open?: boolean; $invalid?: boolean }>`
   position: relative;
   display: block;
   width: 100%;
   z-index: ${({ $open }) => ($open ? 8 : 2)};
+
+  > button:first-of-type,
+  > input:first-of-type {
+    border-color: ${({ $invalid }) => ($invalid ? "rgba(194, 84, 74, 0.95)" : "rgba(230, 224, 215, 0.95)")};
+    ${({ $invalid }) =>
+      $invalid
+        ? css`
+            box-shadow: 0 0 0 1px rgba(194, 84, 74, 0.18);
+          `
+        : ""}
+  }
+
+  > span:first-of-type {
+    color: ${({ $invalid }) => ($invalid ? "#c2544a" : "#29463e")};
+  }
+
+  ${({ $filled, $open }) =>
+    !$filled && !$open
+      ? css`
+          ${SelectTrigger} {
+            align-items: center;
+            padding-top: 0;
+            padding-bottom: 0;
+          }
+
+          ${SearchSelectInput} {
+            padding-top: 0;
+            padding-bottom: 0;
+          }
+
+          ${FloatingLabel} {
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 0;
+            background: transparent;
+            color: var(--color-text-muted);
+            font-size: 16px;
+            font-weight: 500;
+          }
+        `
+      : css`
+          ${FloatingLabel} {
+            top: 1px;
+            transform: translateY(-50%);
+            padding: 0 6px;
+            background: rgba(255, 255, 255, 0.96);
+          }
+        `}
 `;
 
-const FloatingTextAreaField = styled.div<{ $filled?: boolean }>`
+const FloatingTextAreaField = styled.div<{ $filled?: boolean; $invalid?: boolean }>`
   position: relative;
   width: 100%;
+
+  textarea {
+    border-color: ${({ $invalid }) => ($invalid ? "rgba(194, 84, 74, 0.95)" : "rgba(230, 224, 215, 0.95)")};
+    ${({ $invalid }) =>
+      $invalid
+        ? css`
+            box-shadow: 0 0 0 1px rgba(194, 84, 74, 0.18);
+          `
+        : ""}
+  }
+
+  > span {
+    color: ${({ $invalid }) => ($invalid ? "#c2544a" : "#29463e")};
+  }
 
   ${({ $filled }) =>
     $filled

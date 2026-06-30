@@ -37,6 +37,7 @@ export function AcceptInviteScreen() {
   const [showErrorPopup, setShowErrorPopup] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [remoteInvite, setRemoteInvite] = useState<RemoteInvitationPreview | null>(null);
   const [loadingRemote, setLoadingRemote] = useState(mode === "supabase");
 
@@ -140,9 +141,17 @@ export function AcceptInviteScreen() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setSubmitAttempted(true);
     setSubmitting(true);
     setError("");
     setShowErrorPopup(false);
+
+    if (!name.trim() || !phone.trim() || !password.trim() || (isClientInvite && !department.trim())) {
+      setError("Fill in every required field.");
+      setShowErrorPopup(true);
+      setSubmitting(false);
+      return;
+    }
 
     try {
       await acceptInvitation({
@@ -240,7 +249,7 @@ export function AcceptInviteScreen() {
                   </div>
 
                   {invite.status === "pending" ? (
-                    <form className="auth-form-stack onboarding-form" onSubmit={handleSubmit}>
+                    <form className="auth-form-stack onboarding-form" onSubmit={handleSubmit} noValidate>
                       <AvatarPicker
                         value={avatarPath}
                         onChange={setAvatarPath}
@@ -248,7 +257,7 @@ export function AcceptInviteScreen() {
                         helperText="This avatar will be used for your profile."
                       />
 
-                      <label className={name ? "auth-field is-filled" : "auth-field"}>
+                      <label className={`${name ? "auth-field is-filled" : "auth-field"} ${submitAttempted && !name.trim() ? "is-invalid" : ""}`}>
                         <input
                           type="text"
                           value={name}
@@ -261,7 +270,7 @@ export function AcceptInviteScreen() {
                         <span>Display name</span>
                       </label>
 
-                      <label className={phone ? "auth-field is-filled" : "auth-field"}>
+                      <label className={`${phone ? "auth-field is-filled" : "auth-field"} ${submitAttempted && !phone.trim() ? "is-invalid" : ""}`}>
                         <input
                           type="tel"
                           value={phone}
@@ -290,7 +299,7 @@ export function AcceptInviteScreen() {
 
                           <div
                             ref={departmentFieldRef}
-                            className={`auth-field onboarding-department-field ${department ? "is-filled" : ""} ${departmentOpen ? "is-open" : ""}`}
+                            className={`auth-field onboarding-department-field ${department ? "is-filled" : ""} ${departmentOpen ? "is-open" : ""} ${submitAttempted && !department.trim() ? "is-invalid" : ""}`}
                           >
                             <button
                               type="button"
@@ -335,8 +344,8 @@ export function AcceptInviteScreen() {
                         </>
                       ) : null}
 
-                      <label className={password ? "auth-field is-filled" : "auth-field"}>
-                        <div className="password-field">
+                      <label className={`${password ? "auth-field is-filled" : "auth-field"} ${submitAttempted && !password.trim() ? "is-invalid" : ""}`}>
+                        <div className={`password-field ${submitAttempted && !password.trim() ? "is-invalid" : ""}`}>
                           <input
                             type={showPassword ? "text" : "password"}
                             minLength={8}

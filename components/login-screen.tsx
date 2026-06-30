@@ -14,6 +14,7 @@ export function LoginScreen() {
   const [showErrorPopup, setShowErrorPopup] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     if (ready && user) {
@@ -42,6 +43,14 @@ export function LoginScreen() {
     event.preventDefault();
     setError("");
     setShowErrorPopup(false);
+    setSubmitAttempted(true);
+
+    if (!email.trim() || (mode === "supabase" && !password.trim())) {
+      setError("Fill in every required field.");
+      setShowErrorPopup(true);
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -86,8 +95,8 @@ export function LoginScreen() {
                 <p className="muted">Design project tracking for creative teams and clients.</p>
               </div>
 
-              <form className="auth-form-stack" onSubmit={handleSubmit}>
-                <label className={email ? "auth-field is-filled" : "auth-field"}>
+              <form className="auth-form-stack" onSubmit={handleSubmit} noValidate>
+                <label className={`${email ? "auth-field is-filled" : "auth-field"} ${submitAttempted && !email.trim() ? "is-invalid" : ""}`}>
                   <input
                     type="email"
                     value={email}
@@ -99,8 +108,8 @@ export function LoginScreen() {
                   <span>Email address</span>
                 </label>
 
-                <label className={password ? "auth-field is-filled" : "auth-field"}>
-                  <div className="password-field">
+                <label className={`${password ? "auth-field is-filled" : "auth-field"} ${submitAttempted && mode === "supabase" && !password.trim() ? "is-invalid" : ""}`}>
+                  <div className={`password-field ${submitAttempted && mode === "supabase" && !password.trim() ? "is-invalid" : ""}`}>
                     <input
                       type={showPassword ? "text" : "password"}
                       value={password}

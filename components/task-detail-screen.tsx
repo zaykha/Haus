@@ -56,6 +56,9 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
   const [showCompleteForDesignerModal, setShowCompleteForDesignerModal] = useState(false);
   const [revisionComment, setRevisionComment] = useState("");
   const [error, setError] = useState("");
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [editSubmitAttempted, setEditSubmitAttempted] = useState(false);
+  const [reviseSubmitAttempted, setReviseSubmitAttempted] = useState(false);
 
   const project = useMemo(
     () => state.projects.find((candidate) => candidate.id === projectId) ?? null,
@@ -268,6 +271,9 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
     setShowReviseModal(false);
     setRevisionComment("");
     setError("");
+    setShowErrorPopup(false);
+    setEditSubmitAttempted(false);
+    setReviseSubmitAttempted(false);
     setSelectOpen(null);
     setVersionOpen(false);
     setSelectedVersionId("current");
@@ -292,6 +298,23 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
 
   const handleSaveDetails = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setShowErrorPopup(false);
+    setEditSubmitAttempted(true);
+    if (!title.trim()) {
+      setError("Task title is required.");
+      setShowErrorPopup(true);
+      return;
+    }
+    if (!assigneeId) {
+      setError("Assignee is required.");
+      setShowErrorPopup(true);
+      return;
+    }
+    if (!dueDate) {
+      setError("Due date is required.");
+      setShowErrorPopup(true);
+      return;
+    }
     setIsSaving(true);
     setError("");
 
@@ -309,6 +332,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
       setIsEditing(false);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to update task.");
+      setShowErrorPopup(true);
     } finally {
       setIsSaving(false);
     }
@@ -349,8 +373,11 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
 
   const handleManagerRevise = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setShowErrorPopup(false);
+    setReviseSubmitAttempted(true);
     if (!revisionComment.trim()) {
       setError("Add revision feedback before sending the task back.");
+      setShowErrorPopup(true);
       return;
     }
 
@@ -375,6 +402,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
       return;
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to update task.");
+      setShowErrorPopup(true);
     } finally {
       setIsSaving(false);
     }
@@ -382,6 +410,17 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
 
   return (
     <Shell>
+      {showErrorPopup && error ? (
+        <div className="auth-popup-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="task-form-error-title">
+          <div className="auth-popup-card">
+            <h2 id="task-form-error-title">Task form error</h2>
+            <p>{error}</p>
+            <button className="primary-button mobile-full-button" type="button" onClick={() => setShowErrorPopup(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
       {isSaving ? (
         <LoadingOverlay role="status" aria-live="polite">
           <div className="auth-loading-card">
@@ -499,11 +538,12 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
               Add revision feedback for the designer before sending this task back to work in progress.
             </ReviewModalDescription>
             <EditForm onSubmit={handleManagerRevise}>
-              <FieldStack>
-                <FieldLabel>Revision feedback</FieldLabel>
-                <TaskTextArea
-                  value={revisionComment}
-                  onChange={(event) => setRevisionComment(event.target.value)}
+                <FieldStack>
+                  <FieldLabel>Revision feedback</FieldLabel>
+                  <TaskTextArea
+                    $invalid={reviseSubmitAttempted && !revisionComment.trim()}
+                    value={revisionComment}
+                    onChange={(event) => setRevisionComment(event.target.value)}
                   rows={5}
                   placeholder="Explain what needs to be changed before this can be resubmitted."
                 />
@@ -614,15 +654,16 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
             <EditForm onSubmit={handleSaveDetails}>
               <TaskFormGrid>
                 <TaskFormField $wide>
-                  <TaskFloatingField className={title ? "auth-field is-filled" : "auth-field"}>
-                    <TaskTextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder=" " required />
+                  <TaskFloatingField className={title ? "auth-field is-filled" : "auth-field"} $invalid={editSubmitAttempted && !title.trim()}>
+                    <TaskTextInput $invalid={editSubmitAttempted && !title.trim()} value={title} onChange={(event) => setTitle(event.target.value)} placeholder=" " />
                     <span>Task title</span>
                   </TaskFloatingField>
                 </TaskFormField>
 
                 <TaskFormField>
-                  <TaskFloatingSelect $filled={Boolean(assigneeId)} $open={selectOpen === "assignee"}>
+                  <TaskFloatingSelect $filled={Boolean(assigneeId)} $open={selectOpen === "assignee"} $invalid={editSubmitAttempted && !assigneeId}>
                     <TaskSelectTrigger
+                      $invalid={editSubmitAttempted && !assigneeId}
                       type="button"
                       aria-haspopup="listbox"
                       aria-expanded={selectOpen === "assignee"}
@@ -633,7 +674,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
                         <IconChevronDown />
                       </TaskSelectChevron>
                     </TaskSelectTrigger>
-                    <TaskFloatingLabel>Assignee</TaskFloatingLabel>
+                    <TaskFloatingLabel $invalid={editSubmitAttempted && !assigneeId}>Assignee</TaskFloatingLabel>
                     {selectOpen === "assignee" ? (
                       <TaskSelectMenu role="listbox" aria-label="Assignee">
                         {availableStaff.map((member) => (
@@ -693,7 +734,7 @@ export function TaskDetailScreen({ projectId, taskId }: TaskDetailScreenProps) {
                 </TaskFormField>
 
                 <TaskFormField>
-                  <CustomDatePicker label="Due date" value={dueDate} onChange={setDueDate} />
+                  <CustomDatePicker label="Due date" value={dueDate} onChange={setDueDate} invalid={editSubmitAttempted && !dueDate} />
                 </TaskFormField>
               </TaskFormGrid>
 
@@ -1163,11 +1204,15 @@ const TaskFormField = styled.div<{ $wide?: boolean }>`
       : ""}
 `;
 
-const TaskFloatingField = styled.label`
+const TaskFloatingField = styled.label<{ $invalid?: boolean }>`
   width: 100%;
+
+  span {
+    color: ${({ $invalid }) => ($invalid ? "#c04f42" : "inherit")};
+  }
 `;
 
-const TaskTextInput = styled.input`
+const TaskTextInput = styled.input<{ $invalid?: boolean }>`
   width: 100%;
   min-height: 58px;
   padding: 0 16px;
@@ -1175,11 +1220,12 @@ const TaskTextInput = styled.input`
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--color-text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(192, 79, 66, 0.12)" : "var(--shadow-sm)")};
+  border-color: ${({ $invalid }) => ($invalid ? "#c04f42" : "rgba(230, 224, 215, 0.95)")};
   font-size: 16px;
 `;
 
-const TaskTextArea = styled.textarea`
+const TaskTextArea = styled.textarea<{ $invalid?: boolean }>`
   width: 100%;
   min-height: 132px;
   padding: 14px 16px;
@@ -1187,27 +1233,29 @@ const TaskTextArea = styled.textarea`
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--color-text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(192, 79, 66, 0.12)" : "var(--shadow-sm)")};
+  border-color: ${({ $invalid }) => ($invalid ? "#c04f42" : "rgba(230, 224, 215, 0.95)")};
   font-size: 15px;
   line-height: 1.5;
   resize: vertical;
 `;
 
-const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean }>`
+const TaskFloatingSelect = styled.div<{ $filled?: boolean; $open?: boolean; $invalid?: boolean }>`
   position: relative;
   display: block;
   width: 100%;
   z-index: ${({ $open }) => ($open ? 8 : 2)};
 `;
 
-const TaskSelectTrigger = styled.button`
+const TaskSelectTrigger = styled.button<{ $invalid?: boolean }>`
   width: 100%;
   padding: 18px 16px 12px;
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--color-text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: ${({ $invalid }) => ($invalid ? "0 0 0 1px rgba(192, 79, 66, 0.12)" : "var(--shadow-sm)")};
+  border-color: ${({ $invalid }) => ($invalid ? "#c04f42" : "rgba(230, 224, 215, 0.95)")};
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -1229,14 +1277,14 @@ const CompactSelectTrigger = styled(TaskSelectTrigger)`
   }
 `;
 
-const TaskFloatingLabel = styled.span`
+const TaskFloatingLabel = styled.span<{ $invalid?: boolean }>`
   position: absolute;
   left: 16px;
   top: 1px;
   transform: translateY(-50%);
   padding: 0 6px;
   background: rgba(255, 255, 255, 0.96);
-  color: #29463e;
+  color: ${({ $invalid }) => ($invalid ? "#c04f42" : "#29463e")};
   font-size: 13px;
   font-weight: 500;
   z-index: 3;

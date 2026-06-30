@@ -75,6 +75,30 @@ function normalizePriorityLevel(value: string) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+function normalizeTaskPriority(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase();
+
+  if (normalized === "high" || normalized === "urgent") {
+    return "high" as const;
+  }
+
+  if (normalized === "low") {
+    return "low" as const;
+  }
+
+  return "medium" as const;
+}
+
+function normalizeTaskCreationError(message: string | undefined) {
+  if (
+    message?.includes('null value in column "assignee_id" of relation "tasks" violates not-null constraint')
+  ) {
+    return "Tasks still require an assignee in the database. Apply the migration that allows unassigned tasks, then try again.";
+  }
+
+  return message ?? "Unable to create task";
+}
+
 function isIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -100,6 +124,7 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json()) as {
     rows?: BulkProjectRow[];
+    autoCreateTask?: boolean;
   };
 
   const rows = body.rows ?? [];
@@ -370,10 +395,37 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase
     .from("projects")
     .insert(normalizedRows)
-    .select("id");
+    .select("id, project_request_name, priority_level, first_draft_date, final_deliverable_date, stage");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (body.autoCreateTask !== false) {
+    const taskRows =
+      data
+        ?.filter((project) => project.stage === "WIP" || project.stage === "Pending Review")
+        .map((project) => ({
+          project_id: String(project.id),
+          title: `${String(project.project_request_name ?? "").trim()} (Task)`,
+          assignee_id: null,
+          status: "todo" as const,
+          due_date: String(project.first_draft_date ?? "").trim() || String(project.final_deliverable_date ?? "").trim() || null,
+          priority: normalizeTaskPriority(
+            typeof project.priority_level === "string" ? project.priority_level : null,
+          ),
+          client_visible: false,
+          manager_review_status: "internal" as const,
+        }))
+        .filter((task) => Boolean(task.title.trim())) ?? [];
+
+    if (taskRows.length > 0) {
+      const { error: taskError } = await supabase.from("tasks").insert(taskRows);
+
+      if (taskError) {
+        return NextResponse.json({ error: normalizeTaskCreationError(taskError.message) }, { status: 500 });
+      }
+    }
   }
 
   return NextResponse.json({
