@@ -44,6 +44,7 @@ export function ProjectCreateScreen() {
   const [autoCreateTask, setAutoCreateTask] = useState(true);
   const [bulkAutoCreateTask, setBulkAutoCreateTask] = useState(true);
   const [showBulkDropOverlay, setShowBulkDropOverlay] = useState(false);
+  const [isBulkImporting, setIsBulkImporting] = useState(false);
   const [bulkFileName, setBulkFileName] = useState("");
   const [bulkRows, setBulkRows] = useState<Array<{
     projectId: string;
@@ -334,11 +335,16 @@ export function ProjectCreateScreen() {
   };
 
   const handleBulkImport = async () => {
+    if (isBulkImporting) {
+      return;
+    }
+
     if (!bulkRows.length) {
       setBulkError("Upload a spreadsheet first.");
       return;
     }
 
+    setIsBulkImporting(true);
     setRoutingMessage("Importing projects...");
     setBulkError("");
     setBulkSummary("");
@@ -357,6 +363,7 @@ export function ProjectCreateScreen() {
       const message = nextError instanceof Error ? nextError.message : "Bulk import failed.";
       setBulkError(message);
     } finally {
+      setIsBulkImporting(false);
       setRoutingMessage("");
     }
   };
@@ -413,7 +420,7 @@ export function ProjectCreateScreen() {
 
           {canManage ? (
             <HeaderActions>
-              <BulkTriggerButton type="button" onClick={() => setShowBulkModal(true)}>
+              <BulkTriggerButton type="button" onClick={() => setShowBulkModal(true)} disabled={isBulkImporting}>
                 Bulk upload
               </BulkTriggerButton>
             </HeaderActions>
@@ -443,7 +450,12 @@ export function ProjectCreateScreen() {
         )}
 
         {canManage && showBulkModal ? (
-          <ModalBackdrop onClick={() => setShowBulkModal(false)}>
+          <ModalBackdrop onClick={() => {
+            if (isBulkImporting) {
+              return;
+            }
+            setShowBulkModal(false);
+          }}>
             <ModalCard onClick={(event) => event.stopPropagation()}>
               <ModalHeader>
                 <div>
@@ -458,7 +470,17 @@ export function ProjectCreateScreen() {
                     </TemplateLink>
                   </ModalLinkRow>
                 </div>
-                <ModalClose type="button" onClick={() => setShowBulkModal(false)} aria-label="Close">
+                <ModalClose
+                  type="button"
+                  onClick={() => {
+                    if (isBulkImporting) {
+                      return;
+                    }
+                    setShowBulkModal(false);
+                  }}
+                  aria-label="Close"
+                  disabled={isBulkImporting}
+                >
                   <IconClose />
                 </ModalClose>
               </ModalHeader>
@@ -473,6 +495,7 @@ export function ProjectCreateScreen() {
                     type="file"
                     accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                     onChange={handleBulkFileChange}
+                    disabled={isBulkImporting}
                   />
                 </BulkUploadTile>
 
@@ -491,6 +514,7 @@ export function ProjectCreateScreen() {
                 type="button"
                 onClick={() => setBulkAutoCreateTask((current) => !current)}
                 aria-pressed={bulkAutoCreateTask}
+                disabled={isBulkImporting}
               >
                 <BulkToggleCopy>
                   <strong>Auto create task</strong>
@@ -511,9 +535,9 @@ export function ProjectCreateScreen() {
                   className="primary-button"
                   type="button"
                   onClick={handleBulkImport}
-                  disabled={!bulkRows.length || Boolean(routingMessage)}
+                  disabled={!bulkRows.length || isBulkImporting || Boolean(routingMessage)}
                 >
-                  Import file
+                  {isBulkImporting ? "Importing..." : "Import file"}
                 </button>
               </BulkActions>
             </ModalCard>
