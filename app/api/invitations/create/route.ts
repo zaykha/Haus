@@ -36,6 +36,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  const normalizedEmail = body.email.trim().toLowerCase();
+
   const createdBy = request.headers.get("x-haus-user-id");
 
   if (!createdBy) {
@@ -100,11 +102,26 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const { data: existingProfile, error: existingProfileError } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike("email", normalizedEmail)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (existingProfileError) {
+    return NextResponse.json({ error: existingProfileError.message }, { status: 500 });
+  }
+
+  if (existingProfile) {
+    return NextResponse.json({ error: "User already present." }, { status: 409 });
+  }
+
   const token = generateSecureInvitationToken();
   const tokenHash = hashInvitationToken(token);
   const derivedName =
     body.name?.trim() ||
-    (body.email.split("@")[0] ?? "User")
+    (normalizedEmail.split("@")[0] ?? "User")
       .split(/[._-]+/)
       .filter(Boolean)
       .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
@@ -113,7 +130,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase
     .from("invitations")
     .insert({
-      email: body.email.toLowerCase(),
+      email: normalizedEmail,
       name: derivedName,
       role: body.role,
       project_id: body.projectId,

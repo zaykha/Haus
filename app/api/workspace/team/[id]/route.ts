@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
+import { cleanupChatReferencesForProfile } from "@/lib/chat-profile-cleanup";
 import { canDeleteTeamMember, canUpdateTeamRole } from "@/lib/permissions";
 import { appConfig } from "@/lib/config";
 import { buildSoftDeletePatch, getStoragePathFromPublicUrl, queueStorageCleanup } from "@/lib/soft-delete";
@@ -142,6 +143,8 @@ export async function DELETE(
       entityId: id,
     })),
   );
+
+  await cleanupChatReferencesForProfile(supabase, id, user.id);
 
   const deletePatch = buildSoftDeletePatch(user.id, "team_member_deleted");
   const assignedTaskIds = (assignedTasks ?? []).map((task) => task.id);

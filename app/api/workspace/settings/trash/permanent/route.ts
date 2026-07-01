@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceUser } from "@/app/api/workspace/_auth";
+import { cleanupChatReferencesForProfile } from "@/lib/chat-profile-cleanup";
 import { canManageWorkspace } from "@/lib/permissions";
 
 async function deleteQueuedStorage(supabase: any, entityTable: string, entityId: string) {
@@ -139,6 +140,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
 
+    await cleanupChatReferencesForProfile(supabase, body.entityId, user.id);
+
     const operations = await Promise.all([
       supabase
         .from("client_organization_liaisons")
@@ -182,6 +185,7 @@ export async function POST(request: NextRequest) {
     }
 
     await deleteQueuedStorage(supabase, "profiles", body.entityId);
+    await cleanupChatReferencesForProfile(supabase, body.entityId, user.id);
 
     const taskIds = (taskRows ?? []).map((task) => task.id);
 

@@ -310,7 +310,7 @@ export function AcceptInviteScreen() {
                               onClick={() => setDepartmentOpen((current) => !current)}
                             >
                               <span className="onboarding-department-value">
-                                {department || "Select department"}
+                                {department}
                               </span>
                             </button>
                             <span className="auth-inline-label">Department</span>
