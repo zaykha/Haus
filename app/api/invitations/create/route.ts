@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateSecureInvitationToken, hashInvitationToken } from "@/lib/invitations";
+import { isValidEmail } from "@/lib/email";
 import { canInviteClientsForOrganization, canInviteUsers } from "@/lib/permissions";
+import { findAuthUserByEmail, purgeArchivedProfile } from "@/lib/profile-lifecycle";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { Role } from "@/lib/types";
 
@@ -14,31 +16,74 @@ function getClientOrganizationName(
   return organizationRelation?.name ?? null;
 }
 
-async function authUserExistsForEmail(supabase: NonNullable<ReturnType<typeof getSupabaseAdminClient>>, email: string) {
-  const perPage = 200;
-  let page = 1;
+function formatRoleLabel(role: Role) {
+  return role
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
-  while (true) {
-    const { data, error } = await supabase.auth.admin.listUsers({
-      page,
-      perPage,
-    });
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const users = data?.users ?? [];
-    if (users.some((user) => user.email?.trim().toLowerCase() === email)) {
-      return true;
-    }
-
-    if (users.length < perPage) {
-      return false;
-    }
-
-    page += 1;
+async function resolveProfileCompany(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdminClient>>,
+  profile: {
+    id: string;
+    role: Role;
+    company: string | null;
+  },
+) {
+  if (profile.company?.trim()) {
+    return profile.company.trim();
   }
+
+  if (profile.role !== "client") {
+    return "Haus";
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("client_organization_liaisons")
+    .select("client_organization_id, is_primary")
+    .eq("profile_id", profile.id)
+    .is("deleted_at", null)
+    .order("is_primary", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError && !membershipError.message.includes('relation "client_organization_liaisons" does not exist')) {
+    throw new Error(membershipError.message);
+  }
+
+  const organizationId = membership?.client_organization_id ?? null;
+  if (!organizationId) {
+    return "No company set";
+  }
+
+  const { data: organization, error: organizationError } = await supabase
+    .from("client_organizations")
+    .select("name")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (organizationError) {
+    throw new Error(organizationError.message);
+  }
+
+  return organization?.name?.trim() || "No company set";
+}
+
+async function buildExistingUserMessage(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdminClient>>,
+  profile: {
+    id: string;
+    role: Role;
+    company: string | null;
+  } | null,
+) {
+  if (!profile) {
+    return "User already present. Current role: Unknown. Company: Unknown.";
+  }
+
+  const company = await resolveProfileCompany(supabase, profile);
+  return `User already present. Current role: ${formatRoleLabel(profile.role)}. Company: ${company}.`;
 }
 
 export async function POST(request: NextRequest) {
@@ -64,6 +109,10 @@ export async function POST(request: NextRequest) {
   }
 
   const normalizedEmail = body.email.trim().toLowerCase();
+
+  if (!isValidEmail(normalizedEmail)) {
+    return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+  }
 
   const createdBy = request.headers.get("x-haus-user-id");
 
@@ -129,25 +178,65 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { data: existingProfile, error: existingProfileError } = await supabase
+  const { data: matchingProfiles, error: existingProfileError } = await supabase
     .from("profiles")
-    .select("id")
+    .select("id, role, company, email, deleted_at, delete_reason")
     .ilike("email", normalizedEmail)
-    .is("deleted_at", null)
-    .maybeSingle();
+    .limit(10);
 
   if (existingProfileError) {
     return NextResponse.json({ error: existingProfileError.message }, { status: 500 });
   }
 
-  if (existingProfile) {
-    return NextResponse.json({ error: "User already present." }, { status: 409 });
+  const activeProfile =
+    ((matchingProfiles ?? []) as Array<{
+      id: string;
+      role: Role;
+      company: string | null;
+      email: string;
+      deleted_at: string | null;
+      delete_reason: string | null;
+    }>).find((profile) => !profile.deleted_at) ?? null;
+  const archivedProfile =
+    ((matchingProfiles ?? []) as Array<{
+      id: string;
+      role: Role;
+      company: string | null;
+      email: string;
+      deleted_at: string | null;
+      delete_reason: string | null;
+    }>).find(
+      (profile) =>
+        Boolean(profile.deleted_at) &&
+        (profile.delete_reason === "liaison_deleted" || profile.delete_reason === "team_member_deleted"),
+    ) ?? null;
+
+  if (archivedProfile) {
+    try {
+      await purgeArchivedProfile(supabase, {
+        profileId: archivedProfile.id,
+        actingUserId: createdBy,
+        deleteReason: archivedProfile.delete_reason as "liaison_deleted" | "team_member_deleted",
+        email: archivedProfile.email,
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Failed to clear archived user before invite" },
+        { status: 500 },
+      );
+    }
+  }
+
+  if (activeProfile) {
+    const message = await buildExistingUserMessage(supabase, activeProfile);
+    return NextResponse.json({ error: message }, { status: 409 });
   }
 
   try {
-    const existingAuthUser = await authUserExistsForEmail(supabase, normalizedEmail);
+    const existingAuthUser = await findAuthUserByEmail(supabase, normalizedEmail);
     if (existingAuthUser) {
-      return NextResponse.json({ error: "User already present." }, { status: 409 });
+      const message = await buildExistingUserMessage(supabase, activeProfile);
+      return NextResponse.json({ error: message }, { status: 409 });
     }
   } catch (error) {
     return NextResponse.json(

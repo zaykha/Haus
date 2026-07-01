@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { formatRole } from "@/lib/display";
+import { isValidEmail } from "@/lib/email";
 import { Role } from "@/lib/types";
 
 type InviteVariant = "team" | "client";
@@ -177,6 +178,12 @@ export function InviteWorkspaceModal({
       return;
     }
 
+    if (!isValidEmail(email)) {
+      setError("Enter a valid email address.");
+      setShowErrorPopup(true);
+      return;
+    }
+
     if (resolvedRole === "client" && !clientOrganizationId) {
       setError("Client organization is required for client invites.");
       setShowErrorPopup(true);
@@ -220,9 +227,25 @@ export function InviteWorkspaceModal({
     setCopyState("copied");
   };
 
+  const preventOverlayClose = submitting || Boolean(inviteLink);
+
   return (
-    <Overlay onClick={onClose}>
+    <Overlay
+      onClick={() => {
+        if (!preventOverlayClose) {
+          onClose();
+        }
+      }}
+    >
       <ModalCard onClick={(event) => event.stopPropagation()}>
+        {submitting ? (
+          <div className="auth-loading-overlay" role="status" aria-live="polite">
+            <div className="auth-loading-card">
+              <div className="auth-loading-spinner" aria-hidden="true" />
+              <p>Generating link...</p>
+            </div>
+          </div>
+        ) : null}
         {showErrorPopup && error ? (
           <div className="auth-popup-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="invite-form-error-title">
             <div className="auth-popup-card">
@@ -236,28 +259,14 @@ export function InviteWorkspaceModal({
         ) : null}
         <Header>
           <HeaderActions>
-            {inviteLink ? (
-              <IconButton
-                type="button"
-                aria-label="Back"
-                onClick={() => {
-                  setInviteLink("");
-                  setCopyState("idle");
-                  setError("");
-                }}
-              >
-                <IconChevronLeft />
-              </IconButton>
-            ) : (
-              <IconButtonPlaceholder aria-hidden="true" />
-            )}
+            <IconButtonPlaceholder aria-hidden="true" />
           </HeaderActions>
           <HeaderCopy>
             <Title>{title}</Title>
             <Subtitle>{description}</Subtitle>
           </HeaderCopy>
           <HeaderActions>
-            <IconButton type="button" aria-label="Close" onClick={onClose}>
+            <IconButton type="button" aria-label="Close" onClick={onClose} disabled={submitting}>
               <IconClose />
             </IconButton>
           </HeaderActions>
@@ -394,6 +403,7 @@ export function InviteWorkspaceModal({
           <ResultBlock>
             <ResultLabel>Onboarding link</ResultLabel>
             <LinkBox>{inviteLink}</LinkBox>
+            <ExpiryNote>This link expires in 7 days. If it expires or gets lost, regenerate it from the pending invites list.</ExpiryNote>
             <PrimaryButton type="button" onClick={handleCopy}>
               {copyState === "copied" ? "Copied" : "Copy link"}
             </PrimaryButton>
@@ -631,6 +641,14 @@ const InlineError = styled.p`
   font-size: 0.82rem;
 `;
 
+const ExpiryNote = styled.p`
+  margin: 0;
+  color: #b42318;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  font-weight: 700;
+`;
+
 const ResultBlock = styled.div`
   display: flex;
   flex-direction: column;
@@ -659,14 +677,6 @@ function IconClose() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M6 6l12 12M18 6 6 18" />
-    </svg>
-  );
-}
-
-function IconChevronLeft() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m15 18-6-6 6-6" />
     </svg>
   );
 }

@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { AuthLoadingAnimation } from "@/components/auth-loading-animation";
 import { useAppState } from "@/components/app-state";
 
 export function RequireAuth({ children }: { children: ReactNode }) {
@@ -19,7 +20,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       <main className="auth-screen">
         <div className="auth-loading-overlay" role="status" aria-live="polite">
           <div className="auth-loading-card">
-            <div className="auth-loading-spinner" aria-hidden="true" />
+            <AuthLoadingAnimation />
             <p>Loading dashboard...</p>
           </div>
         </div>

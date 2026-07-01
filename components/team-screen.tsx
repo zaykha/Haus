@@ -90,7 +90,7 @@ function formatPriority(priority: TaskPriority) {
 }
 
 export function TeamScreen() {
-  const { ready, state, user, revokeInvitation, updateTeamMemberRole, deleteTeamMember } = useAppState();
+  const { ready, state, user, revokeInvitation, regenerateInvitation, updateTeamMemberRole, deleteTeamMember } = useAppState();
   const [desktopView, setDesktopView] = useState<"cards" | "table">("table");
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
@@ -102,6 +102,10 @@ export function TeamScreen() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
   const [isRevoking, setIsRevoking] = useState(false);
+  const [isRegeneratingInvite, setIsRegeneratingInvite] = useState(false);
+  const [regeneratedInviteLink, setRegeneratedInviteLink] = useState("");
+  const [regeneratedInviteEmail, setRegeneratedInviteEmail] = useState("");
+  const [regeneratedInviteCopyState, setRegeneratedInviteCopyState] = useState<"idle" | "copied">("idle");
   const [selectedMember, setSelectedMember] = useState<MemberRow | null>(null);
   const [selectedTaskPage, setSelectedTaskPage] = useState(1);
   const [showUpdateRoleModal, setShowUpdateRoleModal] = useState(false);
@@ -231,7 +235,7 @@ export function TeamScreen() {
             project: state.projects.find((project) => project.id === invitation.projectId) ?? null,
           };
         })
-        .filter((invitation) => invitation.status === "pending"),
+        .filter((invitation) => invitation.status === "pending" || invitation.status === "expired"),
     [state.invitations, state.projects],
   );
 
@@ -432,6 +436,14 @@ export function TeamScreen() {
           }
         }}
       />
+      {isRegeneratingInvite ? (
+        <div className="auth-loading-overlay" role="status" aria-live="polite">
+          <div className="auth-loading-card">
+            <div className="auth-loading-spinner" aria-hidden="true" />
+            <p>Regenerating link...</p>
+          </div>
+        </div>
+      ) : null}
       {selectedMember ? (
         <MemberDetailsOverlay onClick={() => setSelectedMember(null)}>
           <MemberDetailsCard onClick={(event) => event.stopPropagation()}>
@@ -972,18 +984,37 @@ export function TeamScreen() {
                     </InvitationCopy>
                     <InvitationActions>
                       <Pill style={{ background: tone.bg, color: tone.fg }}>{tone.label}</Pill>
-                      {canManageInvites && invitation.status === "pending" ? (
-                        <TinyDangerButton
-                          type="button"
-                          onClick={() =>
-                            setRevokeTarget({
-                              id: invitation.id,
-                              email: invitation.email,
-                            })
-                          }
-                        >
-                          Revoke
-                        </TinyDangerButton>
+                      {canManageInvites && (invitation.status === "pending" || invitation.status === "expired") ? (
+                        <>
+                          <TinyActionButton
+                            type="button"
+                            disabled={isRegeneratingInvite}
+                            onClick={async () => {
+                              setIsRegeneratingInvite(true);
+                              try {
+                                const result = await regenerateInvitation(invitation.id);
+                                setRegeneratedInviteLink(result.inviteLink);
+                                setRegeneratedInviteEmail(invitation.email);
+                                setRegeneratedInviteCopyState("idle");
+                              } finally {
+                                setIsRegeneratingInvite(false);
+                              }
+                            }}
+                          >
+                            {isRegeneratingInvite ? "Regenerating..." : "Regenerate"}
+                          </TinyActionButton>
+                          <TinyDangerButton
+                            type="button"
+                            onClick={() =>
+                              setRevokeTarget({
+                                id: invitation.id,
+                                email: invitation.email,
+                              })
+                            }
+                          >
+                            Revoke
+                          </TinyDangerButton>
+                        </>
                       ) : null}
                     </InvitationActions>
                   </InvitationRow>
@@ -993,6 +1024,52 @@ export function TeamScreen() {
           </InvitationPanel>
         ) : null}
       </Content>
+      {regeneratedInviteLink ? (
+        <div className="auth-popup-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="team-regenerated-link-title">
+          <div className="auth-popup-card">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "8px" }}>
+              <h2 id="team-regenerated-link-title" style={{ margin: 0 }}>New invite link ready</h2>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setRegeneratedInviteLink("")}
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  flex: "0 0 34px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "1px solid rgba(230, 224, 215, 0.95)",
+                  borderRadius: "999px",
+                  background: "#fff",
+                  color: "var(--color-text)",
+                }}
+              >
+                <IconClose />
+              </button>
+            </div>
+            <GeneratedLink>
+              <p>{regeneratedInviteEmail ? `A fresh onboarding link is ready for ${regeneratedInviteEmail}.` : "A fresh onboarding link is ready."}</p>
+              <LinkBox>{regeneratedInviteLink}</LinkBox>
+              <InlineError>This link expires in 7 days. If it expires, regenerate it again from pending invites.</InlineError>
+            </GeneratedLink>
+            <div style={{ marginTop: "12px", width: "100%" }}>
+              <button
+                className="primary-button mobile-full-button"
+                type="button"
+                style={{ width: "100%" }}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(regeneratedInviteLink);
+                  setRegeneratedInviteCopyState("copied");
+                }}
+              >
+                {regeneratedInviteCopyState === "copied" ? "Copied" : "Copy link"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </Shell>
   );
 }
@@ -1959,6 +2036,17 @@ const TinyDangerButton = styled.button`
   border-radius: 999px;
   background: #b42318;
   color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+`;
+
+const TinyActionButton = styled.button`
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(31, 67, 57, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1f4339;
   font-size: 0.74rem;
   font-weight: 700;
 `;

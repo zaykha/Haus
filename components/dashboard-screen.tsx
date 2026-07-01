@@ -5,6 +5,7 @@ import { FormEvent, useMemo, useState } from "react";
 import styled, { css } from "styled-components";
 import { useAppState } from "@/components/app-state";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AuthLoadingAnimation } from "@/components/auth-loading-animation";
 import { ClientOrganizationDetailScreen } from "@/components/client-organization-detail-screen";
 import { ClientTitleLogo } from "@/components/client-title-logo";
 import { CustomDatePicker } from "@/components/custom-date-picker";
@@ -591,7 +592,7 @@ export function DashboardScreen() {
       {isCreatingTask ? (
         <div className="auth-loading-overlay" role="status" aria-live="polite">
           <div className="auth-loading-card">
-            <div className="auth-loading-spinner" aria-hidden="true" />
+            <AuthLoadingAnimation />
             <p>Creating task...</p>
           </div>
         </div>

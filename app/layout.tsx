@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import Script from "next/script";
 import { AppStateProvider } from "@/components/app-state";
+import { LoadingAnimationBootstrap } from "@/components/loading-animation-bootstrap";
 import { Shell } from "@/components/ui";
 import StyledComponentsRegistry from "@/lib/styled-components-registry";
 import "./globals.css";
@@ -31,9 +33,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
+      <head>
+        <Script id="haus-lottie-web-script" src="/vendor/lottie.min.js" strategy="beforeInteractive" />
+      </head>
       <body className={geist.variable}>
         <StyledComponentsRegistry>
           <AppStateProvider>
+            <LoadingAnimationBootstrap />
             <Shell>{children}</Shell>
           </AppStateProvider>
         </StyledComponentsRegistry>

@@ -213,6 +213,7 @@ interface AppStateContextValue {
     clientOrganizationId?: string | null;
     expiresAt: string;
   }) => Promise<{ inviteLink: string; invitation: Invitation }>;
+  regenerateInvitation: (invitationId: string) => Promise<{ inviteLink: string; invitation: Invitation }>;
   revokeInvitation: (invitationId: string) => Promise<void>;
   getInvitationByToken: (token: string) => Invitation | null;
   acceptInvitation: (payload: {
@@ -1315,6 +1316,56 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const regenerateInvitation: AppStateContextValue["regenerateInvitation"] = async (invitationId) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    ensureAuthorized(canInviteUsers(user.role), "Only managers can regenerate invitations");
+
+    if (appMode === "supabase") {
+      const response = await fetch("/api/invitations/regenerate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-haus-user-id": user.id,
+          "x-haus-user-role": user.role,
+        },
+        body: JSON.stringify({ invitationId }),
+      });
+
+      if (!response.ok) {
+        const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorPayload?.error ?? "Failed to regenerate invitation");
+      }
+
+      const result = (await response.json()) as { inviteLink: string; invitation: Invitation };
+      await refreshWorkspace(user);
+      return result;
+    }
+
+    const invitation = state.invitations.find((candidate) => candidate.id === invitationId) ?? null;
+    if (!invitation) {
+      throw new Error("Invitation not found");
+    }
+
+    const token = generateToken();
+    const next = new Date();
+    next.setDate(next.getDate() + 7);
+    next.setHours(23, 59, 59, 0);
+
+    return {
+      inviteLink: `/onboarding?token=${encodeURIComponent(token)}`,
+      invitation: {
+        ...invitation,
+        tokenHash: token,
+        status: "pending",
+        expiresAt: next.toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    };
+  };
+
   const getInvitationByToken: AppStateContextValue["getInvitationByToken"] = (token) => {
     if (appMode === "supabase") {
       return null;
@@ -1421,6 +1472,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         addFeedback,
         updateTaskStatus,
         createInvitation,
+        regenerateInvitation,
         revokeInvitation,
         getInvitationByToken,
         acceptInvitation,

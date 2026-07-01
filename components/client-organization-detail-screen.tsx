@@ -190,7 +190,7 @@ export function ClientOrganizationDetailScreen({
 }: ClientOrganizationDetailScreenProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { state, user, deleteClient, deleteClientOrganization, revokeInvitation, updateClientOrganization, updateClient } =
+  const { state, user, deleteClient, deleteClientOrganization, revokeInvitation, regenerateInvitation, updateClientOrganization, updateClient } =
     useAppState();
   const { scopedHref } = useActiveClientOrganization(user, state.clientOrganizations);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -203,6 +203,10 @@ export function ClientOrganizationDetailScreen({
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
   const [showRevokeInviteModal, setShowRevokeInviteModal] = useState(false);
   const [isRevokingInvite, setIsRevokingInvite] = useState(false);
+  const [isRegeneratingInvite, setIsRegeneratingInvite] = useState(false);
+  const [regeneratedInviteLink, setRegeneratedInviteLink] = useState("");
+  const [regeneratedInviteEmail, setRegeneratedInviteEmail] = useState("");
+  const [regeneratedInviteCopyState, setRegeneratedInviteCopyState] = useState<"idle" | "copied">("idle");
   const [showEditModal, setShowEditModal] = useState(false);
   const [isSavingOrganization, setIsSavingOrganization] = useState(false);
   const [organizationError, setOrganizationError] = useState("");
@@ -419,10 +423,17 @@ export function ClientOrganizationDetailScreen({
     selectedTasksPage * TASKS_PAGE_SIZE,
   );
   const pendingInvitations = state.invitations
+    .map((invitation) => ({
+      ...invitation,
+      status:
+        invitation.status === "pending" && new Date(invitation.expiresAt).getTime() < Date.now()
+          ? ("expired" as const)
+          : invitation.status,
+    }))
     .filter(
       (invitation) =>
         invitation.role === "client" &&
-        invitation.status === "pending" &&
+        (invitation.status === "pending" || invitation.status === "expired") &&
         invitation.clientOrganizationId === organization.organizationId,
     )
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -1177,6 +1188,42 @@ export function ClientOrganizationDetailScreen({
         initialClientOrganizationId={organization.organizationId ?? ""}
         lockClientOrganization={Boolean(organization.organizationId)}
       />
+      {isRegeneratingInvite ? (
+        <div className="auth-loading-overlay" role="status" aria-live="polite">
+          <div className="auth-loading-card">
+            <div className="auth-loading-spinner" aria-hidden="true" />
+            <p>Regenerating link...</p>
+          </div>
+        </div>
+      ) : null}
+      {regeneratedInviteLink ? (
+        <div className="auth-popup-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="liaison-regenerated-link-title">
+          <div className="auth-popup-card">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "8px" }}>
+              <h2 id="liaison-regenerated-link-title" style={{ margin: 0 }}>New invite link ready</h2>
+              <IconButton type="button" aria-label="Close" onClick={() => setRegeneratedInviteLink("")}>
+                <IconClose />
+              </IconButton>
+            </div>
+            <p>{regeneratedInviteEmail ? `A fresh onboarding link is ready for ${regeneratedInviteEmail}.` : "A fresh onboarding link is ready."}</p>
+            <LinkPopupBox>{regeneratedInviteLink}</LinkPopupBox>
+            <InlineError>This link expires in 7 days. If it expires, regenerate it again from pending invites.</InlineError>
+            <div style={{ marginTop: "12px", width: "100%" }}>
+              <button
+                className="primary-button mobile-full-button"
+                type="button"
+                style={{ width: "100%" }}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(regeneratedInviteLink);
+                  setRegeneratedInviteCopyState("copied");
+                }}
+              >
+                {regeneratedInviteCopyState === "copied" ? "Copied" : "Copy link"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {showAssignLiaisonModal ? (
         <Overlay
           onClick={() => {
@@ -1908,7 +1955,7 @@ export function ClientOrganizationDetailScreen({
                           <RowCopy>
                             <RowTitleLine>
                               <RowTitle>{invitation.name}</RowTitle>
-                              <MetaPill>Pending</MetaPill>
+                              <MetaPill>{invitation.status === "expired" ? "Expired" : "Pending"}</MetaPill>
                             </RowTitleLine>
                             <ClientMeta>{invitation.email}</ClientMeta>
                             <RowMetaPills>
@@ -1917,18 +1964,37 @@ export function ClientOrganizationDetailScreen({
                           </RowCopy>
                         </RowLead>
                         {canManage ? (
-                          <RowActionButton
-                            type="button"
-                            onClick={() => {
-                              setRevokeTarget({
-                                id: invitation.id,
-                                email: invitation.email,
-                              });
-                              setShowRevokeInviteModal(true);
-                            }}
-                          >
-                            Revoke
-                          </RowActionButton>
+                          <RowActions>
+                            <RowActionButton
+                              type="button"
+                              disabled={isRegeneratingInvite}
+                              onClick={async () => {
+                                setIsRegeneratingInvite(true);
+                                try {
+                                  const result = await regenerateInvitation(invitation.id);
+                                  setRegeneratedInviteLink(result.inviteLink);
+                                  setRegeneratedInviteEmail(invitation.email);
+                                  setRegeneratedInviteCopyState("idle");
+                                } finally {
+                                  setIsRegeneratingInvite(false);
+                                }
+                              }}
+                            >
+                              {isRegeneratingInvite ? "Regenerating..." : "Regenerate"}
+                            </RowActionButton>
+                            <RowActionButton
+                              type="button"
+                              onClick={() => {
+                                setRevokeTarget({
+                                  id: invitation.id,
+                                  email: invitation.email,
+                                });
+                                setShowRevokeInviteModal(true);
+                              }}
+                            >
+                              Revoke
+                            </RowActionButton>
+                          </RowActions>
                         ) : null}
                       </Row>
                     );
@@ -3918,6 +3984,17 @@ const InlineError = styled.p`
   color: #c04f42;
   font-size: 0.82rem;
   line-height: 1.45;
+`;
+
+const LinkPopupBox = styled.div`
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 12px 14px;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 `;
 
 const IconButton = styled.button`
