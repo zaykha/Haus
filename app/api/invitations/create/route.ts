@@ -14,6 +14,33 @@ function getClientOrganizationName(
   return organizationRelation?.name ?? null;
 }
 
+async function authUserExistsForEmail(supabase: NonNullable<ReturnType<typeof getSupabaseAdminClient>>, email: string) {
+  const perPage = 200;
+  let page = 1;
+
+  while (true) {
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const users = data?.users ?? [];
+    if (users.some((user) => user.email?.trim().toLowerCase() === email)) {
+      return true;
+    }
+
+    if (users.length < perPage) {
+      return false;
+    }
+
+    page += 1;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
@@ -115,6 +142,18 @@ export async function POST(request: NextRequest) {
 
   if (existingProfile) {
     return NextResponse.json({ error: "User already present." }, { status: 409 });
+  }
+
+  try {
+    const existingAuthUser = await authUserExistsForEmail(supabase, normalizedEmail);
+    if (existingAuthUser) {
+      return NextResponse.json({ error: "User already present." }, { status: 409 });
+    }
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to validate existing users" },
+      { status: 500 },
+    );
   }
 
   const token = generateSecureInvitationToken();

@@ -42,6 +42,14 @@ async function deleteQueuedStorage(supabase: any, entityTable: string, entityId:
   }
 }
 
+async function deleteAuthUserIfPresent(supabase: any, userId: string) {
+  const { error } = await supabase.auth.admin.deleteUser(userId);
+
+  if (error && !error.message.toLowerCase().includes("not found")) {
+    throw new Error(error.message);
+  }
+}
+
 export async function POST(request: NextRequest) {
   const authResult = await requireWorkspaceUser(request);
   if (authResult instanceof Response) {
@@ -159,6 +167,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    try {
+      await deleteAuthUserIfPresent(supabase, body.entityId);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Failed to delete auth user" },
+        { status: 500 },
+      );
+    }
+
     return NextResponse.json({ ok: true });
   }
 
@@ -217,6 +234,15 @@ export async function POST(request: NextRequest) {
     const primaryError = primaryOperations.find((operation) => operation.error)?.error;
     if (primaryError) {
       return NextResponse.json({ error: primaryError.message }, { status: 500 });
+    }
+
+    try {
+      await deleteAuthUserIfPresent(supabase, body.entityId);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Failed to delete auth user" },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ ok: true });
