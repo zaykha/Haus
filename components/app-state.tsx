@@ -529,6 +529,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       } finally {
         if (!cancelled) {
           setReady(true);
+          setWorkspaceReady(true);
         }
       }
     }
