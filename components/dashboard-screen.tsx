@@ -19,6 +19,7 @@ import {
   canViewProject,
   getVisibleTasksForUser,
 } from "@/lib/permissions";
+import { isProjectCompleted, isProjectOnHold } from "@/lib/project-ranking";
 import { formatLabel, formatProjectStage, formatRole, getProjectStatusLabel, getTaskStatusLabel } from "@/lib/display";
 import { FeedbackAction, Project, ProjectStatus, TaskPriority, TaskStatus } from "@/lib/types";
 
@@ -135,11 +136,11 @@ function getProjectOrganization(
 }
 
 function isOnHoldProject(project: Pick<Project, "status" | "stage">) {
-  return project.status === "On Hold" || project.stage === "On Hold";
+  return isProjectOnHold(project);
 }
 
-function isCompletedProject(project: Pick<Project, "status" | "stage">) {
-  return project.status === "done" || project.status === "Complete" || project.stage === "Complete";
+function isCompletedProjectForDashboard(project: Pick<Project, "status" | "stage">) {
+  return isProjectCompleted(project);
 }
 
 function isReviewProject(project: Pick<Project, "status" | "stage">) {
@@ -415,10 +416,12 @@ export function DashboardScreen() {
     [projectRows, userNames],
   );
 
-  const activeProjectsCount = projectRows.filter((project) => project.status !== "done").length;
+  const activeProjectsCount = projectRows.filter((project) => !isCompletedProjectForDashboard(project)).length;
   const dueTodayTasksCount = openTasks.filter((task) => isDateToday(task.dueDate, now)).length;
   const feedbackCount = projectRows.filter((project) => project.status === "review").length;
-  const completedCount = projectRows.filter((project) => project.status === "done" && isProjectCompletedThisMonth(project, now)).length;
+  const completedCount = projectRows.filter(
+    (project) => isCompletedProjectForDashboard(project) && isProjectCompletedThisMonth(project, now),
+  ).length;
   const managerReviewProjects = useMemo(() => {
     if (!safeUser || isDesigner || isClient) {
       return projectRows;
@@ -477,7 +480,7 @@ export function DashboardScreen() {
     currentPriorityPage * PRIORITY_PROJECTS_PAGE_SIZE,
   );
   const mobileProjects = (isClient
-    ? projectRows.filter((project) => project.status !== "done" && !isOnHoldProject(project))
+    ? projectRows.filter((project) => !isCompletedProjectForDashboard(project) && !isOnHoldProject(project))
     : priorityProjects
   ).slice(0, 3);
   const dashboardTasks = openTasks.slice(
@@ -487,12 +490,12 @@ export function DashboardScreen() {
   const recentFeedback = feedbackRows.slice(0, 3);
   const recentActivity = activityRows.slice(0, 4);
 
-  const completedProjects = projectRows.filter((project) => isCompletedProject(project)).length;
+  const completedProjects = projectRows.filter((project) => isCompletedProjectForDashboard(project)).length;
   const reviewProjects = projectRows.filter((project) => isReviewProject(project)).length;
   const holdProjects = projectRows.filter((project) => isOnHoldProject(project)).length;
   const inProgressProjects = projectRows.filter(
     (project) =>
-      !isCompletedProject(project) && !isReviewProject(project) && !isOnHoldProject(project),
+      !isCompletedProjectForDashboard(project) && !isReviewProject(project) && !isOnHoldProject(project),
   ).length;
 
   const totalProjects = Math.max(projectRows.length, 1);
@@ -1075,7 +1078,7 @@ export function DashboardScreen() {
               {(isDesigner
                 ? projectRows.length > 3
                 : isClient
-                  ? projectRows.filter((project) => project.status !== "done" && !isOnHoldProject(project)).length > 3
+                  ? projectRows.filter((project) => !isCompletedProjectForDashboard(project) && !isOnHoldProject(project)).length > 3
                   : managerReviewProjects.length > 3) ? (
                 <PanelLink href={scopedHref("/projects")}>View all</PanelLink>
               ) : null}

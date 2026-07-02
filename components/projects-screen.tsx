@@ -13,6 +13,7 @@ import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
 import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { getClientBrandStyle } from "@/lib/client-branding";
+import { compareProjectsByWorkflowPriority, isProjectCompleted } from "@/lib/project-ranking";
 import { canCreateProject as canCreateProjectPermission, canCreateProjectForOrganization, canViewProject, getVisibleTasksForUser } from "@/lib/permissions";
 import {
   getAttentionCountForProject,
@@ -24,6 +25,7 @@ import { Project, ProjectWorkflowStage } from "@/lib/types";
 
 type StageFilterKey = "all" | ProjectWorkflowStage;
 type SortField =
+  | "priority_rank"
   | "project"
   | "organization"
   | "first_draft_date"
@@ -37,7 +39,7 @@ type SortDirection = "asc" | "desc";
 type SortValue = `${SortField}|${SortDirection}`;
 const MOBILE_BATCH_SIZE = 20;
 const TABLE_BATCH_SIZE = 20;
-const DEFAULT_SORT: SortValue = "final_deliverable_date|asc";
+const DEFAULT_SORT: SortValue = "priority_rank|asc";
 
 const desktopNav = [
   { label: "Home", href: "/dashboard", icon: <IconHome /> },
@@ -102,6 +104,22 @@ function formatShortDate(value: string) {
     month: "short",
     day: "numeric",
   }).format(new Date(value));
+}
+
+function isOverdueDate(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime() < today.getTime();
 }
 
 function escapeCsvValue(value: string) {
@@ -411,11 +429,11 @@ export function ProjectsScreen() {
         organizationFilter === "all" ? true : project.clientOrganizationId === organizationFilter;
       const matchesQuickFilter =
         quickFilter === "active"
-          ? project.status !== "done"
+          ? !isProjectCompleted(project)
           : quickFilter === "awaiting_feedback"
-            ? project.status === "review"
+            ? project.status === "review" || project.status === "revision" || project.stage === "Pending Review"
             : quickFilter === "completed_this_month"
-              ? project.status === "done" && isProjectCompletedThisMonth(project, now)
+              ? isProjectCompleted(project) && isProjectCompletedThisMonth(project, now)
               : true;
       const clientName = getClientOrganizationName(project, organizationNames, userNames).toLowerCase();
       const primaryContact = getPrimaryContactLabel(project, usersById).toLowerCase();
@@ -442,6 +460,11 @@ export function ProjectsScreen() {
 
       if (leftIsNew !== rightIsNew) {
         return leftIsNew ? -1 : 1;
+      }
+
+      if (sortField === "priority_rank") {
+        const priorityComparison = compareProjectsByWorkflowPriority(left, right);
+        return sortDirection === "asc" ? priorityComparison : priorityComparison * -1;
       }
 
       if (sortField === "project") {
@@ -836,6 +859,9 @@ export function ProjectsScreen() {
                 const clientOrganization = project.clientOrganizationId
                   ? organizationsById.get(project.clientOrganizationId) ?? null
                   : null;
+                const finalDeliverableDate = project.finalDeliverableDate ?? project.dueDate;
+                const isFinalDeliverableOverdue =
+                  isOverdueDate(finalDeliverableDate) && !isProjectCompleted(project);
 
                 return (
                   <ProjectRow
@@ -843,12 +869,14 @@ export function ProjectsScreen() {
                     href={scopedHref(`/projects/${project.id}`)}
                     $attention={attentionCount > 0}
                     $new={isNewProject}
+                    $overdue={isFinalDeliverableOverdue}
                   >
                     <ProjectTopleft>
                       <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
                       <OrganizationPill>{clientOrganizationName}</OrganizationPill>
                       {attentionKind === "new_request" ? <NewProjectPill>New</NewProjectPill> : null}
                       {attentionKind === "feedback" ? <FeedbackNotifiedPill>Feedback</FeedbackNotifiedPill> : null}
+                      {isFinalDeliverableOverdue ? <CardOverduePill>Overdue</CardOverduePill> : null}
                     </ProjectTopleft>
                     
                     {attentionCount > 0 ? (
@@ -987,6 +1015,9 @@ export function ProjectsScreen() {
                           : null;
                         const stageTone = getProjectStageTone(project.stage as ProjectWorkflowStage);
                         const priorityTone = getPriorityTone(project.priorityLevel);
+                        const finalDeliverableDate = project.finalDeliverableDate ?? project.dueDate;
+                        const isFinalDeliverableOverdue =
+                          isOverdueDate(finalDeliverableDate) && !isProjectCompleted(project);
 
                         return (
                           <DesktopTableRow
@@ -994,11 +1025,12 @@ export function ProjectsScreen() {
                             $attention={attentionCount > 0}
                             $new={isNewProject}
                             $clientBranded={isClient}
+                            $overdue={isFinalDeliverableOverdue}
                             onClick={() => {
                               void router.push(scopedHref(`/projects/${project.id}`));
                             }}
                           >
-                            <StickyProjectCell $attention={attentionCount > 0} $new={isNewProject} $clientBranded={isClient}>
+                            <StickyProjectCell $attention={attentionCount > 0} $new={isNewProject} $clientBranded={isClient} $overdue={isFinalDeliverableOverdue}>
                               <TableProjectCell>
                                 <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
                                 <TableProjectTitleRow>
@@ -1008,14 +1040,19 @@ export function ProjectsScreen() {
                                 </TableProjectTitleRow>
                               </TableProjectCell>
                             </StickyProjectCell>
-                            <StickyOrganizationCell $attention={attentionCount > 0} $new={isNewProject} $clientBranded={isClient}>
+                            <StickyOrganizationCell $attention={attentionCount > 0} $new={isNewProject} $clientBranded={isClient} $overdue={isFinalDeliverableOverdue}>
                               <TableOrganizationCell>
                                 <TableOrganizationLogo organization={clientOrganization} />
                                 <TableOrganizationName>{clientOrganizationName}</TableOrganizationName>
                               </TableOrganizationCell>
                             </StickyOrganizationCell>
                             <td>{formatDueDate(project.firstDraftDate ?? "")}</td>
-                            <td>{formatDueDate(project.finalDeliverableDate ?? project.dueDate)}</td>
+                            <td>
+                              <FinalDeliverableBadge $overdue={isFinalDeliverableOverdue}>
+                                <span>{formatDueDate(finalDeliverableDate)}</span>
+                                {isFinalDeliverableOverdue ? <OverduePill>Overdue</OverduePill> : null}
+                              </FinalDeliverableBadge>
+                            </td>
                             <td>
                               <StagePill $bg={stageTone.bg} $fg={stageTone.fg}>
                                 {formatProjectStage(project.stage)}
@@ -1083,6 +1120,9 @@ export function ProjectsScreen() {
               const clientOrganization = project.clientOrganizationId
                 ? organizationsById.get(project.clientOrganizationId) ?? null
                 : null;
+              const finalDeliverableDate = project.finalDeliverableDate ?? project.dueDate;
+              const isFinalDeliverableOverdue =
+                isOverdueDate(finalDeliverableDate) && !isProjectCompleted(project);
 
               return (
                 <MobileProjectCard
@@ -1090,6 +1130,7 @@ export function ProjectsScreen() {
                   href={scopedHref(`/projects/${project.id}`)}
                   $attention={attentionCount > 0}
                   $new={isNewProject}
+                  $overdue={isFinalDeliverableOverdue}
                 >
                   <ProjectIdBadge>{project.projectCode ?? project.id}</ProjectIdBadge>
                   {attentionCount > 0 ? (
@@ -1106,6 +1147,7 @@ export function ProjectsScreen() {
                         <MobileTitle>{project.name}</MobileTitle>
                         <MobileMetaText>Due {formatShortDate(project.dueDate)}</MobileMetaText>
                       </MobileTitleRow>
+                      {isFinalDeliverableOverdue ? <CardOverduePill>Overdue</CardOverduePill> : null}
                       <MobilePillRow>
                         <SummaryPill>{project.contactPerson?.trim() || "No primary contact"}</SummaryPill>
                         {!isClient ? <SummaryPill>{project.contactNumber?.trim() || "No contact number"}</SummaryPill> : null}
@@ -1690,9 +1732,15 @@ const SortGlyph = styled.span<{ $direction: SortDirection | null }>`
   transform: ${({ $direction }) => ($direction === "desc" ? "rotate(180deg)" : "none")};
 `;
 
-const DesktopTableRow = styled.tr<{ $attention?: boolean; $clientBranded?: boolean; $new?: boolean }>`
-  background: ${({ $attention, $new }) =>
-    $new ? "rgba(255, 244, 226, 0.96)" : $attention ? "rgba(255, 244, 244, 0.92)" : "transparent"};
+const DesktopTableRow = styled.tr<{ $attention?: boolean; $clientBranded?: boolean; $new?: boolean; $overdue?: boolean }>`
+  background: ${({ $attention, $new, $overdue }) =>
+    $overdue
+      ? "rgba(252, 235, 235, 0.98)"
+      : $new
+        ? "rgba(255, 244, 226, 0.96)"
+        : $attention
+          ? "rgba(255, 244, 244, 0.92)"
+          : "transparent"};
   cursor: pointer;
   transition:
     background-color 0.18s ease,
@@ -1700,16 +1748,19 @@ const DesktopTableRow = styled.tr<{ $attention?: boolean; $clientBranded?: boole
     box-shadow 0.18s ease;
 
   &:hover {
-    background: ${({ $attention, $clientBranded, $new }) =>
-      $new
-        ? "rgba(255, 236, 204, 0.98)"
-        : $attention
-          ? "rgba(255, 232, 232, 0.98)"
-          : $clientBranded
-            ? "var(--client-screen-soft-flat, rgba(245, 247, 244, 0.98))"
-            : "rgba(252, 241, 226, 0.98)"};
+    background: ${({ $attention, $clientBranded, $new, $overdue }) =>
+      $overdue
+        ? "rgba(248, 221, 221, 0.98)"
+        : $new
+          ? "rgba(255, 236, 204, 0.98)"
+          : $attention
+            ? "rgba(255, 232, 232, 0.98)"
+            : $clientBranded
+              ? "var(--client-screen-soft-flat, rgba(245, 247, 244, 0.98))"
+              : "rgba(252, 241, 226, 0.98)"};
     box-shadow: inset 0 0 0 1px
-      ${({ $new }) => ($new ? "rgba(214, 154, 56, 0.45)" : "rgba(220, 208, 194, 0.75)")};
+      ${({ $new, $overdue }) =>
+        $overdue ? "rgba(191, 69, 69, 0.34)" : $new ? "rgba(214, 154, 56, 0.45)" : "rgba(220, 208, 194, 0.75)"};
   }
 `;
 
@@ -1735,45 +1786,51 @@ const TableProjectTitleRow = styled.div`
   min-width: 0;
 `;
 
-const StickyProjectCell = styled.td<{ $attention?: boolean; $clientBranded?: boolean; $new?: boolean }>`
+const StickyProjectCell = styled.td<{ $attention?: boolean; $clientBranded?: boolean; $new?: boolean; $overdue?: boolean }>`
   position: sticky;
   left: 0;
   z-index: 1;
   min-width: 220px;
-  background: ${({ $attention, $new }) => ($new ? "#fff4df" : $attention ? "#fff4f4" : "#ffffff")};
+  background: ${({ $attention, $new, $overdue }) =>
+    $overdue ? "#fdeeee" : $new ? "#fff4df" : $attention ? "#fff4f4" : "#ffffff"};
 
   ${DesktopTableRow}:hover & {
-    background: ${({ $attention, $clientBranded, $new }) =>
-      $new
-        ? "#ffeccc"
-        : $clientBranded
-          ? "var(--client-screen-soft-flat, rgba(245, 247, 244, 0.98))"
-          : $attention
-            ? "#ffe8e8"
-            : $clientBranded
-              ? "var(--client-screen-soft-solid, #f3f7f4)"
-              : "#fcf1e2"};
+    background: ${({ $attention, $clientBranded, $new, $overdue }) =>
+      $overdue
+        ? "#f9dfdf"
+        : $new
+          ? "#ffeccc"
+          : $clientBranded
+            ? "var(--client-screen-soft-flat, rgba(245, 247, 244, 0.98))"
+            : $attention
+              ? "#ffe8e8"
+              : $clientBranded
+                ? "var(--client-screen-soft-solid, #f3f7f4)"
+                : "#fcf1e2"};
   }
 `;
 
-const StickyOrganizationCell = styled.td<{ $attention?: boolean; $clientBranded?: boolean; $new?: boolean }>`
+const StickyOrganizationCell = styled.td<{ $attention?: boolean; $clientBranded?: boolean; $new?: boolean; $overdue?: boolean }>`
   position: sticky;
   left: 220px;
   z-index: 1;
   min-width: 170px;
-  background: ${({ $attention, $new }) => ($new ? "#fff4df" : $attention ? "#fff4f4" : "#ffffff")};
+  background: ${({ $attention, $new, $overdue }) =>
+    $overdue ? "#fdeeee" : $new ? "#fff4df" : $attention ? "#fff4f4" : "#ffffff"};
 
   ${DesktopTableRow}:hover & {
-    background: ${({ $attention, $clientBranded, $new }) =>
-      $new
-        ? "#ffeccc"
-        : $clientBranded
-          ? "var(--client-screen-soft-solid, #f3f7f4)"
-          : $attention
-            ? "#ffe8e8"
-            : $clientBranded
-              ? "var(--client-screen-soft-solid, #f3f7f4)"
-              : "#fcf1e2"};
+    background: ${({ $attention, $clientBranded, $new, $overdue }) =>
+      $overdue
+        ? "#f9dfdf"
+        : $new
+          ? "#ffeccc"
+          : $clientBranded
+            ? "var(--client-screen-soft-solid, #f3f7f4)"
+            : $attention
+              ? "#ffe8e8"
+              : $clientBranded
+                ? "var(--client-screen-soft-solid, #f3f7f4)"
+                : "#fcf1e2"};
   }
 `;
 
@@ -1794,7 +1851,42 @@ const PriorityPill = styled(StagePill)`
   font-size: 0.74rem;
 `;
 
-const ProjectRow = styled(Link)<{ $attention?: boolean; $new?: boolean }>`
+const FinalDeliverableBadge = styled.span<{ $overdue: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: ${({ $overdue }) => ($overdue ? "rgba(246, 214, 214, 0.98)" : "rgba(244, 241, 237, 0.9)")};
+  color: ${({ $overdue }) => ($overdue ? "#9f3e3e" : "#5f554b")};
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+`;
+
+const OverduePill = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(191, 69, 69, 0.14);
+  color: #b13f3f;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+`;
+
+const CardOverduePill = styled(OverduePill)`
+  min-height: 18px;
+  padding: 3px 7px;
+  font-size: 0.62rem;
+`;
+
+const ProjectRow = styled(Link)<{ $attention?: boolean; $new?: boolean; $overdue?: boolean }>`
   ${cardSurface}
   position: relative;
   display: flex;
@@ -1804,15 +1896,24 @@ const ProjectRow = styled(Link)<{ $attention?: boolean; $new?: boolean }>`
   padding: 40px 20px 22px;
   border-radius: 24px;
   text-decoration: none;
-  border-color: ${({ $attention, $new }) =>
-    $new ? "rgba(214, 154, 56, 0.72)" : $attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)"};
-  background: ${({ $new }) => ($new ? "rgba(255, 249, 239, 0.96)" : undefined)};
-  box-shadow: ${({ $attention, $new }) =>
-    $new
-      ? "0 0 0 1px rgba(214, 154, 56, 0.16), var(--shadow-sm)"
-      : $attention
-        ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)"
-        : "var(--shadow-sm)"};
+  border-color: ${({ $attention, $new, $overdue }) =>
+    $overdue
+      ? "rgba(191, 69, 69, 0.42)"
+      : $new
+        ? "rgba(214, 154, 56, 0.72)"
+        : $attention
+          ? "rgba(217, 75, 75, 0.72)"
+          : "rgba(230, 224, 215, 0.95)"};
+  background: ${({ $new, $overdue }) =>
+    $overdue ? "rgba(252, 239, 239, 0.98)" : $new ? "rgba(255, 249, 239, 0.96)" : undefined};
+  box-shadow: ${({ $attention, $new, $overdue }) =>
+    $overdue
+      ? "0 0 0 1px rgba(191, 69, 69, 0.14), var(--shadow-sm)"
+      : $new
+        ? "0 0 0 1px rgba(214, 154, 56, 0.16), var(--shadow-sm)"
+        : $attention
+          ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)"
+          : "var(--shadow-sm)"};
   transition:
     transform 0.18s ease,
     box-shadow 0.18s ease,
@@ -1822,15 +1923,24 @@ const ProjectRow = styled(Link)<{ $attention?: boolean; $new?: boolean }>`
   ${desktop} {
     &:hover {
       transform: translateY(-2px);
-      background: ${({ $new }) => ($new ? "rgba(255, 244, 220, 0.98)" : "rgba(255, 248, 239, 0.94)")};
-      border-color: ${({ $attention, $new }) =>
-        $new ? "rgba(214, 154, 56, 0.82)" : $attention ? "rgba(217, 75, 75, 0.82)" : "rgba(220, 208, 194, 0.95)"};
-      box-shadow: ${({ $attention, $new }) =>
-        $new
-          ? "0 0 0 1px rgba(214, 154, 56, 0.18), 0 18px 32px rgba(31, 31, 31, 0.08)"
-          : $attention
-            ? "0 0 0 1px rgba(217, 75, 75, 0.18), 0 18px 32px rgba(31, 31, 31, 0.08)"
-            : "0 18px 32px rgba(31, 31, 31, 0.08)"};
+      background: ${({ $new, $overdue }) =>
+        $overdue ? "rgba(248, 227, 227, 0.98)" : $new ? "rgba(255, 244, 220, 0.98)" : "rgba(255, 248, 239, 0.94)"};
+      border-color: ${({ $attention, $new, $overdue }) =>
+        $overdue
+          ? "rgba(191, 69, 69, 0.56)"
+          : $new
+            ? "rgba(214, 154, 56, 0.82)"
+            : $attention
+              ? "rgba(217, 75, 75, 0.82)"
+              : "rgba(220, 208, 194, 0.95)"};
+      box-shadow: ${({ $attention, $new, $overdue }) =>
+        $overdue
+          ? "0 0 0 1px rgba(191, 69, 69, 0.18), 0 18px 32px rgba(31, 31, 31, 0.08)"
+          : $new
+            ? "0 0 0 1px rgba(214, 154, 56, 0.18), 0 18px 32px rgba(31, 31, 31, 0.08)"
+            : $attention
+              ? "0 0 0 1px rgba(217, 75, 75, 0.18), 0 18px 32px rgba(31, 31, 31, 0.08)"
+              : "0 18px 32px rgba(31, 31, 31, 0.08)"};
     }
   }
 `;
@@ -2130,7 +2240,7 @@ const MobileList = styled.section`
   }
 `;
 
-const MobileProjectCard = styled(Link)<{ $attention?: boolean; $new?: boolean }>`
+const MobileProjectCard = styled(Link)<{ $attention?: boolean; $new?: boolean; $overdue?: boolean }>`
   ${cardSurface}
   position: relative;
   display: grid;
@@ -2138,15 +2248,24 @@ const MobileProjectCard = styled(Link)<{ $attention?: boolean; $new?: boolean }>
   padding: 28px 12px 12px;
   border-radius: 18px;
   text-decoration: none;
-  border-color: ${({ $attention, $new }) =>
-    $new ? "rgba(214, 154, 56, 0.72)" : $attention ? "rgba(217, 75, 75, 0.72)" : "rgba(230, 224, 215, 0.95)"};
-  background: ${({ $new }) => ($new ? "rgba(255, 249, 239, 0.96)" : undefined)};
-  box-shadow: ${({ $attention, $new }) =>
-    $new
-      ? "0 0 0 1px rgba(214, 154, 56, 0.16), var(--shadow-sm)"
-      : $attention
-        ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)"
-        : "var(--shadow-sm)"};
+  border-color: ${({ $attention, $new, $overdue }) =>
+    $overdue
+      ? "rgba(191, 69, 69, 0.42)"
+      : $new
+        ? "rgba(214, 154, 56, 0.72)"
+        : $attention
+          ? "rgba(217, 75, 75, 0.72)"
+          : "rgba(230, 224, 215, 0.95)"};
+  background: ${({ $new, $overdue }) =>
+    $overdue ? "rgba(252, 239, 239, 0.98)" : $new ? "rgba(255, 249, 239, 0.96)" : undefined};
+  box-shadow: ${({ $attention, $new, $overdue }) =>
+    $overdue
+      ? "0 0 0 1px rgba(191, 69, 69, 0.14), var(--shadow-sm)"
+      : $new
+        ? "0 0 0 1px rgba(214, 154, 56, 0.16), var(--shadow-sm)"
+        : $attention
+          ? "0 0 0 1px rgba(217, 75, 75, 0.16), var(--shadow-sm)"
+          : "var(--shadow-sm)"};
 `;
 
 const MobileProjectCompanyHeader = styled.span`

@@ -31,6 +31,7 @@ import {
   canInviteClientsForOrganization,
   getUserClientOrganizationIds,
 } from "@/lib/permissions";
+import { compareProjectsByWorkflowPriority, isProjectCompleted, isProjectOnHold, isProjectPendingReview } from "@/lib/project-ranking";
 
 const desktop = "@media (min-width: 768px)";
 const TASKS_PAGE_SIZE = 5;
@@ -81,24 +82,16 @@ function formatPriority(priority: string) {
   return priority.charAt(0).toUpperCase() + priority.slice(1);
 }
 
-function isCompletedProject(status: string, stage?: string | null) {
-  return status === "done" || status === "approved" || status === "Complete" || stage === "Complete";
-}
-
-function isPendingReviewProject(status: string, stage?: string | null) {
-  return status === "review" || status === "revision" || status === "Pending Review" || stage === "Pending Review";
-}
-
 function getClientProjectTone(status: string, stage?: string | null) {
-  if (isCompletedProject(status, stage)) {
+  if (isProjectCompleted({ status, stage })) {
     return { fg: "#5ca16d", bg: "#e5f4e8" };
   }
 
-  if (isPendingReviewProject(status, stage)) {
+  if (isProjectPendingReview({ status, stage })) {
     return { fg: "#c58911", bg: "#fbefcf" };
   }
 
-  if (status === "On Hold" || stage === "On Hold") {
+  if (isProjectOnHold({ status, stage })) {
     return { fg: "#d36c57", bg: "#fbe7e3" };
   }
 
@@ -161,22 +154,6 @@ function getTaskTone(status: string) {
     default:
       return { fg: "#8d857b", bg: "#f4f1ed", label: "To do" };
   }
-}
-
-function getProjectPriorityRank(status: string, stage?: string | null) {
-  if (status === "review" || stage === "Pending Review") {
-    return 0;
-  }
-
-  if (status === "revision") {
-    return 1;
-  }
-
-  if (status === "active" || stage === "WIP" || stage === "Waiting List") {
-    return 2;
-  }
-
-  return 3;
 }
 
 type ClientOrganizationDetailScreenProps = {
@@ -458,34 +435,15 @@ export function ClientOrganizationDetailScreen({
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const activeProjects = organizationProjects.filter(
     (project) =>
-      !isCompletedProject(project.status, project.stage) &&
-      project.status !== "On Hold" &&
-      project.stage !== "On Hold",
+      !isProjectCompleted(project) &&
+      !isProjectOnHold(project),
   );
-  const projectsInReview = organizationProjects.filter((project) => isPendingReviewProject(project.status, project.stage));
-  const completedProjects = organizationProjects.filter((project) => isCompletedProject(project.status, project.stage));
-  const holdProjects = organizationProjects.filter(
-    (project) => project.status === "On Hold" || project.stage === "On Hold",
-  );
+  const projectsInReview = organizationProjects.filter((project) => isProjectPendingReview(project));
+  const completedProjects = organizationProjects.filter((project) => isProjectCompleted(project));
+  const holdProjects = organizationProjects.filter((project) => isProjectOnHold(project));
   const visibleOrganizationProjects = organizationProjects
     .slice()
-    .sort((left, right) => {
-      const leftPriority = getProjectPriorityRank(left.status, left.stage);
-      const rightPriority = getProjectPriorityRank(right.status, right.stage);
-
-      if (leftPriority !== rightPriority) {
-        return leftPriority - rightPriority;
-      }
-
-      const leftDue = new Date(left.finalDeliverableDate ?? left.dueDate).getTime();
-      const rightDue = new Date(right.finalDeliverableDate ?? right.dueDate).getTime();
-
-      if (leftDue !== rightDue) {
-        return leftDue - rightDue;
-      }
-
-      return (left.projectRequestName || left.name).localeCompare(right.projectRequestName || right.name);
-    })
+    .sort(compareProjectsByWorkflowPriority)
     .slice(0, PROJECT_LIST_CAP);
   const visiblePendingProjects = organization.pendingProjects.slice(0, PENDING_ITEMS_CAP);
   const pendingReviewItems = organization.openTasks.slice(0, 3);
@@ -505,28 +463,11 @@ export function ClientOrganizationDetailScreen({
   const clientPriorityProjects = organizationProjects
     .filter(
       (project) =>
-        !isCompletedProject(project.status, project.stage) &&
-        project.status !== "On Hold" &&
-        project.stage !== "On Hold",
+        !isProjectCompleted(project) &&
+        !isProjectOnHold(project),
     )
     .slice()
-    .sort((left, right) => {
-      const leftPriority = getProjectPriorityRank(left.status, left.stage);
-      const rightPriority = getProjectPriorityRank(right.status, right.stage);
-
-      if (leftPriority !== rightPriority) {
-        return leftPriority - rightPriority;
-      }
-
-      const leftDue = new Date(left.finalDeliverableDate ?? left.dueDate).getTime();
-      const rightDue = new Date(right.finalDeliverableDate ?? right.dueDate).getTime();
-
-      if (leftDue !== rightDue) {
-        return leftDue - rightDue;
-      }
-
-      return (left.projectRequestName || left.name).localeCompare(right.projectRequestName || right.name);
-    })
+    .sort(compareProjectsByWorkflowPriority)
     .slice(0, 3);
   const totalProjectsForOverview = Math.max(organizationProjects.length, 1);
   const completedProjectsPct = Math.round((completedProjects.length / totalProjectsForOverview) * 100);
@@ -797,7 +738,7 @@ export function ClientOrganizationDetailScreen({
                   <ClientHomeList>
                     {clientPriorityProjects.map((project) => {
                       const tone = getClientProjectTone(project.status, project.stage);
-                      const needsClientReview = isPendingReviewProject(project.status, project.stage);
+                      const needsClientReview = isProjectPendingReview(project);
                       return (
                         <ClientProjectCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
                           <ClientProjectGlyph
@@ -2069,7 +2010,7 @@ export function ClientOrganizationDetailScreen({
               <ClientHomeList>
                 {visibleOrganizationProjects.map((project) => {
                   const tone = getClientProjectTone(project.status, project.stage);
-                  const needsClientReview = isPendingReviewProject(project.status, project.stage);
+                  const needsClientReview = isProjectPendingReview(project);
 
                   return (
                     <CompactDeliveryCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
