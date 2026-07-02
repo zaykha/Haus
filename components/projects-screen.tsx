@@ -2004,15 +2004,17 @@ const markSurface = css`
   background: linear-gradient(145deg, #ede5d8, #f8f4ee);
   color: #8c7040;
   font-weight: 600;
+  border: 1px solid rgba(228, 219, 208, 0.92);
+  box-shadow: 0 8px 18px rgba(112, 91, 62, 0.08);
 `;
 
 const ProjectMark = styled(ClientTitleLogo)`
   ${markSurface}
-  width: 76px;
-  height: 76px;
-  flex: 0 0 76px;
-  border-radius: 18px;
-  font-size: 1.6rem;
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
+  border-radius: 14px;
+  font-size: 1.2rem;
   object-fit: cover;
   overflow: hidden;
 `;
@@ -2069,12 +2071,12 @@ const TableOrganizationCell = styled.div`
 
 const TableOrganizationLogo = styled(ClientTitleLogo)`
   ${markSurface}
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
   object-fit: cover;
   overflow: hidden;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
 `;
 
 const TableOrganizationName = styled.span`
@@ -2310,10 +2312,10 @@ const MobileProjectLead = styled.div`
 
 const MobileProjectMark = styled(ClientTitleLogo)`
   ${markSurface}
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
-  font-size: 0.92rem;
+  font-size: 1rem;
   object-fit: cover;
   overflow: hidden;
 `;

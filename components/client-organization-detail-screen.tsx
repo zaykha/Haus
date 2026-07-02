@@ -2245,9 +2245,10 @@ const BackLink = styled(Link)`
 
 const Title = styled.h1`
   margin: 8px 0 6px;
-  font-size: clamp(1.28rem, 2.5vw, 1.72rem);
-  line-height: 1;
+  font-size: clamp(1.12rem, 2.1vw, 1.48rem);
+  line-height: 1.12;
   letter-spacing: -0.04em;
+  word-break: break-word;
 
   @media (max-width: 767px) {
     display: none;
@@ -2325,47 +2326,42 @@ const MobileHeaderIdentity = styled.div`
   }
 `;
 
-const MobileHeaderTitle = styled.h1`
-  margin: 0 0 4px;
-  font-size: 1.1rem;
-  line-height: 1.1;
-  letter-spacing: -0.03em;
-
-  ${desktop} {
-    display: none;
-  }
-`;
-
 const ClientHeaderTitle = styled.h1`
   margin: 0;
-  font-size: clamp(1.28rem, 2.5vw, 1.72rem);
-  line-height: 1;
+  font-size: clamp(0.92rem, 1.7vw, 1.16rem);
+  line-height: 1.12;
   letter-spacing: -0.04em;
+  word-break: break-word;
 `;
 
 const HeaderTitleStatusRow = styled.div`
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
-  flex-wrap: wrap;
+  max-width: 100%;
+  flex-wrap: nowrap;
 `;
 
 const ClientHeaderTitleRow = styled(HeaderTitleStatusRow)`
   min-width: 0;
 `;
 
-const ClientHeaderSwitchButton = styled.button`
+const MobileHeaderTitle = styled.div`
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  font-size: clamp(0.92rem, 1.7vw, 1.16rem);
+  line-height: 1.15;
+`;
+
+const HeaderStatusIndicator = styled.span`
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  min-width: 0;
 `;
 
 const HeaderSwitchIcon = styled.span`
@@ -2379,6 +2375,49 @@ const HeaderSwitchIcon = styled.span`
   svg {
     width: 100%;
     height: 100%;
+  }
+`;
+
+const ClientHeaderSwitchButton = styled.button`
+  appearance: none;
+  -webkit-appearance: none;
+
+  min-width: 0;
+  max-width: 100%;
+
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 0 10px 0 12px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 999px;
+
+  background: #fff;
+  color: var(--color-text);
+
+  overflow: hidden;
+  cursor: pointer;
+
+  ${HeaderTitleStatusRow} {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  ${MobileHeaderTitle} {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  ${HeaderStatusIndicator},
+  ${HeaderSwitchIcon} {
+    flex: 0 0 auto;
   }
 `;
 
@@ -2439,25 +2478,24 @@ const TypePill = styled(Pill)<{ $type: "internal" | "external" }>`
   color: ${({ $type }) => ($type === "internal" ? "#4770d8" : "#7f7468")};
 `;
 
-const HeaderStatusIndicator = styled.span`
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-`;
-
 const HeaderStatusIcon = styled.span<{ $bg: string; $fg: string }>`
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  border-radius: 999px;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
+
+  border-radius: 999px;
   background: ${({ $bg }) => $bg};
   color: ${({ $fg }) => $fg};
-  font-size: 0.72rem;
-  font-weight: 800;
-  line-height: 1;
+
+  svg {
+    width: 8px;
+    height: 8px;
+    display: block;
+  }
 `;
 
 
@@ -3554,7 +3592,7 @@ const ModalCard = styled.div`
   padding: 20px;
 
   @media (max-width: 767px) {
-    height: 80vh;
+    height: 70vh;
     overflow-y: auto;
     }
 `;
@@ -3947,7 +3985,23 @@ const IconButton = styled.button`
   border: 1px solid rgba(230, 224, 215, 0.95);
   border-radius: 999px;
   background: #fff;
-  color: var(--color-text);
+  color: #2f2a24; /* make X visible */
+
+  svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+    color: inherit;
+  }
+
+  &:hover {
+    background: #f7f3ed;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 `;
 
 const EmptyState = styled.div`

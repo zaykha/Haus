@@ -72,12 +72,17 @@ async function resolveProfileCompany(
 
 async function buildExistingUserMessage(
   supabase: NonNullable<ReturnType<typeof getSupabaseAdminClient>>,
+  requestingRole: Role,
   profile: {
     id: string;
     role: Role;
     company: string | null;
   } | null,
 ) {
+  if (requestingRole === "client") {
+    return "User already exists in the workspace. Please contact a manager to add them.";
+  }
+
   if (!profile) {
     return "User already present. Current role: Unknown. Company: Unknown.";
   }
@@ -228,14 +233,14 @@ export async function POST(request: NextRequest) {
   }
 
   if (activeProfile) {
-    const message = await buildExistingUserMessage(supabase, activeProfile);
+    const message = await buildExistingUserMessage(supabase, createdByProfile.role as Role, activeProfile);
     return NextResponse.json({ error: message }, { status: 409 });
   }
 
   try {
     const existingAuthUser = await findAuthUserByEmail(supabase, normalizedEmail);
     if (existingAuthUser) {
-      const message = await buildExistingUserMessage(supabase, activeProfile);
+      const message = await buildExistingUserMessage(supabase, createdByProfile.role as Role, activeProfile);
       return NextResponse.json({ error: message }, { status: 409 });
     }
   } catch (error) {

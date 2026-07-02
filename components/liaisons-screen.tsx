@@ -1667,34 +1667,34 @@ const PendingPill = styled(Pill)<{ $active?: boolean }>`
 const OrganizationBubble = styled(ClientTitleLogo)<{ $index: number; $tone?: "default" | "accent" }>`
   position: relative;
   z-index: ${({ $index }) => 10 - $index};
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   margin-left: ${({ $index }) => ($index === 0 ? "0" : "-6px")};
-  border: 1.5px solid rgba(255, 255, 255, 0.96);
-  border-radius: 999px;
+  border: 1px solid rgba(228, 219, 208, 0.92);
+  border-radius: 10px;
   background: ${({ $tone }) =>
     $tone === "accent"
       ? "#1f4339"
       : "linear-gradient(145deg, #ede5d8, #f8f4ee)"};
   color: ${({ $tone }) => ($tone === "accent" ? "#fff" : "#8c7040")};
-  font-size: 0.64rem;
-  font-weight: 700;
+  font-size: 0.68rem;
+  font-weight: 600;
   object-fit: cover;
   overflow: hidden;
-  box-shadow: 0 6px 14px rgba(104, 84, 54, 0.12);
+  box-shadow: 0 8px 18px rgba(112, 91, 62, 0.08);
   transition: transform 140ms ease, box-shadow 140ms ease, z-index 140ms ease;
 
   ${desktop} {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     margin-left: ${({ $index }) => ($index === 0 ? "0" : "-8px")};
-    font-size: 0.72rem;
+    font-size: 0.76rem;
   }
 
   &:hover {
     z-index: 30;
-    transform: translateY(-7px);
-    box-shadow: 0 12px 22px rgba(104, 84, 54, 0.2);
+    transform: translateY(-5px);
+    box-shadow: 0 12px 22px rgba(104, 84, 54, 0.16);
   }
 `;
 
