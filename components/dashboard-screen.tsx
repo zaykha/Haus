@@ -9,6 +9,7 @@ import { AuthLoadingAnimation } from "@/components/auth-loading-animation";
 import { ClientOrganizationDetailScreen } from "@/components/client-organization-detail-screen";
 import { ClientTitleLogo } from "@/components/client-title-logo";
 import { CustomDatePicker } from "@/components/custom-date-picker";
+import { GanttChart } from "@/components/gantt-chart";
 import { HeaderProfileAvatarLink } from "@/components/header-profile-avatar-link";
 import { DashboardScreenSkeleton } from "@/components/page-skeletons";
 import { ProjectStageProgress } from "@/components/project-stage-progress";
@@ -19,9 +20,9 @@ import {
   canViewProject,
   getVisibleTasksForUser,
 } from "@/lib/permissions";
-import { isProjectCompleted, isProjectOnHold } from "@/lib/project-ranking";
-import { formatLabel, formatProjectStage, formatRole, getProjectStatusLabel, getTaskStatusLabel } from "@/lib/display";
-import { FeedbackAction, Project, ProjectStatus, TaskPriority, TaskStatus } from "@/lib/types";
+import { compareProjectsByWorkflowPriority, getProjectWorkflowRank, isProjectCompleted, isProjectOnHold } from "@/lib/project-ranking";
+import { formatLabel, formatRole, getTaskStatusLabel } from "@/lib/display";
+import { FeedbackAction, Project, TaskPriority, TaskStatus } from "@/lib/types";
 
 type EnrichedTask = {
   id: string;
@@ -64,19 +65,8 @@ const tablet = "@media (min-width: 768px) and (max-width: 1099px)";
 const tabletUp = "@media (min-width: 768px)";
 const desktop = "@media (min-width: 1100px)";
 
-const sideNavItems = [
-  { label: "Home", href: "/dashboard", icon: <IconHome /> },
-  { label: "Projects", href: "/projects", icon: <IconFolder /> },
-  { label: "Tasks", href: "/tasks", icon: <IconCheckCircle /> },
-  { label: "Clients", icon: <IconUser /> },
-  { label: "Team", href: "/team", icon: <IconUsers /> },
-  { label: "Calendar", icon: <IconCalendar /> },
-  { label: "Reports", icon: <IconChart /> },
-  { label: "Files", icon: <IconFile /> },
-] as const;
-
-const PRIORITY_PROJECTS_PAGE_SIZE = 2;
 const TASKS_PAGE_SIZE = 4;
+const MOBILE_PROJECT_CAP = 4;
 
 function formatDueDate(value: string) {
   if (!value) {
@@ -115,15 +105,6 @@ function getClientOrganizationName(
   return project.contactPerson || "Unassigned client";
 }
 
-function getProjectMark(project: Project) {
-  const words = project.name.split(" ");
-  if (words.length === 1) {
-    return words[0].slice(0, 2).toUpperCase();
-  }
-
-  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
-}
-
 function getProjectOrganization(
   project: Pick<Project, "clientOrganizationId" | "contactPerson">,
   clientOrganizations: Array<{ id: string; name: string; logoUrl?: string }>,
@@ -149,21 +130,6 @@ function isReviewProject(project: Pick<Project, "status" | "stage">) {
     project.status === "Pending Review" ||
     project.stage === "Pending Review"
   );
-}
-
-function getStatusTone(status: ProjectStatus) {
-  switch (status) {
-    case "active":
-      return { bg: "var(--color-info-soft)", fg: "var(--color-info)" };
-    case "review":
-      return { bg: "var(--color-warning-soft)", fg: "var(--color-warning)" };
-    case "revision":
-      return { bg: "var(--color-danger-soft)", fg: "var(--color-danger)" };
-    case "done":
-      return { bg: "var(--color-primary-soft)", fg: "var(--color-primary)" };
-    default:
-      return { bg: "var(--color-surface-soft)", fg: "var(--color-text-muted)" };
-  }
 }
 
 function getFeedbackTone(action: FeedbackAction) {
@@ -217,7 +183,6 @@ function isDateToday(value: string, reference: Date) {
 
 export function DashboardScreen() {
   const { ready, workspaceReady, state, user, createTask } = useAppState();
-  const [priorityPage, setPriorityPage] = useState(1);
   const [tasksPage, setTasksPage] = useState(1);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
@@ -422,67 +387,20 @@ export function DashboardScreen() {
   const completedCount = projectRows.filter(
     (project) => isCompletedProjectForDashboard(project) && isProjectCompletedThisMonth(project, now),
   ).length;
-  const managerReviewProjects = useMemo(() => {
-    if (!safeUser || isDesigner || isClient) {
-      return projectRows;
-    }
-
-    const getStagePriority = (status: ProjectStatus) => {
-      switch (status) {
-        case "review":
-          return 0;
-        case "revision":
-          return 1;
-        case "active":
-          return 2;
-        default:
-          return 3;
-      }
-    };
-
-    return [...projectRows]
-      .map((project) => ({
-        ...project,
-        attentionCount: getVisibleTasksForUser(safeUser, project).filter(
-          (task) => task.status === "done" && task.managerReviewStatus === "internal",
-        ).length,
-      }))
-      .filter(
-        (project) =>
-          !isOnHoldProject(project) &&
-          (project.status === "review" || project.status === "revision" || project.status === "active"),
-      )
-      .sort((left, right) => {
-        const leftStagePriority = getStagePriority(left.status);
-        const rightStagePriority = getStagePriority(right.status);
-
-        if (leftStagePriority !== rightStagePriority) {
-          return leftStagePriority - rightStagePriority;
-        }
-
-        const leftDue = new Date(left.dueDate).getTime();
-        const rightDue = new Date(right.dueDate).getTime();
-
-        if (leftDue !== rightDue) {
-          return leftDue - rightDue;
-        }
-
-        return right.attentionCount - left.attentionCount;
-      });
-  }, [isClient, isDesigner, projectRows, safeUser]);
-
-  const priorityProjectPageCount = Math.max(1, Math.ceil(managerReviewProjects.length / PRIORITY_PROJECTS_PAGE_SIZE));
   const tasksPageCount = Math.max(1, Math.ceil(openTasks.length / TASKS_PAGE_SIZE));
-  const currentPriorityPage = Math.min(priorityPage, priorityProjectPageCount);
   const currentTasksPage = Math.min(tasksPage, tasksPageCount);
-  const priorityProjects = managerReviewProjects.slice(
-    (currentPriorityPage - 1) * PRIORITY_PROJECTS_PAGE_SIZE,
-    currentPriorityPage * PRIORITY_PROJECTS_PAGE_SIZE,
+  const compactGanttProjects = useMemo(
+    () =>
+      projectRows
+        .filter((project) => !isCompletedProjectForDashboard(project))
+        .slice()
+        .sort(compareProjectsByWorkflowPriority),
+    [projectRows],
   );
-  const mobileProjects = (isClient
-    ? projectRows.filter((project) => !isCompletedProjectForDashboard(project) && !isOnHoldProject(project))
-    : priorityProjects
-  ).slice(0, 3);
+  const mobilePriorityProjects = useMemo(
+    () => [...projectRows].sort(compareProjectsByWorkflowPriority).slice(0, MOBILE_PROJECT_CAP),
+    [projectRows],
+  );
   const dashboardTasks = openTasks.slice(
     (currentTasksPage - 1) * TASKS_PAGE_SIZE,
     currentTasksPage * TASKS_PAGE_SIZE,
@@ -1074,59 +992,38 @@ export function DashboardScreen() {
         <MobileDashboardStack>
           <Panel>
             <PanelHeader>
-              <PanelTitle>{isDesigner ? "Projects" : isClient ? "Active Projects" : "Priority Projects"}</PanelTitle>
-              {(isDesigner
-                ? projectRows.length > 3
-                : isClient
-                  ? projectRows.filter((project) => !isCompletedProjectForDashboard(project) && !isOnHoldProject(project)).length > 3
-                  : managerReviewProjects.length > 3) ? (
-                <PanelLink href={scopedHref("/projects")}>View all</PanelLink>
-              ) : null}
+              <PanelTitle>{isClient ? "Active Projects" : isDesigner ? "Assigned Projects" : "Priority Projects"}</PanelTitle>
+              {projectRows.length > MOBILE_PROJECT_CAP ? <PanelLink href={scopedHref("/projects")}>View all</PanelLink> : null}
             </PanelHeader>
-              <PanelContentArea $minHeight={218} $desktopMinHeight={208}>
-                <ProjectList>
-                  {mobileProjects.length ? (
-                    mobileProjects.map((project) => {
-                      return (
-                        <MobileProjectRow key={project.id} href={scopedHref(`/projects/${project.id}`)}>
-                          <ProjectMark organization={getProjectOrganization(project, state.clientOrganizations)} />
-                          <ProjectBody>
-                            <MobileProjectHeader>
-                              <div>
-                                <ProjectTitle>{project.name}</ProjectTitle>
-                                <TaskSub>{project.clientName}</TaskSub>
-                              </div>
-                              <MobileDueText>{formatShortDate(project.dueDate)}</MobileDueText>
-                            </MobileProjectHeader>
-                            <MobileProjectFooter>
-                              <MobileMetaText>{formatProjectStage(project.stage)}</MobileMetaText>
-                              <ProjectStageProgress stage={project.stage} size="sm" />
-                            </MobileProjectFooter>
-                          </ProjectBody>
-                        </MobileProjectRow>
-                      );
-                    })
-                  ) : (
-                    <EmptyBlock $mobileMinHeight={218}>
-                      <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
-                      <strong>
-                        {isDesigner
-                          ? "No assigned projects yet"
-                          : isClient
-                            ? "No active projects yet"
-                            : "No projects awaiting review"}
-                      </strong>
-                      <p>
-                        {isDesigner
-                          ? "Projects assigned to you will appear here."
-                          : isClient
-                            ? "Projects shared with your organization will appear here."
-                            : "Projects with tasks submitted for internal review will appear here."}
-                      </p>
-                    </EmptyBlock>
-                  )}
-                </ProjectList>
-              </PanelContentArea>
+            <PanelContentArea $minHeight={190} $desktopMinHeight={208}>
+              {mobilePriorityProjects.length ? (
+                <DashboardProjectList>
+                  {mobilePriorityProjects.map((project) => (
+                    <DashboardProjectRow key={project.id} href={scopedHref(`/projects/${project.id}`)}>
+                      <DashboardProjectIcon
+                        organization={getProjectOrganization(project, state.clientOrganizations)}
+                      />
+                      <DashboardProjectCopy>
+                        <DashboardProjectTitle>{project.projectRequestName || project.name}</DashboardProjectTitle>
+                        <DashboardProjectMeta>{project.clientName}</DashboardProjectMeta>
+                        <DashboardProjectMeta>
+                          Due {formatShortDate(project.finalDeliverableDate ?? project.dueDate)}
+                        </DashboardProjectMeta>
+                      </DashboardProjectCopy>
+                      <DashboardProjectPill $rank={getProjectWorkflowRank(project)}>
+                        {project.stage}
+                      </DashboardProjectPill>
+                    </DashboardProjectRow>
+                  ))}
+                </DashboardProjectList>
+              ) : (
+                <EmptyBlock $mobileMinHeight={190}>
+                  <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
+                  <strong>No projects yet</strong>
+                  <p>Projects will appear here once work is created.</p>
+                </EmptyBlock>
+              )}
+            </PanelContentArea>
           </Panel>
 
           <Panel>
@@ -1370,81 +1267,18 @@ export function DashboardScreen() {
         <DesktopDashboard>
           <TopGrid>
             <Panel>
-              <PanelHeader>
-                <PanelTitle>{isDesigner ? "Projects" : "Priority Projects"}</PanelTitle>
-                {isDesigner ? null : managerReviewProjects.length > PRIORITY_PROJECTS_PAGE_SIZE ? <PanelLink href={scopedHref("/projects")}>View all</PanelLink> : null}
-              </PanelHeader>
-
-              <PanelContentArea $minHeight={208} $desktopMinHeight={208}>
-                <ProjectList>
-                  {priorityProjects.length ? (
-                    priorityProjects.map((project) => {
-                      const tone = getStatusTone(project.status);
-                      return (
-                        <ProjectRow key={project.id} href={scopedHref(`/projects/${project.id}`)}>
-                          <ProjectMark organization={getProjectOrganization(project, state.clientOrganizations)} />
-                          <ProjectBody>
-                            <ProjectTop>
-                              <ProjectTitle>{project.name}</ProjectTitle>
-                              <MetaGroup>
-                                <MetaLabel>Due date</MetaLabel>
-                                <MetaValue>{formatDueDate(project.dueDate)}</MetaValue>
-                              </MetaGroup>
-                              <MetaGroup>
-                                <MetaLabel>Stage</MetaLabel>
-                                <MetaValue>{formatProjectStage(project.stage)}</MetaValue>
-                              </MetaGroup>
-                              <MetaGroup>
-                                <MetaLabel>Progress</MetaLabel>
-                                <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
-                              </MetaGroup>
-                            </ProjectTop>
-
-                            <ProjectStatusRow>
-                              <StatusPill style={{ background: tone.bg, color: tone.fg }}>
-                                {getProjectStatusLabel(project.status)}
-                              </StatusPill>
-                            </ProjectStatusRow>
-                          </ProjectBody>
-                        </ProjectRow>
-                      );
-                    })
-                  ) : (
-                    <EmptyBlock $mobileMinHeight={208}>
-                      <EmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
-                      <strong>{isDesigner ? "No assigned projects yet" : "No projects awaiting review"}</strong>
-                      <p>
-                        {isDesigner
-                          ? "Projects assigned to you will appear here."
-                          : "Projects with tasks submitted for internal review will appear here."}
-                      </p>
-                    </EmptyBlock>
-                  )}
-                </ProjectList>
+              <PanelContentArea $minHeight={214} $desktopMinHeight={214}>
+                <GanttChart
+                  projects={compactGanttProjects}
+                  clientOrganizations={state.clientOrganizations}
+                  compact
+                  rangeMode="overview"
+                  hrefBuilder={(project) => scopedHref(`/projects/${project.id}`)}
+                  title={isDesigner ? "Project Timeline" : "Gantt Overview"}
+                  viewAllHref={scopedHref("/gantt")}
+                  maxVisibleRows={4}
+                />
               </PanelContentArea>
-              {managerReviewProjects.length > PRIORITY_PROJECTS_PAGE_SIZE ? (
-                <PanelPagination>
-                  <PageButton
-                    type="button"
-                    onClick={() => setPriorityPage((current) => Math.max(1, current - 1))}
-                    disabled={currentPriorityPage === 1}
-                  >
-                    Prev
-                  </PageButton>
-                  <PageMeta>
-                    {currentPriorityPage} / {priorityProjectPageCount}
-                  </PageMeta>
-                  <PageButton
-                    type="button"
-                    onClick={() =>
-                      setPriorityPage((current) => Math.min(priorityProjectPageCount, current + 1))
-                    }
-                    disabled={currentPriorityPage === priorityProjectPageCount}
-                  >
-                    Next
-                  </PageButton>
-                </PanelPagination>
-              ) : null}
             </Panel>
 
             <Panel>
@@ -2227,149 +2061,6 @@ const interactiveHoverCss = css`
   }
 `;
 
-const ProjectList = styled.div`
-  display: grid;
-  gap: 6px;
-`;
-
-const ProjectRow = styled(Link)`
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  text-decoration: none;
-  padding: 8px 0;
-  border-top: 1px solid rgba(230, 224, 215, 0.65);
-  border-radius: 14px;
-
-  ${interactiveHoverCss}
-
-  &:first-child {
-    padding-top: 0;
-    border-top: 0;
-  }
-
-  ${desktop} {
-    grid-template-columns: 58px minmax(0, 1fr);
-    gap: 12px;
-    padding: 10px 0;
-  }
-`;
-
-const MobileProjectRow = styled(Link)`
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  text-decoration: none;
-  padding: 10px 0;
-  border-top: 1px solid rgba(230, 224, 215, 0.65);
-  border-radius: 14px;
-
-  ${interactiveHoverCss}
-
-  &:first-child {
-    padding-top: 0;
-    border-top: 0;
-  }
-`;
-
-const ProjectMark = styled(ClientTitleLogo)`
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
-  color: #8c7040;
-  font-size: 0.95rem;
-  font-weight: 600;
-  object-fit: cover;
-
-  ${desktop} {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    font-size: 1.05rem;
-  }
-`;
-
-const ProjectBody = styled.div`
-  display: grid;
-  gap: 4px;
-`;
-
-const MobileProjectHeader = styled.div`
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-`;
-
-const MobileProjectFooter = styled.div`
-  display: grid;
-  gap: 4px;
-`;
-
-const MobileMetaText = styled.span`
-  color: var(--color-text-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-`;
-
-const MobileDueText = styled.span`
-  color: var(--color-text-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.1;
-  white-space: nowrap;
-`;
-
-const ProjectTop = styled.div`
-  display: grid;
-  gap: 8px;
-
-  ${desktop} {
-    grid-template-columns: minmax(0, 1.8fr) repeat(3, minmax(88px, auto));
-    align-items: end;
-    gap: 12px;
-  }
-`;
-
-const ProjectTitle = styled.strong`
-  display: block;
-  font-size: 0.78rem;
-  line-height: 1.2;
-
-  ${desktop} {
-    font-size: 0.86rem;
-  }
-`;
-
-const MetaGroup = styled.div`
-  display: grid;
-  gap: 4px;
-  align-content: start;
-`;
-
-const MetaLabel = styled.span`
-  color: var(--color-text-light);
-  font-size: 0.64rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-`;
-
-const MetaValue = styled.strong`
-  font-size: 0.72rem;
-  line-height: 1.2;
-`;
-
-const ProjectStatusRow = styled.div`
-  display: flex;
-  justify-content: flex-start;
-`;
-
 const StatusPill = styled.span`
   display: inline-flex;
   align-items: center;
@@ -2385,6 +2076,91 @@ const StatusPill = styled.span`
 const TaskList = styled.div`
   display: grid;
   gap: 10px;
+`;
+
+const DashboardProjectList = styled.div`
+  display: grid;
+  gap: 8px;
+  max-height: 196px;
+  overflow-y: auto;
+  padding-right: 2px;
+`;
+
+const DashboardProjectRow = styled(Link)`
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 12px;
+
+  ${interactiveHoverCss}
+`;
+
+const DashboardProjectIcon = styled(ClientTitleLogo)`
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(228, 219, 208, 0.92);
+  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
+  color: #8c7040;
+  font-size: 0.76rem;
+  font-weight: 700;
+  object-fit: cover;
+`;
+
+const DashboardProjectCopy = styled.div`
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+`;
+
+const DashboardProjectTitle = styled.strong`
+  font-size: 0.82rem;
+  line-height: 1.25;
+`;
+
+const DashboardProjectMeta = styled.span`
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+`;
+
+const DashboardProjectPill = styled.span<{ $rank: number }>`
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: ${({ $rank }) =>
+    $rank === 0
+      ? "rgba(251, 239, 207, 0.96)"
+      : $rank === 1
+        ? "rgba(251, 231, 227, 0.98)"
+        : $rank === 2
+          ? "rgba(229, 244, 232, 0.98)"
+          : $rank === 5
+            ? "rgba(229, 244, 232, 0.98)"
+          : $rank === 4
+            ? "rgba(244, 241, 237, 0.98)"
+            : "rgba(230, 239, 255, 0.98)"};
+  color: ${({ $rank }) =>
+    $rank === 0
+      ? "#c58911"
+      : $rank === 1
+        ? "#d36c57"
+        : $rank === 2
+          ? "#1f4339"
+          : $rank === 5
+            ? "#5ca16d"
+          : $rank === 4
+            ? "#8d857b"
+            : "#4770d8"};
+  font-size: 0.65rem;
+  font-weight: 700;
+  white-space: nowrap;
 `;
 
 const TaskRow = styled(Link)`
@@ -3167,15 +2943,6 @@ const EmptyImage = styled.img`
   }
 `;
 
-function IconHome() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 10.5 12 4l8 6.5" />
-      <path d="M6.5 9.5V20h11V9.5" />
-    </svg>
-  );
-}
-
 function IconFolder() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -3201,15 +2968,6 @@ function IconCheckTiny() {
   );
 }
 
-function IconUser() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="8" r="3.5" />
-      <path d="M5.5 19a6.5 6.5 0 0 1 13 0" />
-    </svg>
-  );
-}
-
 function IconUsers() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -3217,35 +2975,6 @@ function IconUsers() {
       <circle cx="17" cy="10" r="2.5" />
       <path d="M4.5 18a5.5 5.5 0 0 1 9 0" />
       <path d="M14.5 18a4.5 4.5 0 0 1 5-3.7" />
-    </svg>
-  );
-}
-
-function IconCalendar() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="6" width="16" height="14" rx="2.5" />
-      <path d="M8 4v4M16 4v4M4 10h16" />
-    </svg>
-  );
-}
-
-function IconChart() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 19V9" />
-      <path d="M12 19V5" />
-      <path d="M19 19v-7" />
-      <path d="M4 19h16" />
-    </svg>
-  );
-}
-
-function IconFile() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 3.5h6l4 4V20a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 7 20V5a1.5 1.5 0 0 1 1-1.5Z" />
-      <path d="M14 3.5V8h4" />
     </svg>
   );
 }

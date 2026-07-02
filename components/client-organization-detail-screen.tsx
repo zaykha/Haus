@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { BrandColorPicker } from "@/components/brand-color-picker";
 import { ClientTitleLogo } from "@/components/client-title-logo";
 import { ConfirmActionModal } from "@/components/confirm-action-modal";
+import { GanttChart } from "@/components/gantt-chart";
 import { HeaderProfileAvatarLink } from "@/components/header-profile-avatar-link";
 import { InviteWorkspaceModal } from "@/components/invite-workspace-modal";
 import { useAppState } from "@/components/app-state";
@@ -460,15 +461,15 @@ export function ClientOrganizationDetailScreen({
       return (left.projectRequestName || left.name).localeCompare(right.projectRequestName || right.name);
     })
     .slice(0, 3);
-  const clientPriorityProjects = organizationProjects
-    .filter(
-      (project) =>
-        !isProjectCompleted(project) &&
-        !isProjectOnHold(project),
-    )
+  const mobileActiveProjects = activeProjects
     .slice()
     .sort(compareProjectsByWorkflowPriority)
-    .slice(0, 3);
+    .slice(0, PROJECT_LIST_CAP);
+  const clientGanttProjects = organizationProjects
+    .filter((project) => !isProjectCompleted(project))
+    .slice()
+    .sort(compareProjectsByWorkflowPriority)
+    ;
   const totalProjectsForOverview = Math.max(organizationProjects.length, 1);
   const completedProjectsPct = Math.round((completedProjects.length / totalProjectsForOverview) * 100);
   const inProgressProjectsPct = Math.round((activeProjects.length / totalProjectsForOverview) * 100);
@@ -726,69 +727,62 @@ export function ClientOrganizationDetailScreen({
           </ClientHomeHero>
 
           <ClientHomeGrid>
-            <ClientHomePanel>
+            <ClientHomeMobileOnlyPanel>
               <SectionHeader>
                 <PanelTitle>Active Projects</PanelTitle>
-                {organizationProjects.length > PROJECT_LIST_CAP ? (
+                {activeProjects.length > PROJECT_LIST_CAP ? (
                   <SectionLink href={scopedHref("/projects")}>View all projects</SectionLink>
                 ) : null}
               </SectionHeader>
-              <ClientHomeContentArea $minHeight={252} $desktopMinHeight={256}>
-                {clientPriorityProjects.length ? (
+              <ClientHomeContentArea $minHeight={188} $desktopMinHeight={188}>
+                {mobileActiveProjects.length ? (
                   <ClientHomeList>
-                    {clientPriorityProjects.map((project) => {
+                    {mobileActiveProjects.map((project) => {
                       const tone = getClientProjectTone(project.status, project.stage);
-                      const needsClientReview = isProjectPendingReview(project);
                       return (
-                        <ClientProjectCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
-                          <ClientProjectGlyph
-                            organization={
-                              project.clientOrganizationId
-                                ? state.clientOrganizations.find(
-                                    (clientOrganization) => clientOrganization.id === project.clientOrganizationId,
-                                  ) ?? rawOrganization
-                                : rawOrganization
-                            }
-                          />
-                          <ClientProjectBody>
-                            <ClientHomeProjectHeader>
-                              <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
-                              <ClientHomeProjectDue>{formatShortDate(project.finalDeliverableDate ?? project.dueDate)}</ClientHomeProjectDue>
-                            </ClientHomeProjectHeader>
-                            <ClientProjectTop>
-                              <ClientProjectMetaGroup>
-                                <ClientProjectMetaLabel>Due date</ClientProjectMetaLabel>
-                                <ClientProjectMetaValue>{formatDate(project.finalDeliverableDate ?? project.dueDate)}</ClientProjectMetaValue>
-                              </ClientProjectMetaGroup>
-                              <ClientProjectMetaGroup>
-                                <ClientProjectMetaLabel>Stage</ClientProjectMetaLabel>
-                                <ClientProjectMetaValue>{formatProjectStage(project.stage)}</ClientProjectMetaValue>
-                              </ClientProjectMetaGroup>
-                              <ClientProjectMetaGroup>
-                                <ClientProjectMetaLabel>Progress</ClientProjectMetaLabel>
-                                <ProjectStageProgress stage={project.stage} size="sm" showStageLabel={false} />
-                              </ClientProjectMetaGroup>
-                            </ClientProjectTop>
-                            <ClientProjectStatusRow>
-                              {needsClientReview ? <ClientAttentionPill>Needs Review</ClientAttentionPill> : null}
-                              <ClientProjectStatusPill style={{ background: tone.bg, color: tone.fg }}>
-                                {getClientProjectStatusLabel(project.status, project.stage)}
-                              </ClientProjectStatusPill>
-                            </ClientProjectStatusRow>
-                          </ClientProjectBody>
-                        </ClientProjectCard>
+                        <CompactDeliveryCard key={project.id} href={scopedHref(`/projects/${project.id}`)}>
+                          <CompactDeliveryIcon>
+                            <IconBriefcase />
+                          </CompactDeliveryIcon>
+                          <CompactDeliveryBody>
+                            <ClientProjectTitle>{project.projectRequestName || project.name}</ClientProjectTitle>
+                            <CompactDeliveryMeta>{formatProjectStage(project.stage)}</CompactDeliveryMeta>
+                            <CompactDeliveryMeta>Due {formatDate(project.finalDeliverableDate ?? project.dueDate)}</CompactDeliveryMeta>
+                          </CompactDeliveryBody>
+                          <CompactDeliveryStatusPill style={{ background: tone.bg, color: tone.fg }}>
+                            {getClientProjectStatusLabel(project.status, project.stage)}
+                          </CompactDeliveryStatusPill>
+                          <CompactDeliveryArrow>
+                            <IconChevronRight />
+                          </CompactDeliveryArrow>
+                        </CompactDeliveryCard>
                       );
                     })}
                   </ClientHomeList>
                 ) : (
                   <ClientEmptyState $mobileMinHeight={188}>
                     <ClientEmptyImage src="/no-data.webp" alt="" aria-hidden="true" />
-                    <strong>No active projects for this organization yet.</strong>
-                    <p>Projects shared with this organization will appear here.</p>
+                    <strong>No active projects right now.</strong>
+                    <p>Projects in motion will appear here.</p>
                   </ClientEmptyState>
                 )}
               </ClientHomeContentArea>
-            </ClientHomePanel>
+            </ClientHomeMobileOnlyPanel>
+
+            <ClientHomeDesktopOnlyPanel>
+              <ClientHomeContentArea $minHeight={214} $desktopMinHeight={214}>
+                <GanttChart
+                  projects={clientGanttProjects}
+                  clientOrganizations={state.clientOrganizations}
+                  compact
+                  rangeMode="overview"
+                  hrefBuilder={(project) => scopedHref(`/projects/${project.id}`)}
+                  title="Gantt Overview"
+                  viewAllHref={scopedHref("/gantt")}
+                  maxVisibleRows={4}
+                />
+              </ClientHomeContentArea>
+            </ClientHomeDesktopOnlyPanel>
 
             <ClientHomePanel>
               <SectionHeader>
@@ -2954,7 +2948,7 @@ const ClientHomeGrid = styled.section`
 
   ${desktop} {
     grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-    align-items: start;
+    align-items: stretch;
     gap: 14px;
   }
 `;
@@ -2965,6 +2959,8 @@ const ClientHomePanel = styled.section`
   gap: 10px;
   padding: 12px;
   border-radius: 20px;
+  min-width: 0;
+  overflow: hidden;
 
   ${desktop} {
     gap: 12px;
@@ -2972,9 +2968,28 @@ const ClientHomePanel = styled.section`
   }
 `;
 
+const ClientHomeMobileOnlyPanel = styled(ClientHomePanel)`
+  ${desktop} {
+    display: none;
+  }
+`;
+
+const ClientHomeDesktopOnlyPanel = styled(ClientHomePanel)`
+  display: none;
+
+  ${desktop} {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+`;
+
 const ClientHomeContentArea = styled.div<{ $minHeight: number; $desktopMinHeight?: number }>`
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
 
   ${desktop} {
     min-height: ${({ $desktopMinHeight, $minHeight }) => `${$desktopMinHeight ?? $minHeight}px`};
@@ -3157,69 +3172,6 @@ const BrandActionRow = styled.div`
   gap: 8px;
 `;
 
-const ClientProjectCard = styled(Link)`
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 10px;
-  align-items: flex-start;
-  padding: 10px 0;
-  border-top: 1px solid rgba(230, 224, 215, 0.72);
-  border-radius: 14px;
-  text-decoration: none;
-  color: inherit;
-  transition:
-    transform 160ms ease,
-    box-shadow 160ms ease,
-    border-color 160ms ease,
-    background 160ms ease;
-
-  &:first-child {
-    padding-top: 0;
-    border-top: 0;
-  }
-
-  &:hover {
-    transform: translateY(-2px);
-    background: rgba(255, 248, 239, 0.82);
-    box-shadow: 0 14px 24px rgba(31, 67, 57, 0.06);
-  }
-
-  ${desktop} {
-    grid-template-columns: 56px minmax(0, 1fr);
-    gap: 12px;
-    padding: 12px 0;
-  }
-`;
-
-const ClientProjectGlyph = styled(ClientTitleLogo)`
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, #ede5d8, #f8f4ee);
-  color: #8c7040;
-  font-size: 0.95rem;
-  font-weight: 600;
-  object-fit: cover;
-
-  ${desktop} {
-    width: 42px;
-    height: 42px;
-    font-size: 1.05rem;
-  }
-`;
-
-const ClientProjectBody = styled.div`
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-
-  ${desktop} {
-    gap: 8px;
-  }
-`;
-
 const ClientProjectTitle = styled.strong`
   color: #1f1f1f;
   font-size: 0.78rem;
@@ -3230,84 +3182,6 @@ const ClientProjectTitle = styled.strong`
     font-size: 0.88rem;
     white-space: nowrap;
   }
-`;
-
-const ClientHomeProjectHeader = styled.div`
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-
-  ${desktop} {
-    display: none;
-  }
-`;
-
-const ClientHomeProjectDue = styled.span`
-  color: var(--color-text-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.1;
-  white-space: nowrap;
-`;
-
-const ClientHomeProjectStage = styled.span`
-  color: var(--color-text-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-
-  ${desktop} {
-    display: none;
-  }
-`;
-
-const ClientProjectTop = styled.div`
-  display: grid;
-  gap: 4px;
-
-  ${desktop} {
-    gap: 16px;
-  }
-
-  @media (max-width: 767px) {
-    > :first-child,
-    > :nth-child(2) {
-      display: none;
-    }
-  }
-
-  ${desktop} {
-    grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(92px, auto));
-    align-items: start;
-  }
-`;
-
-const ClientProjectMetaGroup = styled.div`
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-`;
-
-const ClientProjectMetaLabel = styled.span`
-  color: var(--color-text-light);
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-`;
-
-const ClientProjectMetaValue = styled.strong`
-  color: #1f1f1f;
-  font-size: 0.8rem;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-`;
-
-const ClientProjectStatusRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
 `;
 
 const ClientProjectStatusPill = styled.span`
