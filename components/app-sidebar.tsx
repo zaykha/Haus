@@ -46,6 +46,8 @@ export function AppSidebar({
         <IconHome />
       ) : item.label === "Projects" ? (
         <IconFolder />
+      ) : item.label === "Gantt" ? (
+        <IconTimeline />
       ) : item.label === "Tasks" ? (
         <IconCheckCircle />
       ) : item.label === "Chat" ? (
@@ -240,6 +242,19 @@ function IconUsers() {
       <circle cx="17" cy="10" r="2.5" />
       <path d="M4.5 18a5.5 5.5 0 0 1 9 0" />
       <path d="M14.5 18a4.5 4.5 0 0 1 5-3.7" />
+    </svg>
+  );
+}
+
+function IconTimeline() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7.5h6" />
+      <path d="M14 7.5h6" />
+      <path d="M4 16.5h3" />
+      <path d="M11 16.5h9" />
+      <circle cx="12" cy="7.5" r="2.2" />
+      <circle cx="9" cy="16.5" r="2.2" />
     </svg>
   );
 }

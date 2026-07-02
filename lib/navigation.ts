@@ -1,6 +1,6 @@
 import { Role } from "@/lib/types";
 
-export type AppNavLabel = "Home" | "Projects" | "Tasks" | "Clients" | "Liaisons" | "Chat" | "Team";
+export type AppNavLabel = "Home" | "Projects" | "Gantt" | "Tasks" | "Clients" | "Liaisons" | "Chat" | "Team";
 
 
 export type AppNavItem = {
