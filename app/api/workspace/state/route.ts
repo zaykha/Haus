@@ -181,9 +181,10 @@ const defaultDepartments = [
   "Human Resource",
   "IT",
   "Legal",
-  "Marketing & Branding",
+  "Marketing",
   "Procurement",
   "R&D and Technical",
+  "Sales",
   "Warehouse",
 ];
 

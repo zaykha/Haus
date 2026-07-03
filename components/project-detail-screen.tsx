@@ -2574,18 +2574,33 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
 
         <HeroDesktopGrid>
           <HeroPillRow>
-            <HeroDetailPill type="button" onClick={() => setHeroDetailPanel("brief")}>
-              <IconDocument />
-              Project Brief
-            </HeroDetailPill>
-            <HeroDetailPill type="button" onClick={() => setHeroDetailPanel("objective")}>
-              <IconTarget />
-              Project Objective
-            </HeroDetailPill>
-            <HeroDetailPill type="button" onClick={() => setHeroDetailPanel("advice")}>
-              <IconSpark />
-              Creative Advice
-            </HeroDetailPill>
+            <HeroDetailCard>
+              <HeroDetailCardHeader>
+                <HeroDetailCardTitle>
+                  <IconDocument />
+                  Project Brief
+                </HeroDetailCardTitle>
+              </HeroDetailCardHeader>
+              <HeroDetailCardCopy>{project.projectBrief || project.description || "No project brief yet."}</HeroDetailCardCopy>
+            </HeroDetailCard>
+            <HeroDetailCard>
+              <HeroDetailCardHeader>
+                <HeroDetailCardTitle>
+                  <IconTarget />
+                  Project Objective
+                </HeroDetailCardTitle>
+              </HeroDetailCardHeader>
+              <HeroDetailCardCopy>{project.projectObjective || "Not set"}</HeroDetailCardCopy>
+            </HeroDetailCard>
+            <HeroDetailCard>
+              <HeroDetailCardHeader>
+                <HeroDetailCardTitle>
+                  <IconSpark />
+                  Creative Advice
+                </HeroDetailCardTitle>
+              </HeroDetailCardHeader>
+              <HeroDetailCardCopy>{project.creativeAdvice || "Not set"}</HeroDetailCardCopy>
+            </HeroDetailCard>
             <WorkflowInlinePill>
               <WorkflowInlineCopy>
                 <MetaLabel>Project Workflow</MetaLabel>
@@ -3855,43 +3870,61 @@ const MobileHeroDetailArrow = styled.span`
 `;
 
 const HeroPillRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  gap: 12px;
+
+  ${desktop} {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+  }
 `;
 
 const WorkflowInlinePill = styled.div`
   ${cardSurface}
-  min-height: 40px;
-  display: inline-flex;
-  align-items: center;
+  min-height: 100%;
+  display: grid;
+  align-content: start;
   gap: 12px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  flex-wrap: wrap;
+  padding: 16px 18px;
+  border-radius: 22px;
+  grid-column: 1 / -1;
+
+  ${desktop} {
+    grid-template-columns: minmax(0, 1fr) minmax(160px, auto);
+    align-items: center;
+  }
 `;
 
 const WorkflowInlineCopy = styled.div`
-  display: inline-flex;
-  align-items: center;
+  display: grid;
   gap: 8px;
-  flex-wrap: wrap;
 `;
 
 const WorkflowInlineProgress = styled.div`
   min-width: 128px;
 `;
 
-const HeroDetailPill = styled.button`
-  ${outlineButton}
-  min-height: 40px;
-  padding: 0 16px;
+const HeroDetailCard = styled.div`
+  ${cardSurface}
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 170px;
+  padding: 16px 18px;
+  border-radius: 22px;
+`;
+
+const HeroDetailCardHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+`;
+
+const HeroDetailCardTitle = styled.div`
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  border-radius: 999px;
   font-size: 0.84rem;
   font-weight: 700;
   color: #6d5f4d;
@@ -3901,6 +3934,15 @@ const HeroDetailPill = styled.button`
     height: 16px;
     color: #aa7a2a;
   }
+`;
+
+const HeroDetailCardCopy = styled.p`
+  margin: 0;
+  color: #2e2a27;
+  font-size: 0.95rem;
+  line-height: 1.68;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 `;
 
 const HeroDetailCopy = styled.p`

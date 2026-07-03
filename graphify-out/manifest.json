@@ -15,8 +15,8 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/package.json": {
-    "mtime": 1781748677.057006,
-    "ast_hash": "67710d8fa05ed1a356ed8bd981135a7b",
+    "mtime": 1783053231.7234042,
+    "ast_hash": "344cdfa718733210e04a39222d5cbef1",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/ProjectDetailScreen.tsx": {
@@ -27,6 +27,16 @@
   "/Users/thihanaing/Haus/tsconfig.json": {
     "mtime": 1780902961.8822787,
     "ast_hash": "93db602de359111ffe5b00fb4a32953c",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright.config.ts": {
+    "mtime": 1783053567.714196,
+    "ast_hash": "6a022490d70fef7d6abf0181c961bea9",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/vitest.config.ts": {
+    "mtime": 1783054702.6480155,
+    "ast_hash": "30825abc9cd89fe8bede88c89d67d534",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/.eslintrc.json": {
@@ -115,7 +125,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/(app)/gantt/page.tsx": {
-    "mtime": 1782986742.1659796,
+    "mtime": 1783009433.5106218,
     "ast_hash": "c01e2b1ad426a609ede75f49da6242be",
     "semantic_hash": ""
   },
@@ -205,7 +215,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/route.ts": {
-    "mtime": 1782795553.838656,
+    "mtime": 1782795552.838656,
     "ast_hash": "48f3e842f2e3eafb67db7c512a8dbd65",
     "semantic_hash": ""
   },
@@ -220,7 +230,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/app/api/workspace/projects/[id]/attention/route.ts": {
-    "mtime": 1782805388.078783,
+    "mtime": 1782805387.078783,
     "ast_hash": "5c9f5f9412b8c5ed517a112be44782d1",
     "semantic_hash": ""
   },
@@ -302,6 +312,51 @@
   "/Users/thihanaing/Haus/app/onboarding/page.tsx": {
     "mtime": 1781236843.861477,
     "ast_hash": "322227b968d8131dfd68d52e980bdfae",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test/support/fake-supabase-admin.ts": {
+    "mtime": 1783054867.4316308,
+    "ast_hash": "c491b3dfe04d70962cdde517ee344613",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test/flow/invitations.flow.test.ts": {
+    "mtime": 1783054698.098127,
+    "ast_hash": "d8c1d9d22314997d38ef7374b92bd0e4",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/tests/e2e/smoke.spec.ts": {
+    "mtime": 1783053421.7345936,
+    "ast_hash": "37e78a59963de0ba29470a4231a1502f",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/tests/e2e/invite-onboarding.spec.ts": {
+    "mtime": 1783059694.1723719,
+    "ast_hash": "f11a175732705f893fd49eca6df96396",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/tests/e2e/project-flow.spec.ts": {
+    "mtime": 1783059694.1755407,
+    "ast_hash": "31a44011196a381f7ac9f51995984a27",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/tests/e2e/client-permissions.spec.ts": {
+    "mtime": 1783059694.1682935,
+    "ast_hash": "09c3cbd079da22d8247401e3cadaba88",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/tests/e2e/task-lifecycle.spec.ts": {
+    "mtime": 1783059694.177633,
+    "ast_hash": "da72bbcac167c0984d77b9d7c78bfc0e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/tests/e2e/helpers/selectors.ts": {
+    "mtime": 1783053384.4865208,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/tests/e2e/helpers/auth.ts": {
+    "mtime": 1783059694.132042,
+    "ast_hash": "f8a6cda4a09b4752387c6bb107cc35f6",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/supabase/migrations/20260616_projects_spreadsheet_columns.sql": {
@@ -435,7 +490,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/client-organization-detail-screen.tsx": {
-    "mtime": 1783009080.8247042,
+    "mtime": 1783009433.5503008,
     "ast_hash": "d282ed61fc94d83103d957b48cab0b54",
     "semantic_hash": ""
   },
@@ -480,7 +535,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/app-state.tsx": {
-    "mtime": 1782911071.524785,
+    "mtime": 1782911070.524785,
     "ast_hash": "99c1de3f36e6eaeba81d4181395da064",
     "semantic_hash": ""
   },
@@ -495,7 +550,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/gantt-screen.tsx": {
-    "mtime": 1783008293.9568996,
+    "mtime": 1783009433.5710533,
     "ast_hash": "32ea279f0bb86a598dcd797444e006e9",
     "semantic_hash": ""
   },
@@ -520,7 +575,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/app-sidebar.tsx": {
-    "mtime": 1782986764.9422143,
+    "mtime": 1783009433.517754,
     "ast_hash": "7b3dcf5189a87ce7987ad89ddc9168b1",
     "semantic_hash": ""
   },
@@ -530,12 +585,12 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/gantt-chart.tsx": {
-    "mtime": 1783009244.825376,
+    "mtime": 1783009433.5686426,
     "ast_hash": "712f064a1dfd09ceea53f6edd98aefe4",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/auth-loading-animation.tsx": {
-    "mtime": 1782917728.828279,
+    "mtime": 1782917727.828279,
     "ast_hash": "00367be5b70bc7a13310a7723b4e15da",
     "semantic_hash": ""
   },
@@ -580,7 +635,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/dashboard-screen.tsx": {
-    "mtime": 1783004531.8332174,
+    "mtime": 1783009433.565572,
     "ast_hash": "19b2087f79a28ffe7f84ee3fbd8562b2",
     "semantic_hash": ""
   },
@@ -605,7 +660,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/chat/use-chat-unread-total.ts": {
-    "mtime": 1782366760.141499,
+    "mtime": 1782366759.141499,
     "ast_hash": "3781d477258838fe28a1ea3a4f1a7dae",
     "semantic_hash": ""
   },
@@ -615,7 +670,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/components/chat/chat-screen.tsx": {
-    "mtime": 1782555810.664201,
+    "mtime": 1782555809.664201,
     "ast_hash": "a609e52e9f14fdf60cc88fce73b68c86",
     "semantic_hash": ""
   },
@@ -630,7 +685,7 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/public/vendor/lottie.min.js": {
-    "mtime": 1782916260.95137,
+    "mtime": 1782916259.95137,
     "ast_hash": "55bf86203909151984bef8cbe4739d64",
     "semantic_hash": ""
   },
@@ -639,13 +694,23 @@
     "ast_hash": "5312bab45a1555a15ba8cc6177f4cc49",
     "semantic_hash": ""
   },
+  "/Users/thihanaing/Haus/lib/task-completion-assets.test.ts": {
+    "mtime": 1783049605.8527732,
+    "ast_hash": "4617986811012f6195f85c5a8ce1ad85",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/project-code.test.ts": {
+    "mtime": 1783049461.4296584,
+    "ast_hash": "f6415ba6cae12ae393e0b486bc828b5a",
+    "semantic_hash": ""
+  },
   "/Users/thihanaing/Haus/lib/task-deliverable-upload.ts": {
     "mtime": 1781686084.927715,
     "ast_hash": "f40d389ff356d38aa0959426731cfb02",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/navigation.ts": {
-    "mtime": 1783006900.2393742,
+    "mtime": 1783009433.928385,
     "ast_hash": "ffa9f48a8b3a021e9dbe13c7a2c08bc9",
     "semantic_hash": ""
   },
@@ -710,13 +775,18 @@
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/gantt.ts": {
-    "mtime": 1783004277.0820162,
+    "mtime": 1783009433.9222445,
     "ast_hash": "294496857be9fc906b283cc5c58bb6d8",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/client-branding.ts": {
     "mtime": 1782555348.0353436,
     "ast_hash": "857833c9668ed155cac8cd32ff68ec54",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/project-ranking.test.ts": {
+    "mtime": 1783049542.5032547,
+    "ast_hash": "ce9fcc109b95705296ec62899541de3a",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/config.ts": {
@@ -732,6 +802,11 @@
   "/Users/thihanaing/Haus/lib/image-upload.ts": {
     "mtime": 1781768430.0695987,
     "ast_hash": "474e4fea0083ce717ee0cf270aa78d96",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/lib/permissions.test.ts": {
+    "mtime": 1783049572.159327,
+    "ast_hash": "a4b9a98faafe9cfcc22bad5385d7f8d6",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/lib/organization-logo-upload.ts": {
@@ -777,6 +852,11 @@
   "/Users/thihanaing/Haus/lib/supabase/server.ts": {
     "mtime": 1780902961.8972812,
     "ast_hash": "d4e719fe92fba2beaa564b6fd33ea5c6",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/.last-run.json": {
+    "mtime": 1783059187.806039,
+    "ast_hash": "f1e536f20460fab58d65e9bcae845cfc",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/TODO.md": {
@@ -847,6 +927,51 @@
   "/Users/thihanaing/Haus/docs/chat-image-attachments.md": {
     "mtime": 1782368737.9661484,
     "ast_hash": "73a85314adde0cd96195a0a5896d6d3c",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright-report/index.html": {
+    "mtime": 1783059187.8044975,
+    "ast_hash": "c415df13f4c8d1a153bafebc146ffa96",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright-report/data/0e71b20408d8ceea9f443fe34f4853a74f58a521.md": {
+    "mtime": 1783059187.7306807,
+    "ast_hash": "33a8346a7cb2c5050d37a3087f20ae45",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright-report/data/54e611972399e41278d297df77d2e711f4cfd247.md": {
+    "mtime": 1783059187.6774426,
+    "ast_hash": "407199ea175361bacb7e3c42d651bf06",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright-report/data/dd9a535212d614acda95f1e9a238df7ede44e679.md": {
+    "mtime": 1783059187.718213,
+    "ast_hash": "0fc7e1695c5f6fd28ff60d3b032bd070",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright-report/data/5a052e09e7a445e7ab3355b8caec6bdc3582c3c4.md": {
+    "mtime": 1783059187.7071946,
+    "ast_hash": "5f0bf0b4764fc7ba22a21df8f04b5160",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/client-permissions-client--75d64-isible-project-task-content-chrome/error-context.md": {
+    "mtime": 1783059099.7333484,
+    "ast_hash": "407199ea175361bacb7e3c42d651bf06",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/task-lifecycle-manager-can-166ad-it-through-review-lifecycle-chrome/error-context.md": {
+    "mtime": 1783059187.0371065,
+    "ast_hash": "33a8346a7cb2c5050d37a3087f20ae45",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/project-flow-manager-can-c-91b95-ect-and-open-project-detail-chrome/error-context.md": {
+    "mtime": 1783059178.5311024,
+    "ast_hash": "0fc7e1695c5f6fd28ff60d3b032bd070",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/invite-onboarding-manager--67499--modal-and-create-an-invite-chrome/error-context.md": {
+    "mtime": 1783059099.928783,
+    "ast_hash": "5f0bf0b4764fc7ba22a21df8f04b5160",
     "semantic_hash": ""
   },
   "/Users/thihanaing/Haus/public/no-data.webp": {
@@ -1117,6 +1242,71 @@
   "/Users/thihanaing/Haus/public/farm-oriented-animals/pig.webp": {
     "mtime": 1782820934.0510695,
     "ast_hash": "0877ad2bb64b6b90e8889479a109ee5e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright-report/data/aaac03a683bef91f3545c7d24e588ad635f1f376.png": {
+    "mtime": 1783059187.721848,
+    "ast_hash": "e7bd63bab10266555b9dd85f1929332e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/client-permissions-client--75d64-isible-project-task-content-chrome/test-failed-1.png": {
+    "mtime": 1783059088.9081998,
+    "ast_hash": "e7bd63bab10266555b9dd85f1929332e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/task-lifecycle-manager-can-166ad-it-through-review-lifecycle-chrome/test-failed-1.png": {
+    "mtime": 1783059176.5283117,
+    "ast_hash": "e7bd63bab10266555b9dd85f1929332e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/project-flow-manager-can-c-91b95-ect-and-open-project-detail-chrome/test-failed-1.png": {
+    "mtime": 1783059163.8952377,
+    "ast_hash": "e7bd63bab10266555b9dd85f1929332e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/invite-onboarding-manager--67499--modal-and-create-an-invite-chrome/test-failed-1.png": {
+    "mtime": 1783059088.7858841,
+    "ast_hash": "e7bd63bab10266555b9dd85f1929332e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright-report/data/d2038d2a8102c1cf8bbee05880cc009bd625c87b.webm": {
+    "mtime": 1783059187.7294044,
+    "ast_hash": "c092f263fe13d7af4834cf80d2d60c46",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright-report/data/d19cc9fa37718fb66792f6535b7ebcdf4f6d5d22.webm": {
+    "mtime": 1783059187.7061071,
+    "ast_hash": "4719622b57b335bc16e89b32728b933a",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright-report/data/6e2e74c279489fc3dac4bcbac726868d98f1bc92.webm": {
+    "mtime": 1783059187.7172787,
+    "ast_hash": "2a7eadcf38a0e14233097517f230905e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/playwright-report/data/df0ddba9a296eb91b0d33f309194b48a54110ff8.webm": {
+    "mtime": 1783059187.6761472,
+    "ast_hash": "4d8d1190e6f23c6dbfb5898b1882d9fc",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/client-permissions-client--75d64-isible-project-task-content-chrome/video.webm": {
+    "mtime": 1783059099.728259,
+    "ast_hash": "4d8d1190e6f23c6dbfb5898b1882d9fc",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/task-lifecycle-manager-can-166ad-it-through-review-lifecycle-chrome/video.webm": {
+    "mtime": 1783059187.0266914,
+    "ast_hash": "c092f263fe13d7af4834cf80d2d60c46",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/project-flow-manager-can-c-91b95-ect-and-open-project-detail-chrome/video.webm": {
+    "mtime": 1783059178.509911,
+    "ast_hash": "2a7eadcf38a0e14233097517f230905e",
+    "semantic_hash": ""
+  },
+  "/Users/thihanaing/Haus/test-results/invite-onboarding-manager--67499--modal-and-create-an-invite-chrome/video.webm": {
+    "mtime": 1783059099.9204462,
+    "ast_hash": "4719622b57b335bc16e89b32728b933a",
     "semantic_hash": ""
   }
 }

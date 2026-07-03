@@ -21,7 +21,6 @@ const projectTypeOptions = [
   "Packaging Design",
   "Website Design",
   "Campaign",
-  "Corporate Admin",
   "KV (Key Visual)",
   "Packaging",
   "Prints",
