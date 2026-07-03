@@ -5,3 +5,10 @@ dist
 .DS_Store
 .env.local
 coverage
+.nyc_output
+.playwright
+blob-report
+playwright-report
+test-results
+tsconfig.tsbuildinfo
+graphify-out/cache/

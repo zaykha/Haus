@@ -1,16 +1,16 @@
 # Graph Report - Haus  (2026-07-03)
 
 ## Corpus Check
-- 170 files · ~261,235 words
+- 194 files · ~293,941 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3271 nodes · 4682 edges · 120 communities (105 shown, 15 thin omitted)
+- 3449 nodes · 4907 edges · 140 communities (122 shown, 18 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8b425a44`
+- Built from commit: `8c5f0a65`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -78,6 +78,7 @@
 - [[_COMMUNITY_Community 62|Community 62]]
 - [[_COMMUNITY_Community 63|Community 63]]
 - [[_COMMUNITY_Community 65|Community 65]]
+- [[_COMMUNITY_Community 66|Community 66]]
 - [[_COMMUNITY_Community 67|Community 67]]
 - [[_COMMUNITY_Community 68|Community 68]]
 - [[_COMMUNITY_Community 69|Community 69]]
@@ -104,6 +105,8 @@
 - [[_COMMUNITY_Community 94|Community 94]]
 - [[_COMMUNITY_Community 95|Community 95]]
 - [[_COMMUNITY_Community 96|Community 96]]
+- [[_COMMUNITY_Community 97|Community 97]]
+- [[_COMMUNITY_Community 98|Community 98]]
 - [[_COMMUNITY_Community 99|Community 99]]
 - [[_COMMUNITY_Community 100|Community 100]]
 - [[_COMMUNITY_Community 101|Community 101]]
@@ -119,11 +122,26 @@
 - [[_COMMUNITY_Community 111|Community 111]]
 - [[_COMMUNITY_Community 112|Community 112]]
 - [[_COMMUNITY_Community 113|Community 113]]
+- [[_COMMUNITY_Community 114|Community 114]]
 - [[_COMMUNITY_Community 115|Community 115]]
 - [[_COMMUNITY_Community 116|Community 116]]
 - [[_COMMUNITY_Community 117|Community 117]]
+- [[_COMMUNITY_Community 118|Community 118]]
 - [[_COMMUNITY_Community 119|Community 119]]
+- [[_COMMUNITY_Community 120|Community 120]]
 - [[_COMMUNITY_Community 121|Community 121]]
+- [[_COMMUNITY_Community 122|Community 122]]
+- [[_COMMUNITY_Community 124|Community 124]]
+- [[_COMMUNITY_Community 127|Community 127]]
+- [[_COMMUNITY_Community 128|Community 128]]
+- [[_COMMUNITY_Community 129|Community 129]]
+- [[_COMMUNITY_Community 130|Community 130]]
+- [[_COMMUNITY_Community 131|Community 131]]
+- [[_COMMUNITY_Community 132|Community 132]]
+- [[_COMMUNITY_Community 133|Community 133]]
+- [[_COMMUNITY_Community 134|Community 134]]
+- [[_COMMUNITY_Community 135|Community 135]]
+- [[_COMMUNITY_Community 139|Community 139]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `useAppState()` - 49 edges
@@ -131,15 +149,13 @@
 3. `formatRole()` - 34 edges
 4. `ProjectDetailScreen()` - 30 edges
 5. `useActiveClientOrganization()` - 27 edges
-6. `Haus Design System Guide` - 26 edges
-7. `getSupabaseAdminClient()` - 25 edges
-8. `isManagerRole()` - 22 edges
-9. `getUserClientOrganizationIds()` - 19 edges
-10. `AppSidebar()` - 18 edges
+6. `getSupabaseAdminClient()` - 26 edges
+7. `Haus Design System Guide` - 26 edges
+8. `isManagerRole()` - 23 edges
+9. `FakeQuery` - 20 edges
+10. `getUserClientOrganizationIds()` - 20 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `formatTaskStatus()` --calls--> `getTaskStatusLabel()`  [EXTRACTED]
-  components/team-screen.tsx → lib/display.ts
 - `TaskDetailModal()` --calls--> `useAppState()`  [EXTRACTED]
   TaskDetailModal.tsx → components/app-state.tsx
 - `EditProjectModal()` --calls--> `useAppState()`  [EXTRACTED]
@@ -148,8 +164,10 @@
   ProjectDetailScreen.tsx → components/app-state.tsx
 - `ProjectDetailScreen()` --calls--> `canCreateTask()`  [EXTRACTED]
   ProjectDetailScreen.tsx → lib/permissions.ts
+- `DELETE()` --calls--> `canDeleteProject()`  [EXTRACTED]
+  app/api/workspace/team/[id]/route.ts → lib/permissions.ts
 
-## Communities (120 total, 15 thin omitted)
+## Communities (140 total, 18 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.01
@@ -165,7 +183,7 @@ Nodes (156): ActionButton, actionButtonCss, ActionIcon, ActionLink, ActionList, 
 
 ### Community 3 - "Community 3"
 Cohesion: 0.01
-Nodes (126): ActionCell, Avatar, cardSurface, Content, ControlsPanel, controlSurface, CountCell, DangerButton (+118 more)
+Nodes (125): ActionCell, Avatar, cardSurface, Content, ControlsPanel, controlSurface, CountCell, DangerButton (+117 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.01
@@ -177,7 +195,7 @@ Nodes (145): ArrowWrap, Avatar, AvatarStack, Brand, ButtonIcon, CardOverduePill,
 
 ### Community 6 - "Community 6"
 Cohesion: 0.01
-Nodes (188): ActivityBody, ActivityIcon, ActivityList, ActivityRowCard, ActivityTime, ActivityTitle, BackLink, BrandActionRow (+180 more)
+Nodes (186): ActivityBody, ActivityIcon, ActivityList, ActivityRowCard, ActivityTime, ActivityTitle, BackLink, BrandActionRow (+178 more)
 
 ### Community 7 - "Community 7"
 Cohesion: 0.02
@@ -189,19 +207,19 @@ Nodes (83): ActionButton, ActionRow, AssetCard, AssetFileCard, AssetGrid, AssetL
 
 ### Community 9 - "Community 9"
 Cohesion: 0.03
-Nodes (62): cardSurface, DesignerTaskModalTask, FeedbackBody, FeedbackItem, FeedbackList, FeedbackMeta, FeedbackPanel, FeedbackRow (+54 more)
+Nodes (60): cardSurface, DesignerTaskModalTask, FeedbackBody, FeedbackItem, FeedbackList, FeedbackMeta, FeedbackPanel, FeedbackRow (+52 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.03
 Nodes (54): Actions, ContactPlaceholder, controlCss, EmptySelectState, Field, FieldMeta, FloatingField, FloatingLabel (+46 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.15
-Nodes (23): POST(), buildExistingUserMessage(), formatRoleLabel(), getClientOrganizationName(), POST(), resolveProfileCompany(), isValidEmail(), deriveInvitationStatus() (+15 more)
+Cohesion: 0.13
+Nodes (21): appConfig, isSupabaseConfigured, getSupabaseAdminClient(), allowedExtensions, allowedMimeTypes, getFileExtension(), isAllowedFile(), POST() (+13 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.1
-Nodes (21): ClientOrganizationLiaisonRecord, ClientOrganizationRecord, defaultDepartments, DepartmentRecord, deriveProjectStageFromTasks(), GET(), InvitationRecord, isMissingClientOrganizationLiaisonsTableError() (+13 more)
+Cohesion: 0.06
+Nodes (40): ClientOrganization, Comment, Department, Feedback, FeedbackAction, FileVersion, FileVisibility, Invitation (+32 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.05
@@ -212,8 +230,8 @@ Cohesion: 0.06
 Nodes (31): Actions, controlCss, ExpiryNote, FieldLabel, FloatingField, FloatingSelectField, Form, Header (+23 more)
 
 ### Community 15 - "Community 15"
-Cohesion: 0.07
-Nodes (29): dependencies, next, react, react-dom, styled-components, @supabase/supabase-js, xlsx, devDependencies (+21 more)
+Cohesion: 0.05
+Nodes (38): dependencies, next, react, react-dom, styled-components, @supabase/supabase-js, xlsx, devDependencies (+30 more)
 
 ### Community 16 - "Community 16"
 Cohesion: 0.08
@@ -224,8 +242,8 @@ Cohesion: 0.08
 Nodes (15): Brand, navItems, Sidebar, SidebarAvatar, SidebarButton, SidebarIcon, sidebarItemCss, SidebarLabel (+7 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.1
-Nodes (14): apiRequest(), AppStateContext, AppStateContextValue, areStringArraysEqual(), areUsersEqual(), fetchAuthUserProfile(), fetchWorkspaceState(), getAccessToken() (+6 more)
+Cohesion: 0.09
+Nodes (15): apiRequest(), AppStateContext, AppStateContextValue, areStringArraysEqual(), areUsersEqual(), fetchAuthUserProfile(), fetchWorkspaceState(), getAccessToken() (+7 more)
 
 ### Community 19 - "Community 19"
 Cohesion: 0.17
@@ -244,8 +262,8 @@ Cohesion: 0.05
 Nodes (34): ActionArea, ActionCopy, ActionText, ActionTitle, Avatar, AvatarButton, BackButton, BackIcon (+26 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.08
-Nodes (25): 13. Cards, 14. Status Pills, 16. Tabs, 18. Icons, 19. Project Stage Timeline, 1. Brand Feel, 20. File Cards, 21. Feedback Cards (+17 more)
+Cohesion: 0.09
+Nodes (22): 13. Cards, 14. Status Pills, 16. Tabs, 18. Icons, 19. Project Stage Timeline, 1. Brand Feel, 20. File Cards, 24. Recommended Page Style (+14 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.06
@@ -268,8 +286,8 @@ Cohesion: 0.13
 Nodes (17): 1) Install, 2) Run (development), 3) Build, code:bash (pnpm install), code:bash (pnpm dev), code:bash (pnpm build), code:bash (cp .env.example .env.local), Deployment target: Vercel (+9 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.15
-Nodes (11): formatDate(), getFeedbackTone(), getProjectInitial(), getProjectStatusTone(), getUserInitial(), getWorkflowTimelineIndex(), ProjectDetailScreen(), getProjectStatusClass() (+3 more)
+Cohesion: 0.18
+Nodes (9): formatDate(), getFeedbackTone(), getProjectInitial(), getProjectStatusTone(), getUserInitial(), getWorkflowTimelineIndex(), ProjectDetailScreen(), getProjectStatusClass() (+1 more)
 
 ### Community 31 - "Community 31"
 Cohesion: 0.1
@@ -280,8 +298,8 @@ Cohesion: 0.13
 Nodes (13): Actions, Card, ConfirmActionModal(), ConfirmActionModalProps, controlCss, Copy, Description, Header (+5 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.12
-Nodes (22): allowedPriorityLevels, buildOrganizationPrefixSeed(), buildUniqueOrganizationPrefix(), BulkProjectRow, isProjectCodeConflict(), normalizeTaskCreationError(), POST(), POST() (+14 more)
+Cohesion: 0.11
+Nodes (25): allowedPriorityLevels, buildOrganizationPrefixSeed(), buildUniqueOrganizationPrefix(), BulkProjectRow, isProjectCodeConflict(), normalizeTaskCreationError(), POST(), POST() (+17 more)
 
 ### Community 34 - "Community 34"
 Cohesion: 0.14
@@ -304,8 +322,8 @@ Cohesion: 0.17
 Nodes (12): 10. Button Types, code:css (.btn-primary {), code:css (.btn-primary:hover {), code:css (.btn-secondary {), code:css (.btn-ghost {), code:css (.btn-danger {), code:css (.btn-soft {), Danger Button (+4 more)
 
 ### Community 39 - "Community 39"
-Cohesion: 0.16
-Nodes (12): ClientTitleLogo(), ClientTitleLogoProps, LogoFallback, LogoImage, LogoRoot, buildClientOrganizationRows(), buildLiaisonRows(), ClientOrganizationRow (+4 more)
+Cohesion: 0.2
+Nodes (10): ClientTitleLogo(), ClientTitleLogoProps, LogoFallback, LogoImage, LogoRoot, buildClientOrganizationRows(), buildLiaisonRows(), ClientOrganizationRow (+2 more)
 
 ### Community 41 - "Community 41"
 Cohesion: 0.22
@@ -384,28 +402,32 @@ Cohesion: 0.05
 Nodes (38): BackButton, BackIcon, DeleteButton, EntityPill, ErrorText, Eyebrow, fetchTrashItems(), Grid (+30 more)
 
 ### Community 63 - "Community 63"
-Cohesion: 0.13
+Cohesion: 0.14
 Nodes (7): useChatUnreadTotal(), RequireAuth(), BottomNav(), PageHeader(), AppNavItem, AppNavLabel, getPrimaryNavItems()
+
+### Community 66 - "Community 66"
+Cohesion: 0.22
+Nodes (13): canStartDirectChat(), canStartOrgChat(), findExistingDirectConversation(), getUserOrgIds(), INTERNAL_ROLES, MANAGER_ROLES, POST(), ProfileRow (+5 more)
 
 ### Community 68 - "Community 68"
 Cohesion: 0.02
 Nodes (8): checkReady(), extrema(), hslToRgb(), hue2rgb(), quadRoots(), roundValues(), searchAnimations(), setQuality()
 
 ### Community 69 - "Community 69"
-Cohesion: 0.12
-Nodes (18): appConfig, isSupabaseConfigured, allowedExtensions, allowedMimeTypes, getFileExtension(), isAllowedFile(), POST(), allowedMimeTypes (+10 more)
-
-### Community 72 - "Community 72"
 Cohesion: 0.14
 Nodes (17): EditProjectModal(), EditProjectModalProps, modalContentStyle, modalOverlayStyle, Project, Project, ProjectDetailScreen(), ProjectDetailScreenProps (+9 more)
 
+### Community 72 - "Community 72"
+Cohesion: 0.14
+Nodes (22): TeamScreen(), canChangeWorkflow(), canCreateProjectForOrganization(), canCreateTeamMember(), canDeleteTask(), canDeleteTeamMember(), canEditTask(), canEditTeamMember() (+14 more)
+
 ### Community 77 - "Community 77"
-Cohesion: 0.15
-Nodes (29): POST(), updateProjectRequestStatusIfAllowed(), canEditTask(), bumpSubmittedVersion(), createDefaultState(), getTaskCompletionPath(), getVersionLabel(), isTaskCompletionImage() (+21 more)
+Cohesion: 0.11
+Nodes (36): POST(), updateProjectRequestStatusIfAllowed(), taskHasClientReviewableDeliverable(), taskIsUnderReviewWithoutSubmittedDeliverable(), taskNeedsAttention(), bumpSubmittedVersion(), createDefaultState(), getCurrentTaskCompletionLabel() (+28 more)
 
 ### Community 78 - "Community 78"
-Cohesion: 0.1
-Nodes (14): CardList, EmptyResult, ModeButton, ModePicker, OrgAvatar, PickerTitle, RecipientAvatarWrap, RecipientCard (+6 more)
+Cohesion: 0.08
+Nodes (19): CardList, EmptyResult, ModeButton, ModePicker, OrgAvatar, PickerTitle, RecipientAvatarWrap, RecipientCard (+11 more)
 
 ### Community 79 - "Community 79"
 Cohesion: 0.13
@@ -416,12 +438,12 @@ Cohesion: 0.16
 Nodes (27): a(), addPropertyDecorator(), bezFunction(), createCanvas(), createTag(), d(), e(), extendPrototype() (+19 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.29
-Nodes (7): DesignerTaskModal(), formatDueDate(), getCompletionMessage(), getAssetPath(), isPlainExternalLink(), getCurrentTaskCompletionLabel(), isTaskCompletionLink()
+Cohesion: 0.67
+Nodes (3): DesignerTaskModal(), formatDueDate(), getCompletionMessage()
 
 ### Community 82 - "Community 82"
-Cohesion: 0.26
-Nodes (15): canManageProjects(), getVisibleTasksForUser(), getAttentionCountForProject(), getAttentionTaskCount(), getAttentionTasksForProject(), getLatestManagerAttentionTriggerAt(), getProjectAttentionCount(), getProjectManagerAttentionKind() (+7 more)
+Cohesion: 0.36
+Nodes (11): canManageProjects(), getVisibleTasksForUser(), getAttentionCountForProject(), getAttentionTaskCount(), getAttentionTasksForProject(), getLatestManagerAttentionTriggerAt(), getProjectAttentionCount(), getProjectManagerAttentionKind() (+3 more)
 
 ### Community 84 - "Community 84"
 Cohesion: 0.5
@@ -432,24 +454,20 @@ Cohesion: 0.1
 Nodes (17): BackButton, BackIcon, Eyebrow, Grid, Header, MutedNote, Pill, PillRow (+9 more)
 
 ### Community 90 - "Community 90"
-Cohesion: 0.31
-Nodes (9): getProjectStagePercent(), getProjectStageStep(), getStageColor(), ProjectStageProgress(), ProjectStageProgressProps, Segment, Segments, STAGE_COLORS (+1 more)
+Cohesion: 0.26
+Nodes (11): getClientProjectStatusLabel(), getProjectStagePercent(), getProjectStageStep(), getStageColor(), ProjectStageProgress(), ProjectStageProgressProps, Segment, Segments (+3 more)
 
 ### Community 91 - "Community 91"
 Cohesion: 0.04
 Nodes (43): BarTooltip, ChartGrid, ChartScroll, ChartShell, ChartTitle, ChartTitleBadge, ChartTopBar, ChartTopLink (+35 more)
 
 ### Community 92 - "Community 92"
-Cohesion: 0.12
-Nodes (15): initialAppState, Comment, DemoState, Department, Feedback, FeedbackAction, FileVersion, FileVisibility (+7 more)
-
-### Community 93 - "Community 93"
-Cohesion: 0.22
-Nodes (13): canStartDirectChat(), canStartOrgChat(), findExistingDirectConversation(), getUserOrgIds(), INTERNAL_ROLES, MANAGER_ROLES, POST(), ProfileRow (+5 more)
+Cohesion: 0.06
+Nodes (19): AuthCreateUserResult, AuthDeleteUserResult, AuthListUsersResult, AuthUser, cloneRow(), createFakeSupabaseAdminClient(), DatabaseState, FailureMap (+11 more)
 
 ### Community 94 - "Community 94"
-Cohesion: 0.09
-Nodes (19): GanttChart(), CardCopy, CardHeader, cardSurface, CardTag, CardTitle, Content, Eyebrow (+11 more)
+Cohesion: 0.1
+Nodes (18): GanttChart(), CardCopy, CardHeader, cardSurface, CardTag, CardTitle, Content, Eyebrow (+10 more)
 
 ### Community 95 - "Community 95"
 Cohesion: 0.11
@@ -459,13 +477,25 @@ Nodes (17): assets, ddd, fr, h, ip, layers, markers, meta (+9 more)
 Cohesion: 0.12
 Nodes (18): crossProduct(), floatEqual(), floatZero(), getIntersection(), joinLines(), lerp(), lerpPoint(), linearOffset() (+10 more)
 
+### Community 97 - "Community 97"
+Cohesion: 0.31
+Nodes (9): POST(), deriveInvitationStatus(), generateSecureInvitationToken(), hashInvitationToken(), InvitationPreview, GET(), buildInvitationExpiryIso(), getClientOrganizationName() (+1 more)
+
+### Community 98 - "Community 98"
+Cohesion: 0.28
+Nodes (10): cleanupChatReferencesForProfile(), ConversationRow, deleteConversationSet(), MessageRow, AuthUserListEntry, deleteAuthUserIfPresent(), deleteQueuedStorage(), purgeArchivedProfile() (+2 more)
+
 ### Community 99 - "Community 99"
 Cohesion: 0.21
 Nodes (15): addDays(), addMonths(), buildTimelineRange(), endOfMonth(), formatGanttDate(), GanttMilestone, GanttRangeMode, getDayIndexMap() (+7 more)
 
 ### Community 101 - "Community 101"
-Cohesion: 0.67
-Nodes (3): 3. Color Palette, code:css (:root {), Core Colors
+Cohesion: 0.17
+Nodes (8): invitationState, mockedGetSupabaseAdminClient, newToken, oldHash, payload, regeneratePayload, supabase, token
+
+### Community 102 - "Community 102"
+Cohesion: 0.2
+Nodes (9): code:block1 (Test timeout of 60000ms exceeded.), code:block2 (Error: locator.fill: Test timeout of 60000ms exceeded.), code:yaml (- generic [active] [ref=e1]:), code:ts (1  | import { Page, expect } from "@playwright/test";), Error details, Instructions, Page snapshot, Test info (+1 more)
 
 ### Community 103 - "Community 103"
 Cohesion: 0.29
@@ -480,8 +510,8 @@ Cohesion: 0.17
 Nodes (12): createNS(), HShapeElement(), ShapeGroupData(), SVGDropShadowEffect(), SVGFillFilter(), SVGGaussianBlurEffect(), SVGMatte3Effect(), SVGProLevelsFilter() (+4 more)
 
 ### Community 106 - "Community 106"
-Cohesion: 0.22
-Nodes (9): AvatarLink, AvatarWrap, HeaderProfileAvatarLinkProps, avatarBase, AvatarFallback, AvatarImage, UserAvatar(), UserAvatarProps (+1 more)
+Cohesion: 0.4
+Nodes (4): AvatarLink, AvatarWrap, HeaderProfileAvatarLink(), HeaderProfileAvatarLinkProps
 
 ### Community 107 - "Community 107"
 Cohesion: 0.2
@@ -492,7 +522,7 @@ Cohesion: 0.15
 Nodes (13): ActorRecord, ChildProjectRecord, ChildTaskRecord, DeletedOrganizationRow, DeletedProfileRow, DeletedProjectRow, DeletedTaskRow, formatCount() (+5 more)
 
 ### Community 109 - "Community 109"
-Cohesion: 0.16
+Cohesion: 0.18
 Nodes (17): getClientProjectTone(), isPendingReviewProject(), isCompletedProjectForDashboard(), isOnHoldProject(), buildStageStops(), getProjectOverdueDays(), getProjectStatusColor(), isProjectOverdue() (+9 more)
 
 ### Community 110 - "Community 110"
@@ -511,9 +541,13 @@ Nodes (4): AuthLoadingAnimation(), Mount, Window, Wrap
 Cohesion: 0.6
 Nodes (5): addBrightnessToRGB(), addHueToRGB(), addSaturationToRGB(), HSVtoRGB(), RGBtoHSV()
 
+### Community 114 - "Community 114"
+Cohesion: 0.2
+Nodes (9): code:block1 (Test timeout of 60000ms exceeded.), code:block2 (Error: locator.fill: Test timeout of 60000ms exceeded.), code:yaml (- generic [active] [ref=e1]:), code:ts (1  | import { Page, expect } from "@playwright/test";), Error details, Instructions, Page snapshot, Test info (+1 more)
+
 ### Community 115 - "Community 115"
-Cohesion: 0.28
-Nodes (10): cleanupChatReferencesForProfile(), ConversationRow, deleteConversationSet(), MessageRow, AuthUserListEntry, deleteAuthUserIfPresent(), deleteQueuedStorage(), purgeArchivedProfile() (+2 more)
+Cohesion: 0.67
+Nodes (3): 21. Feedback Cards, code:css (.feedback-card {), code:css (.feedback-card-important {)
 
 ### Community 117 - "Community 117"
 Cohesion: 0.5
@@ -524,25 +558,69 @@ Cohesion: 0.67
 Nodes (3): addDecorator(), addEffect(), initialize()
 
 ### Community 121 - "Community 121"
-Cohesion: 0.17
-Nodes (22): ClientOrganizationDetailScreen(), TeamScreen(), canAssignTask(), canChangeWorkflow(), canCreateProjectForOrganization(), canCreateTask(), canCreateTeamMember(), canDeleteTask() (+14 more)
+Cohesion: 0.48
+Nodes (6): canAssignTask(), canCreateTask(), TaskManagerReviewStatus, logProjectActivity(), POST(), updateProjectRequestStatusIfAllowed()
+
+### Community 122 - "Community 122"
+Cohesion: 0.2
+Nodes (9): code:block1 (Test timeout of 60000ms exceeded.), code:block2 (Error: locator.fill: Test timeout of 60000ms exceeded.), code:yaml (- generic [active] [ref=e1]:), code:ts (1  | import { Page, expect } from "@playwright/test";), Error details, Instructions, Page snapshot, Test info (+1 more)
+
+### Community 124 - "Community 124"
+Cohesion: 0.33
+Nodes (4): ClientOrganizationDetailScreen(), formatDate(), getOrganizationStatusMeta(), getClientOrganizationStatusLabel()
+
+### Community 127 - "Community 127"
+Cohesion: 0.2
+Nodes (9): code:block1 (Test timeout of 60000ms exceeded.), code:block2 (Error: locator.fill: Test timeout of 60000ms exceeded.), code:yaml (- generic [active] [ref=e1]:), code:ts (1  | import { Page, expect } from "@playwright/test";), Error details, Instructions, Page snapshot, Test info (+1 more)
+
+### Community 128 - "Community 128"
+Cohesion: 0.2
+Nodes (9): code:block1 (Test timeout of 60000ms exceeded.), code:block2 (Error: locator.fill: Test timeout of 60000ms exceeded.), code:yaml (- generic [active] [ref=e1]:), code:ts (1  | import { Page, expect } from "@playwright/test";), Error details, Instructions, Page snapshot, Test info (+1 more)
+
+### Community 129 - "Community 129"
+Cohesion: 0.2
+Nodes (9): code:block1 (Test timeout of 60000ms exceeded.), code:block2 (Error: locator.fill: Test timeout of 60000ms exceeded.), code:yaml (- generic [active] [ref=e1]:), code:ts (1  | import { Page, expect } from "@playwright/test";), Error details, Instructions, Page snapshot, Test info (+1 more)
+
+### Community 130 - "Community 130"
+Cohesion: 0.2
+Nodes (9): code:block1 (Test timeout of 60000ms exceeded.), code:block2 (Error: locator.fill: Test timeout of 60000ms exceeded.), code:yaml (- generic [active] [ref=e1]:), code:ts (1  | import { Page, expect } from "@playwright/test";), Error details, Instructions, Page snapshot, Test info (+1 more)
+
+### Community 131 - "Community 131"
+Cohesion: 0.2
+Nodes (9): code:block1 (Test timeout of 60000ms exceeded.), code:block2 (Error: locator.fill: Test timeout of 60000ms exceeded.), code:yaml (- generic [active] [ref=e1]:), code:ts (1  | import { Page, expect } from "@playwright/test";), Error details, Instructions, Page snapshot, Test info (+1 more)
+
+### Community 132 - "Community 132"
+Cohesion: 0.42
+Nodes (7): buildExistingUserMessage(), formatRoleLabel(), getClientOrganizationName(), POST(), resolveProfileCompany(), isValidEmail(), findAuthUserByEmail()
+
+### Community 133 - "Community 133"
+Cohesion: 0.43
+Nodes (4): canInviteUsers(), Role, GET(), POST()
+
+### Community 134 - "Community 134"
+Cohesion: 0.67
+Nodes (3): getAssetPath(), isPlainExternalLink(), isTaskCompletionLink()
+
+### Community 135 - "Community 135"
+Cohesion: 0.67
+Nodes (3): 3. Color Palette, code:css (:root {), Core Colors
 
 ## Knowledge Gaps
-- **2136 isolated node(s):** `Task`, `TaskDetailModalProps`, `modalOverlayStyle`, `modalContentStyle`, `Project` (+2131 more)
+- **2225 isolated node(s):** `Task`, `TaskDetailModalProps`, `modalOverlayStyle`, `modalContentStyle`, `Project` (+2220 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **15 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **18 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useAppState()` connect `Community 21` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 13`, `Community 14`, `Community 17`, `Community 18`, `Community 22`, `Community 27`, `Community 30`, `Community 31`, `Community 62`, `Community 63`, `Community 72`, `Community 89`, `Community 94`, `Community 116`, `Community 121`?**
-  _High betweenness centrality (0.036) - this node is a cross-community bridge._
-- **Why does `formatRole()` connect `Community 21` to `Community 89`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 121`, `Community 13`, `Community 14`, `Community 17`, `Community 22`, `Community 94`, `Community 27`, `Community 62`, `Community 31`?**
-  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+- **Why does `useAppState()` connect `Community 21` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 13`, `Community 14`, `Community 17`, `Community 18`, `Community 22`, `Community 27`, `Community 30`, `Community 31`, `Community 62`, `Community 63`, `Community 69`, `Community 72`, `Community 89`, `Community 94`, `Community 116`, `Community 124`?**
+  _High betweenness centrality (0.034) - this node is a cross-community bridge._
+- **Why does `formatRole()` connect `Community 21` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 12`, `Community 13`, `Community 14`, `Community 17`, `Community 22`, `Community 27`, `Community 31`, `Community 62`, `Community 72`, `Community 89`, `Community 94`, `Community 124`?**
+  _High betweenness centrality (0.021) - this node is a cross-community bridge._
 - **Why does `AppSidebar()` connect `Community 21` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 13`, `Community 17`, `Community 27`, `Community 94`, `Community 63`?**
-  _High betweenness centrality (0.017) - this node is a cross-community bridge._
+  _High betweenness centrality (0.016) - this node is a cross-community bridge._
 - **What connects `Task`, `TaskDetailModalProps`, `modalOverlayStyle` to the rest of the system?**
-  _2136 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _2225 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.01 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
