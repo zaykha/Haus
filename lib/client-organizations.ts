@@ -79,6 +79,18 @@ export type LiaisonRow = {
   lastActivityDate: string | null;
 };
 
+export type PrimaryContactLeadRow = {
+  id: string;
+  name: string;
+  phone: string | null;
+  clientOrganizationId: string;
+  clientOrganizationName: string;
+  projectCount: number;
+  projectIds: string[];
+  projectNames: string[];
+  lastActivityDate: string | null;
+};
+
 export function getClientOrganizationMark(name: string) {
   const words = name.split(" ");
   if (words.length === 1) {
@@ -387,4 +399,90 @@ export function buildLiaisonRows(state: DemoState): LiaisonRow[] {
       };
     })
     .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function buildPrimaryContactLeadRows(state: DemoState): PrimaryContactLeadRow[] {
+  const organizationById = new Map(state.clientOrganizations.map((organization) => [organization.id, organization]));
+  const liaisonKeys = new Set(
+    state.users
+      .filter((member) => member.role === "client")
+      .flatMap((member) => {
+        const membershipIds =
+          member.clientOrganizationIds && member.clientOrganizationIds.length > 0
+            ? member.clientOrganizationIds
+            : member.clientOrganizationId
+              ? [member.clientOrganizationId]
+              : [];
+
+        return membershipIds.map((organizationId) =>
+          `${organizationId}::${member.name.trim().toLowerCase()}`,
+        );
+      }),
+  );
+
+  const leads = new Map<string, PrimaryContactLeadRow>();
+
+  for (const project of state.projects) {
+    const organizationId = project.clientOrganizationId?.trim() ?? "";
+    const contactName = project.contactPerson?.trim() ?? "";
+    const contactNumber = project.contactNumber?.trim() ?? "";
+    if (!organizationId || !contactName) {
+      continue;
+    }
+
+    if (liaisonKeys.has(`${organizationId}::${contactName.toLowerCase()}`)) {
+      continue;
+    }
+
+    const organizationName = organizationById.get(organizationId)?.name ?? "Unknown organization";
+    const leadId = `${organizationId}::${contactName.toLowerCase()}::${contactNumber.toLowerCase()}`;
+    const existing = leads.get(leadId);
+    const projectName = project.projectRequestName?.trim() || project.name.trim();
+    const projectActivityDate =
+      project.createdAt ??
+      project.requestedDate ??
+      project.finalDeliverableDate ??
+      project.dueDate ??
+      null;
+
+    if (existing) {
+      existing.projectCount += 1;
+      if (!existing.projectIds.includes(project.id)) {
+        existing.projectIds.push(project.id);
+      }
+      if (projectName && !existing.projectNames.includes(projectName)) {
+        existing.projectNames.push(projectName);
+      }
+      if (
+        projectActivityDate &&
+        (!existing.lastActivityDate ||
+          new Date(projectActivityDate).getTime() > new Date(existing.lastActivityDate).getTime())
+      ) {
+        existing.lastActivityDate = projectActivityDate;
+      }
+      continue;
+    }
+
+    leads.set(leadId, {
+      id: leadId,
+      name: contactName,
+      phone: contactNumber || null,
+      clientOrganizationId: organizationId,
+      clientOrganizationName: organizationName,
+      projectCount: 1,
+      projectIds: [project.id],
+      projectNames: projectName ? [projectName] : [],
+      lastActivityDate: projectActivityDate,
+    });
+  }
+
+  return [...leads.values()].sort((left, right) => {
+    const leftTime = left.lastActivityDate ? new Date(left.lastActivityDate).getTime() : 0;
+    const rightTime = right.lastActivityDate ? new Date(right.lastActivityDate).getTime() : 0;
+    if (leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+
+    return left.name.localeCompare(right.name);
+  });
 }

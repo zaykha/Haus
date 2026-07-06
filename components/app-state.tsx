@@ -118,6 +118,9 @@ interface AppStateContextValue {
       clientOrganizationId: string;
     },
   ) => Promise<void>;
+  clearPrimaryContactLead: (payload: {
+    projectIds: string[];
+  }) => Promise<void>;
   deleteClient: (clientId: string) => Promise<void>;
   updateClient: (
     clientId: string,
@@ -834,6 +837,50 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await refreshWorkspace(user);
   };
 
+  const clearPrimaryContactLead: AppStateContextValue["clearPrimaryContactLead"] = async ({
+    projectIds,
+  }) => {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    ensureAuthorized(canEditProject(user.role), "Only managers can edit projects");
+
+    if (appMode !== "supabase") {
+      throw new Error("Mock mode is not enabled.");
+    }
+
+    const matchingProjects = state.projects.filter((project) => projectIds.includes(project.id));
+
+    await Promise.all(
+      matchingProjects.map((project) =>
+        apiRequest<{ ok: true }>(`/api/workspace/projects/${project.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            projectRequestName: project.projectRequestName,
+            requestedDate: project.requestedDate,
+            requestStatus: project.requestStatus,
+            departmentName: project.departmentName ?? "",
+            contactPerson: "",
+            contactNumber: "",
+            projectType: project.projectType,
+            priorityLevel: project.priorityLevel ?? "",
+            firstDraftDate: project.firstDraftDate ?? "",
+            finalDeliverableDate: project.finalDeliverableDate,
+            projectObjective: project.projectObjective ?? "",
+            projectBrief: project.projectBrief ?? "",
+            creativeAdvice: project.creativeAdvice ?? "",
+            description: project.description ?? "",
+            referenceAttachmentUrl: project.referenceAttachmentUrl ?? "",
+            clientOrganizationId: project.clientOrganizationId ?? "",
+          }),
+        }),
+      ),
+    );
+
+    await refreshWorkspace(user);
+  };
+
   const deleteClient: AppStateContextValue["deleteClient"] = async (clientId) => {
     if (!user) {
       throw new Error("Unauthorized");
@@ -1451,9 +1498,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         user,
         login,
         logout,
-    createProject,
-    bulkCreateProjects,
-    updateProject,
+        createProject,
+        bulkCreateProjects,
+        updateProject,
+        clearPrimaryContactLead,
         deleteClient,
         updateClient,
         createClientOrganization,

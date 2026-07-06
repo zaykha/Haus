@@ -220,6 +220,7 @@ function validateProjectFormRequiredFields({
   effectiveContactPerson,
   effectiveContactNumber,
   hasAvailableContacts,
+  manualPrimaryContactEnabled,
 }: {
   values: ProjectFormValues;
   customProjectType: string;
@@ -229,6 +230,7 @@ function validateProjectFormRequiredFields({
   effectiveContactPerson: string;
   effectiveContactNumber: string;
   hasAvailableContacts: boolean;
+  manualPrimaryContactEnabled: boolean;
 }) {
   const missingFields = new Set<ProjectFormFieldKey>();
 
@@ -268,7 +270,9 @@ function validateProjectFormRequiredFields({
     missingFields.add("departmentName");
   }
 
-  if (!clientCreateMode && !effectiveContactPerson.trim()) {
+  const requiresPrimaryContact = clientCreateMode || hasAvailableContacts || manualPrimaryContactEnabled;
+
+  if (!clientCreateMode && requiresPrimaryContact && !effectiveContactPerson.trim()) {
     missingFields.add("contactPerson");
   }
 
@@ -280,13 +284,6 @@ function validateProjectFormRequiredFields({
     if (!values.clientOrganizationId.trim()) {
       return {
         message: "Select a company in Request Intake before submitting.",
-        missingFields,
-      };
-    }
-
-    if (!clientCreateMode && !hasAvailableContacts && !effectiveContactPerson.trim()) {
-      return {
-        message: "Add a primary contact to this organization before creating the project.",
         missingFields,
       };
     }
@@ -339,6 +336,7 @@ export function ProjectForm({
   const [error, setError] = useState("");
   const [showErrorPopup, setShowErrorPopup] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [manualPrimaryContactEnabled, setManualPrimaryContactEnabled] = useState(false);
 
   const availableContacts = clients.filter(
     (client) => getUserClientOrganizationIds(client).includes(values.clientOrganizationId),
@@ -389,10 +387,10 @@ export function ProjectForm({
     : values.departmentName;
   const effectiveContactPerson = clientCreateMode
     ? values.contactPerson.trim() || viewer?.name?.trim() || selectedContact?.name || ""
-    : values.contactPerson;
+    : values.contactPerson.trim();
   const effectiveContactNumber = clientCreateMode
     ? values.contactNumber.trim() || viewer?.phone?.trim() || selectedContact?.phone?.trim() || ""
-    : values.contactNumber;
+    : values.contactNumber.trim();
   const requiredFieldValidation = useMemo(
     () =>
       validateProjectFormRequiredFields({
@@ -404,6 +402,7 @@ export function ProjectForm({
         effectiveContactPerson,
         effectiveContactNumber,
         hasAvailableContacts,
+        manualPrimaryContactEnabled,
       }),
     [
       clientCreateMode,
@@ -413,6 +412,7 @@ export function ProjectForm({
       effectiveDepartmentName,
       effectiveRequestStatus,
       hasAvailableContacts,
+      manualPrimaryContactEnabled,
       values,
     ],
   );
@@ -527,6 +527,9 @@ export function ProjectForm({
 
   useEffect(() => {
     if (!values.clientOrganizationId) {
+      if (manualPrimaryContactEnabled) {
+        setManualPrimaryContactEnabled(false);
+      }
       if (values.contactNumber || values.contactPerson) {
         setValues((current) => ({
           ...current,
@@ -542,6 +545,10 @@ export function ProjectForm({
       return;
     }
 
+    if (manualPrimaryContactEnabled) {
+      return;
+    }
+
     if (values.contactNumber || values.contactPerson) {
       setValues((current) => ({
         ...current,
@@ -551,6 +558,7 @@ export function ProjectForm({
     }
   }, [
     availableContacts,
+    manualPrimaryContactEnabled,
     values.clientOrganizationId,
     values.contactNumber,
     values.contactPerson,
@@ -1083,10 +1091,66 @@ export function ProjectForm({
                     ) : null}
                   </FloatingSelectField>
                 </Field>
+              ) : hasSelectedOrganization ? (
+                <>
+                  <Field $wide>
+                    <ManualContactPanel>
+                      <ToggleCardButton
+                        type="button"
+                        onClick={() => setManualPrimaryContactEnabled((current) => !current)}
+                        aria-pressed={manualPrimaryContactEnabled}
+                      >
+                        <ToggleCopy>
+                          <strong>Add primary contact without liaison account</strong>
+                          <span>
+                            Save the contact name and phone now. The liaison account and email can be added later from the liaisons screen.
+                          </span>
+                        </ToggleCopy>
+                        <ToggleTrack $active={manualPrimaryContactEnabled}>
+                          <ToggleThumb $active={manualPrimaryContactEnabled} />
+                        </ToggleTrack>
+                      </ToggleCardButton>
+                      {manualPrimaryContactEnabled ? (
+                        <ManualContactFields>
+                          <Field $wide>
+                            <FloatingField
+                              className={values.contactPerson ? "auth-field is-filled" : "auth-field"}
+                              $invalid={invalidFields.has("contactPerson")}
+                            >
+                              <TextInput
+                                value={values.contactPerson}
+                                onChange={(event) =>
+                                  setValues((current) => ({ ...current, contactPerson: event.target.value }))
+                                }
+                                placeholder=" "
+                              />
+                              <span>Primary Contact</span>
+                            </FloatingField>
+                          </Field>
+                          <Field $wide>
+                            <FloatingField
+                              className={values.contactNumber ? "auth-field is-filled" : "auth-field"}
+                              $invalid={invalidFields.has("contactNumber")}
+                            >
+                              <TextInput
+                                value={values.contactNumber}
+                                onChange={(event) =>
+                                  setValues((current) => ({ ...current, contactNumber: event.target.value }))
+                                }
+                                placeholder=" "
+                              />
+                              <span>Contact Number</span>
+                            </FloatingField>
+                          </Field>
+                        </ManualContactFields>
+                      ) : null}
+                    </ManualContactPanel>
+                  </Field>
+                </>
               ) : !hasSelectedOrganization ? (
                 <ContactPlaceholder>Select organization first.</ContactPlaceholder>
               ) : null}
-              {values.contactPerson ? (
+              {hasAvailableContacts && values.contactPerson ? (
                 <Field $wide>
                   <FloatingField
                     className={values.contactNumber ? "auth-field is-filled" : "auth-field"}
@@ -1582,34 +1646,74 @@ const SectionDescription = styled.p`
 `;
 
 const ToggleCardButton = styled.button`
-  ${controlCss}
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text);
+  box-shadow: none;
+  box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  min-height: 64px;
-  padding: 14px;
+  gap: 16px;
+  min-height: 84px;
+  padding: 18px 20px;
   text-align: left;
   cursor: pointer;
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 243, 235, 0.9) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 10px 24px rgba(79, 61, 39, 0.08);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+
+  &:hover {
+    border-color: rgba(214, 201, 184, 0.96);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.92),
+      0 14px 28px rgba(79, 61, 39, 0.1);
+    transform: translateY(-1px);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(31, 67, 57, 0.34);
+    box-shadow:
+      0 0 0 3px rgba(31, 67, 57, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.92),
+      0 14px 28px rgba(79, 61, 39, 0.1);
+  }
 `;
 
 const ToggleCopy = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
   min-width: 0;
-
+  flex: 1 1 auto;
+  
   strong {
     color: #2e2a27;
-    font-size: 0.92rem;
+    font-size: 1rem;
     line-height: 1.2;
+    font-weight: 800;
   }
 
   span {
     color: var(--color-text-muted);
-    font-size: 0.8rem;
-    line-height: 1.4;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    max-width: 58ch;
   }
+
 `;
 
 const ToggleTrack = styled.span<{ $active: boolean }>`
@@ -1618,6 +1722,7 @@ const ToggleTrack = styled.span<{ $active: boolean }>`
   border-radius: 999px;
   flex: 0 0 auto;
   position: relative;
+  margin-top: 2px;
   background: ${({ $active }) => ($active ? "#1f4339" : "rgba(223, 214, 201, 0.95)")};
   transition: background 0.18s ease;
 `;
@@ -1633,6 +1738,39 @@ const ToggleThumb = styled.span<{ $active: boolean }>`
   box-shadow: 0 8px 18px rgba(49, 35, 18, 0.16);
   transform: translateX(${({ $active }) => ($active ? "18px" : "0")});
   transition: transform 0.18s ease;
+`;
+
+const ManualContactPanel = styled.div`
+  display: grid;
+  gap: 14px;
+  // padding: 16px;
+  // border: 1px solid rgba(228, 219, 205, 0.88);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(252, 249, 244, 0.98) 0%, rgba(247, 241, 232, 0.82) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 14px 28px rgba(89, 67, 42, 0.06);
+
+  ${tabletUp} {
+    // padding: 18px;
+    gap: 16px;
+  }
+`;
+
+const ManualContactFields = styled.div`
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(226, 216, 202, 0.95);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+
+  ${tabletUp} {
+    gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 `;
 
 const Field = styled.label<{ $wide?: boolean }>`

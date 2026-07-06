@@ -14,7 +14,7 @@ import { ListScreenSkeleton } from "@/components/page-skeletons";
 import { useActiveClientOrganization } from "@/components/use-active-client-organization";
 import { UserAvatar } from "@/components/user-avatar";
 import { getClientBrandStyle } from "@/lib/client-branding";
-import { buildLiaisonRows } from "@/lib/client-organizations";
+import { buildLiaisonRows, buildPrimaryContactLeadRows, type PrimaryContactLeadRow } from "@/lib/client-organizations";
 import { formatRole } from "@/lib/display";
 import { canCreateClient } from "@/lib/permissions";
 
@@ -76,7 +76,7 @@ function getOrganizationClusterItems(names: string[]) {
 }
 
 export function LiaisonsScreen() {
-  const { ready, state, user, updateClient, deleteClient } = useAppState();
+  const { ready, state, user, updateClient, deleteClient, clearPrimaryContactLead } = useAppState();
   const [desktopView, setDesktopView] = useState<"cards" | "table">("table");
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
@@ -94,6 +94,9 @@ export function LiaisonsScreen() {
   const [showDeleteLiaisonModal, setShowDeleteLiaisonModal] = useState(false);
   const [isDeletingLiaison, setIsDeletingLiaison] = useState(false);
   const [showInviteLiaisonModal, setShowInviteLiaisonModal] = useState(false);
+  const [showPrimaryContactsModal, setShowPrimaryContactsModal] = useState(false);
+  const [inviteLead, setInviteLead] = useState<PrimaryContactLeadRow | null>(null);
+  const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
   const appliedFilterCount = filter !== "all" ? 1 : 0;
   const appliedSortCount = sort !== "name" ? 1 : 0;
 
@@ -109,6 +112,7 @@ export function LiaisonsScreen() {
   const canInviteLiaisons = canManage || (viewerRole === "client" && clientOrganizationIds.length > 0);
   const inviteLockedToSingleOrganization = viewerRole === "client" && clientOrganizationIds.length === 1;
   const liaisons = useMemo(() => buildLiaisonRows(state), [state]);
+  const primaryContactLeads = useMemo(() => buildPrimaryContactLeadRows(state), [state]);
   const organizationsById = useMemo(
     () => new Map(state.clientOrganizations.map((organization) => [organization.id, organization])),
     [state.clientOrganizations],
@@ -184,7 +188,6 @@ export function LiaisonsScreen() {
 
   const totalCount = visibleLiaisons.length;
   const assignedCount = visibleLiaisons.filter((liaison) => !liaison.isUnassigned).length;
-  const unassignedCount = visibleLiaisons.filter((liaison) => liaison.isUnassigned).length;
   const activeOrgCount = new Set(
     visibleLiaisons
       .flatMap((liaison) =>
@@ -216,12 +219,92 @@ export function LiaisonsScreen() {
     <Shell style={viewerRole === "client" ? clientBrandStyle : undefined}>
       <InviteWorkspaceModal
         open={showInviteLiaisonModal}
-        onClose={() => setShowInviteLiaisonModal(false)}
+        onClose={() => {
+          setShowInviteLiaisonModal(false);
+          setInviteLead(null);
+        }}
         variant="client"
-        initialClientOrganizationId={clientOrganizationIds[0] ?? ""}
-        lockClientOrganization={inviteLockedToSingleOrganization}
+        initialClientOrganizationId={inviteLead?.clientOrganizationId ?? clientOrganizationIds[0] ?? ""}
+        lockClientOrganization={Boolean(inviteLead) || inviteLockedToSingleOrganization}
         allowedClientOrganizationIds={viewerRole === "client" ? clientOrganizationIds : undefined}
       />
+      {canManage ? (
+        <Overlay
+          style={{ display: showPrimaryContactsModal ? "flex" : "none" }}
+          onClick={() => setShowPrimaryContactsModal(false)}
+        >
+          <PendingContactsModalCard onClick={(event) => event.stopPropagation()}>
+            <ModalHeader>
+              <div>
+                <PanelTitle>Primary Contacts Without Accounts</PanelTitle>
+                <SubtitleText>
+                  Saved project contacts that still need a liaison account.
+                </SubtitleText>
+              </div>
+              <HeaderActions>
+                <IconButton
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setShowPrimaryContactsModal(false)}
+                >
+                  <IconClose />
+                </IconButton>
+              </HeaderActions>
+            </ModalHeader>
+            {primaryContactLeads.length ? (
+              <PendingContactsModalBody>
+                <PendingContactsGrid>
+                  {primaryContactLeads.map((lead) => (
+                    <PendingContactCard key={lead.id}>
+                      <PendingContactCopy>
+                        <PendingContactName>{lead.name}</PendingContactName>
+                        <PendingContactMeta>{lead.clientOrganizationName}</PendingContactMeta>
+                        <PendingContactMeta>{lead.phone || "No phone saved"}</PendingContactMeta>
+                        <PendingContactMeta>
+                          {lead.projectCount === 1
+                            ? lead.projectNames[0] || "1 project"
+                            : `${lead.projectCount} projects`}
+                        </PendingContactMeta>
+                      </PendingContactCopy>
+                      <PendingContactActions>
+                        <PendingContactAction
+                          type="button"
+                          onClick={() => {
+                            setInviteLead(lead);
+                            setShowPrimaryContactsModal(false);
+                            setShowInviteLiaisonModal(true);
+                          }}
+                        >
+                          Invite liaison
+                        </PendingContactAction>
+                        <PendingContactDeleteButton
+                          type="button"
+                          disabled={deletingLeadId === lead.id}
+                          onClick={async () => {
+                            setDeletingLeadId(lead.id);
+                            try {
+                              await clearPrimaryContactLead({ projectIds: lead.projectIds });
+                            } finally {
+                              setDeletingLeadId(null);
+                            }
+                          }}
+                        >
+                          {deletingLeadId === lead.id ? "Deleting..." : "Delete"}
+                        </PendingContactDeleteButton>
+                      </PendingContactActions>
+                    </PendingContactCard>
+                  ))}
+                </PendingContactsGrid>
+              </PendingContactsModalBody>
+            ) : (
+              <PendingContactsEmptyState>
+                <strong>No pending contacts</strong>
+                <p>Every saved project contact already has a liaison account.</p>
+              </PendingContactsEmptyState>
+            )}
+          </PendingContactsModalCard>
+        </Overlay>
+      ) : null}
       <ConfirmActionModal
         open={showDeleteLiaisonModal && Boolean(selectedLiaison)}
         title="Delete liaison"
@@ -588,7 +671,10 @@ export function LiaisonsScreen() {
             {canInviteLiaisons ? (
               <PrimaryActionButton
                 type="button"
-                onClick={() => setShowInviteLiaisonModal(true)}
+                onClick={() => {
+                  setInviteLead(null);
+                  setShowInviteLiaisonModal(true);
+                }}
               >
                 <ActionIcon>
                   <IconPlus />
@@ -619,15 +705,24 @@ export function LiaisonsScreen() {
               <StatLabel>Assigned</StatLabel>
             </StatCopy>
           </StatCard>
-          <StatCard>
+          <StatButton
+            type="button"
+            disabled={!canManage}
+            onClick={() => {
+              if (canManage) {
+                setShowPrimaryContactsModal(true);
+              }
+            }}
+          >
             <StatIcon $tone="red">
               <IconAlert />
             </StatIcon>
             <StatCopy>
-              <StatValue>{unassignedCount}</StatValue>
-              <StatLabel>Unassigned</StatLabel>
+              <StatValue>{primaryContactLeads.length}</StatValue>
+              <StatLabel>Primary Contacts</StatLabel>
             </StatCopy>
-          </StatCard>
+            <StatActionHint>View list</StatActionHint>
+          </StatButton>
           <StatCard>
             <StatIcon $tone="mint">
               <IconSpark />
@@ -989,6 +1084,13 @@ const ModalCard = styled.div`
   width: min(520px, calc(100vw - 32px));
   border-radius: 24px;
   padding: 20px;
+`;
+
+const PendingContactsModalCard = styled(ModalCard)`
+  width: min(720px, calc(100vw - 32px));
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
 `;
 
 const ModalHeader = styled.div`
@@ -1374,6 +1476,34 @@ const StatCard = styled.article`
   }
 `;
 
+const StatButton = styled.button`
+  ${cardSurface}
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  padding: 18px 20px;
+  border-radius: 20px;
+  text-align: left;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+
+  &:hover {
+    border-color: rgba(214, 201, 184, 0.96);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(31, 67, 57, 0.34);
+    box-shadow: 0 0 0 3px rgba(31, 67, 57, 0.12), var(--shadow-md);
+  }
+`;
+
 const StatIcon = styled.div<{ $tone: "green" | "gold" | "red" | "mint" }>`
   width: 34px;
   height: 34px;
@@ -1418,6 +1548,109 @@ const StatLabel = styled.span`
   color: var(--color-text-muted);
   font-size: 0.82rem;
   font-weight: 600;
+`;
+
+const StatActionHint = styled.span`
+  margin-left: auto;
+  color: var(--client-brand-primary, #1f4339);
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+`;
+
+const PendingContactsModalBody = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+`;
+
+const PendingContactsGrid = styled.div`
+  display: grid;
+  gap: 10px;
+`;
+
+const PendingContactCard = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid rgba(230, 224, 215, 0.95);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.84);
+`;
+
+const PendingContactsEmptyState = styled.div`
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--color-text-muted);
+
+  strong {
+    display: block;
+    color: var(--color-text);
+    font-size: 1rem;
+    margin-bottom: 6px;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.45;
+  }
+`;
+
+const PendingContactCopy = styled.div`
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+`;
+
+const PendingContactName = styled.strong`
+  color: var(--color-text);
+  font-size: 0.94rem;
+  line-height: 1.3;
+`;
+
+const PendingContactMeta = styled.p`
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+`;
+
+const PendingContactActions = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+`;
+
+const PendingContactAction = styled.button`
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--client-brand-primary, #1f4339);
+  color: var(--client-brand-on-primary, #fff);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+`;
+
+const PendingContactDeleteButton = styled.button`
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(237, 188, 182, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 240, 238, 0.96);
+  color: #c2544a;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
 `;
 
 const DesktopViewToggleGroup = styled.div`

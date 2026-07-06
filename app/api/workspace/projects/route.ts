@@ -81,8 +81,10 @@ export async function POST(request: NextRequest) {
 
   const resolvedRequestStatus = body.requestStatus?.trim() || "Waiting List";
   const resolvedDepartmentName = body.departmentName?.trim() || user.department?.trim() || null;
-  const resolvedContactPerson = body.contactPerson?.trim() || user.name.trim() || null;
-  const resolvedContactNumber = body.contactNumber?.trim() || user.phone?.trim() || null;
+  const resolvedContactPerson =
+    body.contactPerson?.trim() || (user.role === "client" ? user.name.trim() : "") || null;
+  const resolvedContactNumber =
+    body.contactNumber?.trim() || (user.role === "client" ? user.phone?.trim() || "" : "") || null;
   let resolvedProjectCode: string | null = null;
 
   if (resolvedClientOrganizationId) {
